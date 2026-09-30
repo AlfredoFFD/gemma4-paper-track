@@ -56,3 +56,11 @@ content should stand on its own, without personal attribution.
 
 **Why.** Both agents need the same bar and the same map of the data before any analysis starts. A file-access check
 up front catches a partial-read problem before it can silently weaken the literature map or the numbers.
+
+### 2026-09-30 ~19:45 ET [Claude Code] Names rule refined
+
+- Names now appear only where they fit: authors or team, repo owner, the paper's byline. No attributing ideas,
+  quotes or framings to a person. The README team line names the repo owner.
+
+**Why.** The earlier removal overcorrected. The point was to avoid crediting ideas to individuals in the docs, not to
+hide who is on the team.

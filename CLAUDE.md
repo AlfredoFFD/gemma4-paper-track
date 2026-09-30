@@ -53,8 +53,8 @@ docs/how-we-work.md → LOG.md → NOTES.md. The dataset (about 20 GB) is in `da
 
 ## Rules
 
-- **No personal names or attributions** in tracked files (README, docs, logs, code, commit messages). Log tags are
-  `[team]`, `[Claude Science]` and `[Claude Code]`.
+- **Names only where they fit:** authors or team, repo owner, the paper's byline. Never attribute ideas, quotes or
+  framings to a person in docs, logs or code. Log tags are `[team]`, `[Claude Science]` and `[Claude Code]`.
 - **Never commit** `data/`, `private/`, `CLAUDE.local.md`, tokens or `.env`. Never print a token.
 - **Keep the repo open-sourceable:** winners must release code under Apache 2.0, with training and inference code.
 - **Competition data** must not be redistributed outside participants.
