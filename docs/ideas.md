@@ -13,8 +13,7 @@ pre-registration.
 
 ## Sep 29-30: inputs
 
-- **[team] (Sep 29):** in. "Seems there are angles to be had." Real RL or post-training is hard to resource, so
-  the approach has to be clever. The code-graph part could be a paper on **"externalizing memory" in agent systems**.
+- **Team discussion (Sep 29):** real RL or post-training is hard to resource, so the approach has to be clever. The code-graph part could be a paper on **"externalizing memory" in agent systems**.
 - **A shared screenshot** (an AI assistant's answer, not a person's): the paper track could produce something more
   interesting than the winning agent. It suggests a clean result on *when explicit code-graph structure helps an LLM,
   what it supplies that semantic retrieval does not, and whether the model can be trained to exploit it*. The

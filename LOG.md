@@ -9,18 +9,18 @@ with a new dated entry, never by editing it.
 
 - Repo set up for the Gemma 4 Developer Agent Paper Track. Team of two.
 - Starting point: the Sep 27 adversarial prior-art sweep. Of three candidate ideas, "does the agent read its code
-  graph" survived best. The team's framing (Sep 29) is the code graph as externalized memory. The merged design is
+  graph" survived best. The framing (Sep 29) is the code graph as externalized memory. The merged design is
   diagnose (Q1), measure (Q2), fix (Q3); see BRIEF.md.
 - Nothing has been run. No data downloaded yet: it needs both of us to join the competition, plus a Kaggle API
   token.
 
 **Why.** The deadline is Nov 12 (43 days away). A shared repo with the brief, prior art and
-logging rules lets Claude Science start the literature map and pilot this week.
+logging rules lets Claude Science start the literature map and pilot this week, this week.
 
 ### 2026-09-30 ~17:00 ET [Claude Code] Kaggle read, data access, and a direct overlap
 
 - Read the full Kaggle pages (details in docs/competition.md). Rules that bind us:
-  - teams of up to 5, one team only, so the two team members must be one team
+  - teams of up to 5, one team only, so the two of us must be one team
   - up to 2 writeups per team
   - arXiv allowed
   - winners license their code Apache 2.0 and deliver training and inference code
@@ -35,3 +35,12 @@ logging rules lets Claude Science start the literature map and pilot this week.
 
 **Why.** Starting Q1 would have duplicated a public writeup. The decision has to happen before any compute is
 spent.
+
+### 2026-09-30 ~19:10 ET [Claude Code] Names removed from repo content
+
+- At the team's request, personal names and idea attributions were removed from every tracked file (README, BRIEF,
+  LOG, docs) and from issues #1 and #7. Log author tags are now `[team]`, `[Claude Science]` and `[Claude Code]`.
+  Earlier entries above were edited only to remove names; nothing else about them changed.
+
+**Why.** The repo is shared, and it may be open-sourced if we win (the rules require Apache 2.0 code release). Its
+content should stand on its own, without personal attribution.

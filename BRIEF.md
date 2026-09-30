@@ -60,7 +60,7 @@ related work and citations.
   accuracy by 4.8% to 61.8%.
 - Judge Elan Markowitz wrote *KG-LLM-Bench* (arXiv 2504.07087) on how knowledge-graph textualization affects LLM
   reasoning.
-- So "when does your graph help, what does it add, and can the model learn to use it" is their question. The team's
+- So "when does your graph help, what does it add, and can the model learn to use it" is their question. Our
   framing names it: **the code graph as the agent's externalized memory**.
 
 ## Decided
@@ -116,7 +116,7 @@ related work and citations.
 - **Compute:** the harness runs in Docker containers, so Colab cannot run agent episodes (no Docker). Options:
   - Claude Science's cloud compute (Modal)
   - a rented GPU VM
-  - Colab Pro+ for things that need no Docker: the offline analysis and LoRA training
+  - Colab Pro+ (available to us) for things that need no Docker: the offline analysis and LoRA training
 
   Real RL is out of budget; stay with cheap, clever training.
 - **Scale:** the full Q2 design at about 129 tasks x 5 arms x 2 seeds is roughly 1,300 agent episodes. That's an
@@ -141,10 +141,10 @@ related work and citations.
 - *Oracle Poisoning* (2605.09822), *Deterministic Anchoring* (2606.26979), *CodeCompass* (2602.20048), *Don't
   Blindly Trust It* (2606.21409): pieces of our design, but none inside end-to-end SWE bug-fixing.
 
-## Roles (proposed)
+## Roles (to split between the two of us)
 
-- **Team member 1:**experimental design (Q1, Q2), pre-registrations, analysis, writing.
-- **Team member 2:**the training fix (Q3), the externalized-memory framing and its related work.
+- **Team:** experimental design and pre-registrations (Q1, Q2); the training fix (Q3); the memory framing and its
+  related work; analysis and writing.
 - **Claude Science:** execution on cloud compute, literature map, reviewer passes, research log.
 - **Claude Code:** repo, local tooling, independent re-derivation of every headline number.
 
@@ -154,7 +154,7 @@ related work and citations.
    paper that already scrambles code-graph structure versus embeddings to measure reliance (Q2), or that measures
    whether fine-tuning increases reliance on structure (Q3). Report KILLED, WEAKENED or OPEN for each, with the
    nearest work.
-2. **Q1 offline map** once the dataset is downloaded (needs a team member to join the competition and add a Kaggle token).
+2. **Q1 offline map** from the dataset in `data/`.
    Include the distribution plot and the share of structure-favoring tasks.
 3. **Harness pilot.** Run the sample submission on 3 to 5 tasks with Gemma 4. Record cost per task, time per task,
    and the graph-tool call rate.

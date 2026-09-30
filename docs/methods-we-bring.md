@@ -1,6 +1,6 @@
 # Methods that transfer from our earlier work
 
-An earlier project (a pre-registered study of how answer formats change what vision-language models appear
+An earlier project of ours (a pre-registered study of how answer formats change what vision-language models appear
 able to do) is not about code. Its content does not transfer. Several of its methods do, and they target exactly the
 criteria the judges score (novelty, verifiability, clarity).
 

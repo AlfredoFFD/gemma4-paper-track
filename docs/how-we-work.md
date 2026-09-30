@@ -2,7 +2,7 @@
 
 ## Repository
 
-- Private GitHub repo, shared by the team. It becomes public only when we both agree
+- Private GitHub repo with both of us as collaborators. It becomes public only when we both agree
   (before submission, if we attach a public notebook or code).
 - `main` stays runnable. Work on a branch per idea or experiment (`q1-offline-map`, `q2-counterfactual-arms`,
   `q3-lora`, ...) and merge through pull requests. Small commits with clear messages.
@@ -25,7 +25,7 @@
 ## Logs
 
 - `LOG.md` is the research log. Claude Science writes it during its sessions; we append by pull request.
-  - Every entry has a date, an author tag (`[team]`, `[Claude Science]`), and a "Why." line.
+  - Every entry has a date, an author tag (`[team]`, `[Claude Science]`, `[Claude Code]`), and a "Why." line.
   - It is append-only: correct old entries with a new dated entry, not an edit.
 - `NOTES.md` is Claude Code's, kept separate so two agents never edit one file at once.
 
@@ -42,7 +42,7 @@
   else.
 - **Claude Code:** repo setup, local tooling, review, re-derivation.
 - Colab Pro+ for jobs that need no Docker: offline analysis, LoRA training.
-- Anything produced elsewhere (the team's own tools, notebooks) comes back into this repo with a log entry.
+- Anything produced elsewhere (our own tools, notebooks) comes back into this repo with a log entry.
 
 ## Kaggle
 

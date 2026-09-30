@@ -5,7 +5,7 @@ Paste this as the first message of a new Claude Science chat, with this folder g
 
 ---
 
-New project: the **Gemma 4 Developer Agent Paper Track** on Kaggle (Google DeepMind), with a teammate.
+New project: the **Gemma 4 Developer Agent Paper Track** on Kaggle (Google DeepMind), with my teammate.
 The deadline is **Nov 12, 2026, 11:59 PM UTC**. The folder `<repo>` is a git repo (private
 GitHub: AlfredoFFD/gemma4-paper-track).
 
@@ -39,7 +39,7 @@ Two directions are open:
   - how big the files and functions an agent reads are, compared with the 32k budget
   - how much of a task's context could go to re-reading code
   - what `HARNESS_README.md` says about compaction, budgets and the size of graph-tool outputs
-- **C. Recommend a direction** with the evidence, and draft `prereg/01-<name>.md` for it. The team decides.
+- **C. Recommend a direction** with the evidence, and draft `prereg/01-<name>.md` for it. My teammate and I decide.
 
 **Rules:**
 - Log every step in `LOG.md`: date, a `[Claude Science]` tag, and a "Why." line.

@@ -1,8 +1,7 @@
 # The competition: rules and facts
 
-Read from the Kaggle pages by Claude Code on Sep 27-30, 2026, while logged in. Quotes are exact. The sections
-below were read directly; a full read of the Rules, Discussion, Leaderboard, Code and Writeups tabs is added in
-the next section once it lands.
+Read from the Kaggle pages by Claude Code on Sep 27-30, 2026, while logged in. Quotes are exact. The first sections
+were read directly; the full read of the Rules, Discussion, Leaderboard and Code tabs is in the last section.
 
 ## Paper track (https://www.kaggle.com/competitions/gemma-4-developer-agent-paper)
 
@@ -102,8 +101,8 @@ CLI, or the notebook itself). Everything else is the agent's reading and gets ch
 - **Teams:**
   - "The maximum Team size is five (5)." "You may join or form only one Team."
   - The paper track does not require joining the main competition.
-  - Both rulebooks forbid sharing code across teams "unless a Team merger occurs", so **the two team members are one team
-    in any competition either of them enters.**
+  - Both rulebooks forbid sharing code across teams "unless a Team merger occurs", so **the two of us are one team
+    in any competition either of us enters.**
 - **Submissions:** 5 per day and up to 2 final. The host (Sep 29): "A team can submit at most two write-ups. There
   is only one submission track, and the judges will determine the eligibility for each prize." One writeup can be
   considered for several prizes but wins at most one.
