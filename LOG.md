@@ -44,3 +44,15 @@ spent.
 
 **Why.** The repo is shared, and it may be open-sourced if we win (the rules require Apache 2.0 code release). Its
 content should stand on its own, without personal attribution.
+
+### 2026-09-30 ~19:30 ET [Claude Code] Dataset downloaded and verified; project instructions added
+
+- Kaggle dataset downloaded (21,929,289,087 bytes; zip sha256 `06cec82c...7421`) and unzipped into `data/` with no
+  errors. Counts: 129 tasks, 129 snapshots (21 GB), 127 graphs, 127 embeddings, 124 wheels. Graphs and embeddings
+  are keyed by commit; match them to tasks through `repo` + `base_commit` (details in data/README.md).
+- Added `CLAUDE.md` (shared instructions for AI assistants: judge-first thinking, novelty checks, division of
+  labor, rules). A local-only instructions file stays out of git.
+- The Claude Science kickoff now starts with a file-access check.
+
+**Why.** Both agents need the same bar and the same map of the data before any analysis starts. A file-access check
+up front catches a partial-read problem before it can silently weaken the literature map or the numbers.

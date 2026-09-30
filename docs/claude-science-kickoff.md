@@ -26,6 +26,16 @@ Two directions are open:
 
 **Your first tasks (no GPU or paid compute without asking me):**
 
+- **0. Confirm file access first.**
+  - List the folder and open, in full, BRIEF.md, docs/competition.md, private/origin-transcript.md and
+    data/HARNESS_README.md. Report their line counts, so we know you read files directly and not excerpts.
+  - Check that you can read data/tasks.jsonl (129 lines) and one graph file.
+  - Tell me about anything you can't open.
+  - Data layout: graphs and embeddings are keyed by commit (`<repo>_<base_commit>.json` / `.npz`; 127 each). Match
+    them to tasks through `repo` and `base_commit` in tasks.jsonl. The snapshots are 21 GB of .tgz files: don't copy
+    them. If a heavy pass over the local data is slow for you, ask Claude Code (which writes NOTES.md) to run it on
+    the laptop.
+
 - **A. Adversarial prior-art check, direction 1 first.**
   - Search for work on working memory or context management for coding agents under hard context limits:
     MemGPT-style memory, context folding and compaction, agent notes files, *Context Language Models* (arXiv
@@ -34,7 +44,7 @@ Two directions are open:
   - Then direction 2: corrupted-graph reliance tests, and fine-tuning for structural reliance.
   - Give each a verdict of KILLED, WEAKENED or OPEN, naming the nearest works.
   - Re-verify the citations in `docs/prior-art.md` from the papers themselves.
-- **B. Phase-0 numbers without the agent harness.** Use `data/` (the Kaggle dataset, 20.4 GB, finishing today) and
+- **B. Phase-0 numbers without the agent harness.** Use `data/` (the Kaggle dataset, unzipped and verified) and
   GraphLoc's public notebooks. Report:
   - how big the files and functions an agent reads are, compared with the 32k budget
   - how much of a task's context could go to re-reading code
