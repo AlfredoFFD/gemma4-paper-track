@@ -4,6 +4,33 @@ Built from an adversarial sweep on Sep 27, 2026: three agents, each told to find
 Most were opened by those agents; four were checked at the abstract level by Claude Code on Sep 30 (marked ✓).
 **Re-verify every entry from the paper itself before citing it.** The 2026 entries are arXiv preprints.
 
+## ⚠️ Nearest work, same competition and same data: GraphLoc (found Sep 30)
+
+**✓ zzgtylors, *"Where Does the Graph Help? A Localization Audit of the Gemma 4 Developer Agent Code Graphs"*.**
+A paper-track writeup, with public notebooks under Apache-2.0:
+- [audit](https://www.kaggle.com/code/zzgtylors/graphloc-auditing-gemma-4-agent-code-graphs)
+- [can Gemma pick the code](https://www.kaggle.com/code/zzgtylors/graphloc-can-gemma-4-pick-the-code-to-change)
+- [end to end](https://www.kaggle.com/code/zzgtylors/graphloc-end-to-end-gemma-4-agent-skill)
+- [failure analysis and resource](https://www.kaggle.com/code/zzgtylors/graphloc-end-to-end-failure-analysis-resource)
+
+What it covers (confirmed from the notebooks):
+- GraphLoc-129 gold labels at function and file level
+- an audit of the graph's structure
+- embedding probes
+- BM25 vs simulations of the graph tools vs personalized PageRank, on the provided graph and a repaired one
+- transfer to SWE-bench Lite
+- a `graph-localize` skill
+- end-to-end runs with a failure taxonomy and run-to-run variance
+
+Its reported results (read from the rendered pages by an agent; re-check before citing):
+- the graph does about as well as BM25 at localization
+- the provided embeddings do worse and encode graph position more than code text
+- the graph skill adds +0.9 points end to end, 95% CI −4.1 to +6.3
+
+**It covers our old Q1 ("when does structure help localization").** It has no corrupted-graph test of reliance,
+no training, and nothing on the graph as memory under context limits. Its labels and library are Apache-2.0, so we
+can build on them with citation instead of rebuilding them.
+
 ## Closest to our topic (code graphs for agents; reliance on tools)
 
 | Work | What it does | What it leaves open for us |

@@ -1,5 +1,34 @@
 # Kickoff brief (Sep 30, 2026)
 
+> **Update Sep 30, evening: read this first. The direction is pending a decision.**
+>
+> - **Our Q1 is already done by another entrant.** GraphLoc (see docs/prior-art.md) audited when the graph helps
+>   localization on this exact data. It found the graph about equal to plain keyword search (BM25), and a graph
+>   skill adding +0.9 points end to end (not significant). Its labels and code are Apache-2.0, so we build on them
+>   rather than redo them.
+> - **The provided graph and embeddings are weak:**
+>   - The graph has calls-only edges, no async functions and many isolated nodes.
+>   - The embeddings are near-collapsed, and the search tool is a lookup by node name, not text search.
+>
+>   So "does the graph help?" is partly "is this graph any good?".
+> - **✓ Context is the bottleneck nobody has studied here.** At the scoring setting, compaction cannot fire, and a
+>   context overflow throws away the patch: 12-33% of runs, per a participant's evidence (thread #744692).
+> - **Two directions are on the table:**
+>   - **Option 1, "Why doesn't the graph help?":** separate the four ways an external memory can fail. The agent
+>     never consults it; it consults it but ignores it; the content is wrong or missing; the model can't read it.
+>     Methods: the decoy test with scrambled graphs, a graph-quality dose-response (repaired, provided, scrambled),
+>     and a LoRA. Solid, but close to GraphLoc.
+>   - **Option 2, "Finding vs remembering":** GraphLoc shows the graph doesn't help agents *find* the bug. The new
+>     hypothesis is that it helps a small-context agent *remember*: symbol names as compact pointers, names-only
+>     neighbor lookups, and re-fetching exact functions instead of re-reading big files. The test is context
+>     pressure (tokens used, overflow rate, lost patches, resolve rate) with graph-anchored working memory vs plain
+>     vs notes-file memory. This is new relative to GraphLoc, fits the "externalized memory" framing, and targets
+>     a verified bottleneck.
+> - **Claude Code's recommendation: Option 2 as the lead hypothesis, with Option 1's decoy test as the method for
+>   the "finding" half.** Gate it with a fast prior-art check on working memory for SWE agents, plus Phase 0 numbers
+>   (how much context goes to re-reading code, and what causes overflows). The sections below still describe the
+>   original design and will be rewritten once the team decides.
+
 For the team and for Claude Science, which will do most of the execution. Everything under
 "Decided" was agreed in the brainstorm. Everything under "Open" is still a hypothesis. Facts about the
 competition come from the Kaggle pages (read Sep 27-30); see [docs/competition.md](docs/competition.md).
