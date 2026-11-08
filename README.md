@@ -1,6 +1,6 @@
 # Gemma 4 Paper Track: the code graph as a coding agent's externalized memory
 
-Team: see the Kaggle writeup.
+Team: two people.
 
 Target: Google DeepMind's **Gemma 4 Developer Agent Paper Track** on Kaggle
 (https://www.kaggle.com/competitions/gemma-4-developer-agent-paper).

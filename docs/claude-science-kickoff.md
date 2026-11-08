@@ -1,12 +1,11 @@
 # Kickoff message for Claude Science
 
-Paste this as the first message of a new Claude Science chat, with this folder granted:
-`<repo>`.
+Paste this as the first message of a new Claude Science chat, with this repo's folder granted.
 
 ---
 
 New project: the **Gemma 4 Developer Agent Paper Track** on Kaggle (Google DeepMind), with my teammate.
-The deadline is **Nov 12, 2026, 11:59 PM UTC**. The folder `<repo>` is a git repo (a
+The deadline is **Nov 12, 2026, 11:59 PM UTC**. This folder is a git repo (a
 private GitHub repo).
 
 **Read these in order before doing anything:**

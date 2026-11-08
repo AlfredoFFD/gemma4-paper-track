@@ -15,7 +15,7 @@ with a new dated entry, never by editing it.
   token.
 
 **Why.** The deadline is Nov 12 (43 days away). A shared repo with the brief, prior art and
-logging rules lets Claude Science start the literature map and pilot this week, this week.
+logging rules lets Claude Science start the literature map and pilot this week.
 
 ### 2026-09-30 ~17:00 ET [Claude Code] Kaggle read, data access, and a direct overlap
 
@@ -221,3 +221,255 @@ fills the context when a run overflows.
 
 **Why.** The pilot depends on three facts: compaction at scoring, the prompt cap, and the graph-tool caps. They have
 changed or are disputed, and only the source settles them.
+
+### 2026-09-30 21:57 ET [Claude Science] Prior-art check (task A): verdicts, corrections, and the agent-architectures notes
+
+- **Method.** Five Claude Science sub-agents, each reading from full text with the version recorded:
+  - the eight memory items named in the kickoff;
+  - an open search against Direction 1 (about 60 papers read from full text);
+  - the reliance items plus an open search against Direction 2;
+  - the rival entries;
+  - the other citations in docs/prior-art.md.
+
+  I re-checked the decision-carrying numbers myself (RepoAtlas Table 2, Context-Folding Table 1, SWE-agent Table 3,
+  2609.20804, Delivery, Not Storage, StateTape).
+- **Files.**
+  - The five reports are copied to private/claude-science/2026-09-30/ (gitignored, because they name entrants). sha256
+    prefixes: memory items 596efdfa83a4, memory search 619c31693a16,
+    reliance f7eeadd26fa8, rivals c9a049332fd9, citations 725ab92d5ee7.
+  - The consolidated report is docs/claude-science-prior-art-check-2026-09-30.md (sha256 9f808b56ca38...).
+- **Direction 1: WEAKENED.**
+  - 1b (overflow as the outcome) and 1c (symbol pointers as a token saver) are KILLED as novelty claims.
+  - 1a (graph memory under a hard limit) is WEAKENED.
+  - 1d (vs a notes file) is OPEN, as a control.
+  - Nearest works: 2609.20804, StateTape 2609.36319, CodeNib 2607.25431, Prometheus 2507.19942, ContextSniper
+    2607.01916, SWE-MeM 2606.28434, CODESTRUCT 2604.05407. One rival entry tracks overflow in this harness.
+- **Direction 2: WEAKENED, with all of 2a-2d WEAKENED.** Nearest works: 2609.05587 (corrupted tool returns for 14
+  models including Gemma-4-31B, with LoRA reliance tests), Raman et al. 2021 (2010.12872), Huang et al. 2024
+  (2309.16595), Oracle Poisoning 2605.09822, Don't Blindly Trust It 2606.21409, RepoMirage 2605.26177, and
+  codegraph-loc (agents use the graph as a symbol index). What survives is the integrated, intervention-based account
+  on the organizers' own tools in end-to-end repair.
+- **Other angles.**
+  - Pushed write-back memory: WEAKENED (StateTape; Delivery, Not Storage 2607.20972; RepoAtlas vs SeeRepo).
+  - Patch-loss accounting: OPEN but specific to this harness.
+- **Kickoff items.**
+  - 2609.20804's recall arm is rarely used, not unused (36 of 64 settings never call it).
+  - Codebase-Memory, Code Isn't Memory and the language-server study run under no hard context cap.
+  - Code Isn't Memory's resolve gain is largest on 1-file tasks, not multi-file ones.
+  - Oracle Poisoning had 270 trials with one timeout, so 269 valid trials, all accepted.
+  - CodeCompass used 30 hand-built tasks, not SWE-bench.
+  - Deterministic Anchoring is interventional.
+  - 2607.09691 is an oracle-localization study, and its ~9% flip rate is a single-shot side measurement (6 of 70).
+  - The G-HRR and GraphSWE-Gemma entries ran no experiments.
+- **Section 5 of private/refs/agent-architectures-2026-09-30.md, checked.**
+  - Confirmed: 78.7% unmanaged overflow; the recall figure, which is 56% of *settings*; the Context-Folding and
+    SWE-agent figures; planning and predefined-tool gains, measured at 128k, not 32k.
+  - RepoAtlas +2.3-4.4 and LocAgent +0.7-1.4 points over mini-SWE-agent, with LocAgent at 1.56-1.88x RepoAtlas's input
+    tokens, are confirmed from Table 2. My chat reply at about 21:40 ET said these numbers did not match; that was
+    wrong, because I had compared them against SeeRepo.
+  - "Push beats pull" is only weakly supported, since the systems differ.
+  - "68.6% of runs ended with no edit" was not found.
+  - The claim that ADK never compacts inside one invocation is contradicted in GraphLoc's setting.
+  - Thinking budgets were exceeded in 0.52% of base-arm steps.
+- **POST-DATA note on the decoy-bite rule.** In GraphLoc's traces, get_code_neighbors returns de-duplicated names (28
+  calls, no duplicates, at most 14 names). The "degree at most 50" filter can therefore only have removed bites, so
+  13/129 is a lower bound (11.6% without the cap, per NOTES). That fork cannot flip WEAKENED to KILL.
+- **Limits carried from the sub-agents.**
+  - Main texts were read in full, most appendices were not, and figure images were not viewed.
+  - OpenReview is blocked, so some venues come from secondary listings.
+  - About 50 further candidates were triaged at the abstract level only, so every "not found" is provisional.
+  - No Kaggle writeup or discussion thread was read; their pages render client-side.
+
+**Why.** The team asked for an adversarial check of both directions before choosing one. The verdicts, and the place
+each claim came from, need to be on record before any experiment is designed around them.
+
+### 2026-09-30 21:57 ET [Claude Science] Recommendation: Direction 2, reframed; draft pre-registration written (not frozen)
+
+- **Recommendation.** Lead with Direction 2, reframed as "why the organizers' code graph adds about one task": estimate
+  stage by stage, by intervention, where the graph's information is lost. The stages are consultation, query
+  resolution, fix-relevant content, uptake and context cost. The two interventions are push vs pull delivery of graph
+  neighbors and a planted decoy edge scored against the true-graph base rate.
+  - Fold in from Direction 1: the cost stage and an EXPLORATORY patch-loss count.
+  - Drop graph-as-memory as the headline.
+  - Keep the LoRA optional; 2609.05587 already reports LoRA reliance effects on Gemma-4-31B.
+- **Honest odds (guesses).**
+  - A careful judge rates the method novel for this setting: perhaps 50-60% if it is framed as a transfer of
+    perturbation-based reliance tests, about 20% if pitched as new.
+  - Overall Best Paper: perhaps 10-15% if executed cleanly and early.
+  - Direction 1 as the lead: perhaps 5-10%.
+- **Weak spots.**
+  - The funnel numbers come from GraphLoc's setting, not scoring.
+  - Decoy following may be near zero.
+  - Anyone can recompute the funnel from GraphLoc's public traces.
+  - The organizers may fix the tool interface.
+- **Draft pre-registration:** prereg/01-graph-uptake-draft.md (sha256 e342a790fc14...), marked DRAFT.
+  - Arms: A pull/true, B push/true, C push/decoy, and an optional D with the tools removed.
+  - Primary hypotheses: H1, decoy following (C vs B); H2, push raises uptake (B vs A). Both use exact McNemar on (task,
+    seed) pairs, with FOLLOWS / IGNORES / INCONCLUSIVE-style labels.
+  - A simulated power table, assuming outcomes are independent within pairs: following of about 15 points or more
+    above the base rate is detected at 212 pairs.
+  - A pilot and a gate, plus nine open items for the authors. Nothing in it is frozen, and no data exists under it.
+- **Not done, and why.**
+  - The revised kickoff's task B (an independent re-derivation of K1-K3 and the decoy-bite share): skipped per the
+    team's chat instruction. It is still owed before any of those numbers enter the paper.
+  - Task C's exact pilot commands, runtime and cost: blocked until the harness source is available (see the request
+    above).
+
+**Why.** The kickoff asks for a recommendation with evidence and a draft pre-registration. The team decides, so the
+draft is written to be frozen or discarded, not run.
+
+### 2026-09-30 21:58 ET [Claude Science] Corrections to tonight's entries and to two sub-agent reports
+
+- **21:34 entry ("The harness changed on Sep 30"):** only v27's notes mention the graph output cap ("Rebuild
+  adk-submission and swegemma wheels (scheduler_reserve_full_isl and graph output cap)"). v26's notes read only
+  "Update 2026-09-30". The sentence was ambiguous; the request to Claude Code stands.
+- **Reliance report** (private/claude-science/2026-09-30/prior_art_reliance.md): its limits section says the Part 2
+  appendices were keyword-scanned, while its submitted deviations say they were mostly unread. Treat them as unread or
+  keyword-scanned only, which is how the 21:57 entry describes them.
+- **Rivals report** (rival_entries.md): its screening counts do not add up (35 candidate repos besides the 3 named
+  rivals, but 27 screened by README only plus 9 with no README makes 36). No rival verdict depends on that count.
+
+**Why.** LOG.md is append-only, so errors are corrected by a new entry, and the copies in private/ are what Claude
+Code will read.
+
+### 2026-09-30 23:53 ET [Claude Science] Uptake in GraphLoc's traces: definition fixed before computing (EXPLORATORY)
+
+The team asked: after a non-empty graph result, does the next read or edit touch a returned node? GraphLoc's data
+already exist, so any answer is EXPLORATORY. The definition is fixed here before the number exists.
+
+- **Event:** a graph-tool call with a non-empty result: `search_similar_code` with at least one result, or
+  `get_code_neighbors` with a count of at least 1 (`get_code_subgraph` was never called).
+- **Returned nodes:** the result's node names (search) or neighbor names, excluding the queried node itself.
+- **Location:** each returned node maps to a file and line span in the task's base snapshot by AST, using GraphLoc's
+  Apache-2.0 module naming (graphloc.py), with nested defs folded into their parent. Unmapped nodes are counted.
+- **Touch, for a read:** a `read_file` result touches a node if its returned lines overlap the node's span (only while
+  that file has not been edited), or if its content contains one of the node's distinctive lines. A distinctive line is
+  at least 20 non-space characters long and occurs exactly once in the base file.
+- **Touch, for an edit:** an edit touches a node if its diff's removed or context lines include a distinctive line of
+  the node. A write_file call to the node's file counts as a touch.
+- **Primary:** the share of events whose next `read_file` or edit touches at least one returned node.
+- **Secondary:**
+  - any later read or edit in the run touches a returned node;
+  - the same, restricted to new nodes (not named in the issue, and not touched before the event);
+  - the final patch edits a returned node;
+  - a shell-view reading: `run_command` text containing a returned node's short name of at least 4 characters.
+- **Comparator:** the same indicators for size-matched random nodes from the same files (200 seeded draws per event),
+  to separate node-level targeting from merely reading the same file.
+- **Reported as:** counts with Wilson 95% intervals, by tool and arm. Units are events, plus runs with at least one
+  event.
+
+**Why.** With about 50 events, the definition is the main forking path, so it is on record before the counts exist.
+
+### 2026-10-01 00:18 ET [Claude Science] Uptake of graph results in GraphLoc's traces: results (EXPLORATORY)
+
+The definition is the one logged at 2026-09-30 23:53, unchanged. Script `analysis/graphloc_uptake.py` (sha256
+a4fd6e71957a...), per-event table `graphloc_uptake_events.csv` (sha256 e5b992269a32...), both saved as Claude
+Science artifacts. Data: GraphLoc's public traces, base and skill arms, 3 runs, 636 runs in all. I did not determine
+which wheelhouse version GraphLoc's runs used.
+
+- **Events:** 48 non-empty graph results in 42 runs and 28 tasks.
+  - base: 21 search, 8 neighbors; skill: 4 search, 15 neighbors.
+  - 352 of 357 returned nodes mapped to a span in the base snapshot.
+- **Primary:** 43 events are followed by a read or an edit. The next one touches a returned node in 13 of 43 (30.2%,
+  Wilson 95% CI 18.6-45.1). Size-matched random nodes from the same files would give 6.8 (15.8%).
+  - By tool: neighbors 7 of 21, search 6 of 22.
+- **Secondary:**
+  - new nodes only (not named in the issue, not touched before): 8 of 43
+  - any later read or edit touches a returned node: 30 of 48; new nodes only: 22 of 48
+  - the final patch edits a returned node: 1 of 48 events (31 of the 42 runs have a non-empty patch; 9 resolved)
+  - a later shell command names a returned node: 8 of 48
+- **Post-hoc** (not in the 23:53 definition):
+  - a returned set contains a symbol the gold patch edits in 4 of 48 events (3 neighbors, 1 search)
+  - 29.5% of returned nodes are in test files and 9.4% in docs or scripts
+- **Reading:** when the graph returns something, the next read or edit goes to it about twice as often as to random
+  code in the same files. But the content rarely holds the fix, and the final patch almost never edits a returned node.
+  The query stage leaks most and content second, so a query-stage fix alone predicts more graph use and little change
+  in resolve rate.
+- **Caveats:**
+  - Search results already include code, so a read is not needed to use them; read-based uptake undercounts search use.
+  - A touch is a location overlap, not proof of use.
+  - Events are pooled over arms and runs and are not independent (42 runs, 28 tasks).
+  - I checked eight printed events against their traces (four touches, four non-touches); all matched the definition.
+
+**Why.** The team asked whether the agent acts on graph results. The answer bounds what an interface fix can buy, and it
+fixes the uptake indicator for the pre-registered pilot.
+
+### 2026-10-01 00:18 ET [Claude Science] G-HRR setup verified from its repo: no model was run
+
+Source: github.com/Tarekswd/g-hrr-gemma4 at commit 4becfb7904704c7a5752dfa2ae029ca707bf3a8d. I read paper/paper.md and
+src/experiments/experiment_runner.py in full and grep-scanned the other 27 Python files. Full note (it names a rival
+entry, so it stays private): `private/claude-science/2026-10-01/ghrr_verification.md`, sha256 90cc01c11355...
+
+- **Claimed:** 100 SWE-bench Lite and Verified tasks with Gemma 4 31B served via vLLM (paper.md sections 4.1 and 4.3).
+- **The code contains no model, vLLM, ADK or swegemma call.**
+  - Tasks come from a template with a random repo (experiment_runner.py:30).
+  - Outcomes are `passed = random.random() < prob`, using hard-coded per-system probabilities (experiment_runner.py:106).
+  - The control, localization and ablation results are literals (red_team_control.py:28-49, localization_experiment.py:28-43,
+    ablation_runner.py:23-72).
+  - The test runner is never called.
+- **Arithmetic:**
+  - Table 1's easy, medium and hard columns equal those probabilities for all 8 systems.
+  - 7 of 8 medium cells are impossible as shares of 45 tasks.
+  - The raw CSV gives a different pass rate for every system (G-HRR 48% vs the paper's 44.0%).
+- **Verdict:** G-HRR's numbers are not evidence and must not be cited as results. It remains a pitch-level overlap.
+
+**Why.** The team asked for this check (NOTES.md 21:44 left it to Claude Science). A rival's numbers can enter our paper
+only if they come from runs.
+
+### 2026-10-01 00:18 ET [Claude Science] Correction to my 2026-09-30 21:57 note on the degree cap
+
+I wrote that de-duplicated neighbor output makes 13/129 a lower bound. That is too strong.
+- **What the traces show:** none of the 28 neighbor calls returns a duplicate name, and six return exactly one name.
+  Every stored edge has a reverse, so the tool does not print each direction separately.
+- **What they can't show:** the largest output has 14 names, so the traces cannot tell whether the 50-entry cap applies
+  before or after de-duplication.
+- Claude Code's fork (NOTES.md 21:25: 11/129, a KILL, if the cap counts both directions) stays open until the harness
+  source is read. GraphLoc's harness may also predate v27, which added a "graph output cap".
+
+**Why.** The decoy test's KILL/WEAKENED label depends on this; the earlier note closed the question on evidence that
+cannot close it.
+
+### 2026-10-01 00:18 ET [Claude Science] Advice on a combined frontier-style architecture (team question, chat)
+
+The team asked whether combining ideas from Claude Code, Codex and Jev into a new architecture for Gemma could be the
+paper. My recommendation: not as the headline. Instead, use them as two arms of the funnel, each aimed at a measured
+leak:
+1. **Interface fix:**
+   - an accurate tool description
+   - a keyword-to-node-name lookup as a sandboxed skill
+   - file, line and signature in the tool output
+   - a test-file filter
+
+   Comparator: the same lexical front-end without the graph, so that BM25 is not what gets measured.
+2. **Presentation, with content fixed:**
+   - pull vs push
+   - bare names vs names with signature and location
+
+   Nearest work: Talk like a Graph (static graph QA, not agents).
+
+Two constraints, both checked:
+- Jev cannot run inside a submission. The sandbox has `network_mode="none"` (HARNESS_README:249), and one model serves
+  every agent and sub-agent (docs/competition.md:57-58).
+- Sending repo code to its API would give competition data to a third party (docs/competition.md:115-116).
+
+**Why.** A bundle of known components reads as a port. With GraphLoc's precision (95% CI about 10 points wide) we
+couldn't say which part helped.
+
+### 2026-10-01 00:19 ET [Claude Science] Correction to the prior-art report: Context-Folding row
+
+A background review flagged it. `docs/claude-science-prior-art-check-2026-09-30.md` said "Context-Folding at 32K: 43.6%
+to 49.2% without RL". The 43.6% belongs to the ReAct baseline, not the folding agent. I re-read Table 1 of 2510.11967 in
+the PDF (page 7, SWE-Bench Verified, Seed-OSS-36B):
+- ReAct at 32K: 0.436
+- summary agent: 0.488
+- folding agent: 0.492 without RL, 0.580 with FoldGRPO
+- ReAct at 327K: 0.552
+
+The row now gives each system its own number. New sha256 20b01268cf60... (was 9f808b56ca38...). The file is not
+yet committed.
+
+Also worth noting: without RL, folding (0.492) is level with summarization (0.488) and below the long-context ReAct
+agent. Only the RL-trained folding beats it.
+
+**Why.** Crediting the paper's method with its baseline's score would misstate the nearest prior work on 32K context
+management.

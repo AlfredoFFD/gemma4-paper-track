@@ -53,8 +53,9 @@ docs/how-we-work.md → LOG.md → NOTES.md. The dataset (about 20 GB) is in `da
 
 ## Rules
 
-- **Names only where they fit:** authors or team, repo owner, the paper's byline. Never attribute ideas, quotes or
-  framings to a person in docs, logs or code. Log tags are `[team]`, `[Claude Science]` and `[Claude Code]`.
+- **No names and nothing private in tracked files.** No one's name, the team's included; the byline goes only on
+  the Kaggle submission. No emails, schedules, exams, travel, local paths, or details of other projects. Never
+  attribute ideas, quotes or framings to a person. Log tags are `[team]`, `[Claude Science]` and `[Claude Code]`.
 - **Never commit** `data/`, `private/`, `CLAUDE.local.md`, tokens or `.env`. Never print a token.
 - **Keep the repo open-sourceable:** winners must release code under Apache 2.0, with training and inference code.
 - **Competition data** must not be redistributed outside participants.

@@ -6,7 +6,7 @@ never edit the same file at once.
 ## 2026-09-30
 
 - Created the repo skeleton (README, BRIEF, LOG, docs, prereg, experiments, paper, data) in `~/dev/gemma4-paper-track`.
-  It lives outside a synced folder, because git and multi-GB task data sync badly there.
+  It lives outside the cloud-synced folder, because git and multi-GB task data sync badly there.
 - Facts in docs/competition.md come from Claude Code's own logged-in reads of the Kaggle Overview and Data tabs
   (Sep 27 and Sep 30). A separate agent is reading Rules, Discussion, Leaderboard, Code and Writeups.
 
@@ -177,7 +177,7 @@ Code and outputs are in `experiments/00-pointer-audit/`. Script sha256: `pointer
 ### 2026-09-30 21:25 EDT: Jev engineering synthesis (PDF), read in full; what it changes
 
 **Why.** The team shared a 12-page synthesis, "Jev Engineering for Coding Agents" (Sep 2026). A copy is in
-`private/refs/jev-engineering-synthesis-2026-09.pdf`, sha256 de20f148..., identical to the team's Zotero copy.
+`private/refs/jev-engineering-synthesis-2026-09.pdf`, sha256 de20f148..., identical to the team's copy.
 
 - **What it is:** an unaffiliated synthesis of design notes by TypeSafe's founder, not a paper. It reports no
   experiments. Its token-share table (reading files 30-40%, search 10-18%, writing code 4-10%) is labelled an
@@ -297,3 +297,200 @@ Code and outputs are in `experiments/00-pointer-audit/`. Script sha256: `pointer
 - **About the commit that follows this entry:** it freezes the record from now on. It cannot prove the 19:12 and 19:21
   rules came before their data; only file times speak to that, so those verdicts stay EXPLORATORY. From here, rules
   go into `prereg/` and are committed before their run.
+
+### 2026-09-30 23:58 EDT: Harness source downloaded for Claude Science (v25 and v28); what it settles
+
+**Why.** Claude Science asked for the harness source (LOG 21:34), and the team approved the download. The files are
+the organizers' Kaggle dataset `metric/gemma-4-developer-agent-wheelhouse`, three wheels per version.
+
+**Paths** (gitignored). Each version's wheels are unzipped into `src/` next to them.
+
+- `data/wheelhouse/v25/` (dataset version 25, files dated Sep 27 11:49 UTC; the closest to GraphLoc's runs):
+
+  | Wheel | sha256 prefix |
+  |---|---|
+  | swegemma-0.2.7 | 2b74d402 |
+  | adk_submission-0.2.11 | d14f7d31 |
+  | adk_eval_core-0.1.0 | b1608c44 |
+
+- `data/wheelhouse/v28/` (the latest, Sep 30 20:33 UTC):
+
+  | Wheel | sha256 prefix |
+  |---|---|
+  | swegemma-0.2.7 | 27a2f60f |
+  | adk_submission-0.2.12 | 077c438c |
+  | adk_eval_core-0.1.0 | 194dd8f9 |
+
+- Both swegemma wheels are labelled 0.2.7 but their code differs: graph tools, graph utilities, context, edit,
+  execution and workspace tools. **Record the dataset version, not the package version.**
+- To fetch a specific version with the CLI, write it as a third path segment:
+  `kaggle datasets download metric/gemma-4-developer-agent-wheelhouse/25 -f <file>`.
+
+**Read from the source.** I ran none of this; the package needs google-adk to import.
+- **Neighbor lists, both versions:** de-duplicated, sorted alphabetically, then cut to `max_neighbors` (50)
+  (`graph/graph_utils.py`, `get_neighbor`). This settles the degree fork in the decoy-bite check:
+  - Unique neighbors were the right reading, so the 25-unique KILL reading does not apply.
+  - For a node with more than 50 neighbors, the harness returns the alphabetically first 50. The true share
+    therefore lies between the registered 10.1% and the uncapped 11.6%. WEAKENED stands.
+- **v28 caps graph output** at `max_stdout_chars` (5,000 characters) per call. Search splits that budget across its
+  hits (`_allocate_code_budgets`). My search-payload numbers (median 6,509, p90 26,522) and GraphLoc's 55k-character
+  search overflow describe v25-era behavior, not v28.
+- **v28 search excludes the query node** (`retrieval_utils.py`: `sims[target_index] = -np.inf`).
+- **The agent-facing wording is unchanged in v28.** The prompt still says search finds code "by keyword"
+  (`harness/agent_runner.py`, line 178).
+- **Graph tools are offered when the commit-named files exist**, `<repo>_<base_commit>.json` and `.npz`, checked
+  first. The logic is identical in v25 and v28, so our local data layout enables them.
+- **Likely regression, to confirm by running:**
+  - v25's `get_neighbor` resolved short names: exact, then suffix, then case-insensitive, then substring.
+  - v28's version calls `graph.has_node` on the exact id only, and the tool passes the agent's string through
+    unchanged.
+  - If that's right, `get_code_neighbors("APIRoute")` returns an empty list in v28. Only a fully qualified id
+    (`fastapi.routing.APIRoute`) works.
+- **Compaction at scoring is not in these wheels.**
+  - `swegemma/config.py` defaults `events_compaction_config` to None.
+  - The 14,336 setting lives in the scoring script (`scripts/inference.py` per HARNESS_README), which this dataset
+    does not ship.
+  - GraphLoc passed it explicitly.
+
+### 2026-10-01 00:05 EDT: Plan re-ranked on the team's stated goal (a bold, positive result), not on new evidence
+
+**Why.** The team made the goal explicit: a novel, positive result that pushes a boundary, not a diagnosis of what
+fails. The evidence has not changed since 21:44. What changed is how much risk we accept. On that goal, the option I
+parked at 21:44, the graph as the agent's working memory, ranks first.
+
+The plan is one paper in two acts.
+- **Act 1 (cheap, mostly in hand): the graph fails as a search tool.**
+  - Rivals cover the offline side (GraphLoc, aghasalim).
+  - We add the behavioral side:
+    - the agent is told to search "by keyword", while the tool takes exact names (114 of 135 searches empty)
+    - neighbor lookups need fully qualified names in v28 (from code reading, not yet run)
+    - one hop from the issue reaches unnamed fix code in about 10% of tasks
+- **Act 2 (the bet): the graph as the agent's working memory.**
+  - The agent carries no transcript. Each step's context is assembled from:
+    - the task
+    - a compact memory keyed by graph nodes (each entity the agent has touched, with a status such as suspect, ruled
+      out, edited or verified, plus its graph relations)
+    - the latest observation
+  - Implemented declaratively: a LoopAgent whose worker runs with `include_contents: none`, reads the memory from
+    session state through the instruction template, and writes it back through `output_key`.
+  - Must be confirmed in a test before any design is frozen: ADK's semantics for `include_contents` and for optional
+    template keys (google_adk 1.36.1 is in the wheelhouse).
+  - Comparison arms: the standard transcript agent, a flat-notes memory, and the graph-keyed memory. An optional
+    ablation varies how the memory graph is written out as text.
+- **Why it can work at all.** In the scoring configuration the usable prompt is about 16k tokens, and compaction
+  starts at 14,336.
+  - In GraphLoc's base runs, compaction fired in 68% of runs (Claude Science, EXPLORATORY), while overflow crashes
+    ended 4%.
+  - So forgetting is the common failure. A loop that never accumulates a transcript avoids it by construction.
+- **Nearest work, to attack first:** Context-Folding (2510.11967), SWE-MeM (2606.28434), AgentFold, MEM1, and Codex's
+  experimental notes/new_context mode. All of these train the model, or are unevaluated. Ours is untrained,
+  graph-keyed, at about 16k, in the official harness. Not yet checked adversarially.
+
+**Kill check this week (no GPU):** GraphLoc's 636 public traces.
+- Does compaction cost anything? Within the same task, compare runs where compaction fired with runs where it
+  didn't:
+  - the re-read share after compaction
+  - repeated failed actions
+  - resolve rate
+- If compaction is harmless, Act 2 has nothing to fix. We drop it and Act 1 stands alone.
+- Exact thresholds go into a `prereg/` file before the traces are recounted.
+
+### 2026-10-27 15:40 EDT: Catch-up; lit sprint on delivery x truth; the plan changes
+
+**Why.** The team resumed with 16 days left (deadline Thu Nov 12, 11:59 PM UTC). It asked for the
+strongest question, a tie-in to an earlier multi-agent study (kept out of the repo), and a NotebookLM workflow. This entry records what the
+reading found and what it changes, so Claude Science can revise its pre-registration draft.
+
+**Lit sprint** (report: `docs/lit/2026-10-27-delivery-lit-sprint.md`):
+- **Reading:** 18 papers read in full, plus the GraphAudit writeup. Notes are in `docs/lit/2026-10-27-delivery/notes/`, each with a coverage line. The last four finished at about 15:45. None changes the verdict.
+  - 2610.26836 narrows it: a true fork from a saved GPT-5.2 state, varying only whether a true observation is inline or one read away, costs 9.4 points [-14.5, -4.6]. That is scientific QA with final answers.
+  - So forking a state to vary delivery is not ours to claim. What stays open: code-graph structure, false edges vs base rates, next read or edit as the outcome, and the channel varied with the text fixed, on a small 4-bit model.
+- **Searches:** 52 searches and 15 expansions on Oct 27, 14:49-14:56 EDT.
+- **Citations:** `lit.py verify-file` gives 35/35 OK.
+- **Verdict: open in what we searched, only as a combination.**
+  - Pulled vs pushed delivery is partly done (2609.05587 includes Gemma-4-31B).
+  - Planted decoys in repair are partly done (RepoMirage).
+  - Forks from saved agent states are partly done (CRR, RippleCP, PAIR).
+  - No one holds the state and the code-graph facts fixed while varying asked-for vs handed and true vs false edge, scoring the next read or edit against the same-state base rate.
+- **The papers disagree on direction.**
+  - Pushed content is adopted more for retrieval (Gemma-4-31B +17 to +19 points, 2609.05587).
+  - It is adopted less for the output of code the agent ran (2609.05587). Oracle Poisoning (read in full at 15:40)
+    shows the same for poisoned code-graph data: GPT-5.1 trusts it 0% as prompt prose vs 100% as a tool result, and
+    Claude goes the other way. There the data is visible in every arm, so it is a channel and format effect on trust,
+    not uptake. It does not contradict our plan, and its Table 7 (a harness-built tool result is trusted like a real
+    call) supports the inserted-call arm.
+  - Our forks separate uptake from trust given exposure. No paper does.
+
+**What changes in the plan, and why** (new evidence, not new appetite):
+- **Act 2 (the graph as working memory) moves to future work.** It is not disproven. Three reasons:
+  - It needs full end-to-end runs, which are underpowered at 106 tasks.
+  - Its upside is bounded: overflow ends 4% of GraphLoc's runs, and 2609.20804 finds context management mostly prevents overflow.
+  - Memory-delivery prior art now covers the delivery half: 2607.20972, 2609.32590.
+  - The Oct 1 kill check (does compaction cost anything) never ran.
+- **Act 1 becomes the uptake-vs-trust fork experiment** (Part 2 of the report). Arms:
+  - A, as shipped;
+  - P, an inserted `get_code_neighbors` call plus its real result;
+  - H, the same text as a harness note;
+  - P' and H', one edge swapped for a plausible non-neighbor;
+  - N, a neutral restatement;
+  - R, optional, a degree-preserving random graph.
+- **Primary outcome:** Claude Science's Sep 30 uptake definition, minus the same node's touch rate in arm A at the same state and seeds.
+- **Why forks:** Claude Science's Oct 1 count (next action touches a returned node in 13 of 43 events vs 15.8% for random code in the same files) is observational. The agent asks only about code it is already heading toward, so it cannot separate steering from selection. Forks can.
+
+**Checked or corrected for the record:**
+- **RepoAtlas (2609.16936):** the requested views were *obtained* in 40.5% of instances. That is not the share of instances that requested them.
+- **Don't Blindly Trust It (2606.21409), read in full.** It reruns one fixed loop (temperature 0, one seed) on QA with only the observation changed, and scores final answers only. These are reruns, not forks. Its "value inversion" may be abstention, since FEVER accuracy is below chance.
+- **GraphAudit (Kaggle), read in full.** It is a retrieval study plus a one-shot file choice by a local 8B Gemma 4 in Q4, with degree-preserving random graphs as the null. It has no agent loop, shows no edges to the model and was not pre-registered. Real minus random file recall is 3.1 points [+0.7, +5.6]. It doesn't take our idea. We borrow its random-graph control.
+- **G-HRR** stays out of all evidence (Oct 1: no model call in its code).
+- **One statistic not to carry forward:** the K1 audit (84.4%) measures whether gold units are in the graph. It is not a rate of wrong edges. The graph's known gaps are missing async functions (it holds 1 of 56) and class skeletons. No natural wrong-edge rate has been measured.
+
+### 2026-10-27 17:30 EDT: Novelty headline is discrimination (true vs false edge at the same state)
+
+- **Proposal (the team decides at the Thu Oct 29 go/no-go):** lead the novelty claim with H2. At the same fork state, does Gemma follow a false edge as readily as a true one, scored on the next read or edit against arm A? The asked-vs-handed contrast (H3) stays as the hook and a secondary hypothesis.
+- **Why.** In the sprint's own grid, the channel half has close neighbors. 2610.26836 forks a saved state to vary how true information is delivered. Oracle Poisoning compares tool result vs prompt text (§5.4) and harness-inserted vs model-initiated calls (Table 7). No paper we read compares true and false at the same state (report Part 1, "Shared assumptions", item 3). No new evidence came in; this is the grid re-read for the novelty criterion. It replaces the uptake-vs-trust split as the answer to risk 2 in report Part 2.
+- **Edits:**
+  - report Part 2: H2 marked as the proposed primary; risk 2 reworded;
+  - Claude Science prompt: discrimination as primary, with an equivalence margin so "doesn't check" can be claimed;
+  - teammate draft: one question, no papers or numbers.
+
+### 2026-10-28 14:30 EDT: Hackathon-mode plan (three experiments); memory check result
+
+**Why.** The team asked for the most ambitious plan that can win. It also asked whether memory should stay future work: pursue it if it's good, drop it if it's already done. A focused literature check settled the memory question.
+
+- **Memory check** (`docs/lit/2026-10-28-memory-check.md`).
+  - **What was read:** PAIR (2609.36526) and Compact-Bench (2610.31710) in full, 2610.20927 in part, and about 120 abstracts. The check verified 48 of 49 citations; one Zenodo DOI was flagged.
+  - **Graph-keyed working memory as an architecture:** partly done. Compact state memories kept beside the transcript help coding agents with no training (Ledger 2608.00808, StateHarness 2610.17616; abstracts).
+  - **Post-compaction forks:** done. Compact-Bench damaged 5–64% of 22 validated repairs across 14 summarizers; Claude Code checked this against the paper's text.
+  - **Wrong summary entries carried out:** reported (2610.20927, partial read). Read it in full before citing it.
+  - **Open in what we searched:** true vs false entries at the same state, scored against the no-note base rate, and whether compaction makes the agent more credulous.
+- **Plan** (report Part 2, "The three experiments"):
+  1. True vs fake link after the issue is read. This is the core and carries the novelty.
+  2. The same test right after compaction (the credulity shift).
+  3. The fix: full runs with the graph and a memory note pushed in, pre-registered on the tasks where one or two hops reach unnamed gold, with a harm check. This is an application, not a novelty claim.
+- **What changed.**
+  - Memory leaves "future work" in a narrower form: experiment 2, plus a component of experiment 3.
+  - Full runs come back, focused where the graph can matter.
+  - The Claude Science prompt now covers both experiments. Its compaction check measures evidence-to-edit loss first, since Compact-Bench found re-reads rare in code.
+- **Risk (a guess):** PAIR's group publishes compaction papers roughly monthly, so a controlled-insertion follow-up before Nov 12 is plausible. Speed matters.
+
+### 2026-11-08 18:40 EDT: Go; traces downloaded; fork states exported; replay runner built; pilot pushed to Kaggle
+
+**Why.** The team said go on Nov 8 with four days left, as a solo pilot-scale run, and asked Claude Code to do all of it. Claude Science never received the Oct 27 prompt (its log still ends Oct 1), so its tasks were done here.
+
+- **Traces.** GraphLoc's three end-to-end notebooks and their outputs (636 ATIF traces, about 92 MB) are in data/graphloc/ (gitignored). Loader: analysis/graphloc_traces.py. Counts match Claude Science's Oct 1 entry: 318 base and 318 skill runs; 8 get_code_neighbors calls in the base arm, each returning a sorted JSON list.
+- **Harness facts that matter for the replay.** The traces are ATIF-v1.7 as written by adk_eval_core: one agent step per model call with thought text, tool calls, the tool result as JSON, and vLLM token usage. The system prompt is in the trace and is byte-identical to the sample prompt. The base agent is the sample prompt with the nine tools, no adapters and no sub-agent. Compaction is visible as a prompt-token drop. The Kaggle wheelhouse moved on Oct 12 to swegemma 0.2.11 and adk_submission 0.2.13 (local v28 is 0.2.7 and 0.2.12); only docstrings of the graph tools changed. ADK re-sends model thoughts as reasoning_content in the history, and Gemma 4 tool results go to a tool_responses role when the model name contains gemma4.
+- **Fork states** (analysis/fork_states.py, rules in its docstring, EXPLORATORY): 525 states from 241 runs and 88 tasks, up to three per run. The node choice and decoy rules were changed twice before any replay: the first export chose hub classes named in every issue (FastAPI, 50 neighbors) and traceback tokens (File, line); the second showed that true neighbors mostly sit in the file just opened, so the compared entries now both live in unopened files. Observed base rates from the traces: the agent's own next call touches an unopened listed neighbor in 34 of 525 states and the swapped-out entry in 11.
+- **Replay runner** (analysis/replay.py): the history is loaded into the harness's own compiled agent as ADK events; the arm's last piece is the new message; the run stops at the first model response; no tool executes. Local test with a fake model: the five arms share a byte-identical 17-message prefix; nine tool declarations; the system prompt renders from system.md.
+- **Kaggle.** Private dataset <kaggle-user>/gemma-graph-forks-inputs (states, replay.py, agent config, both harness wheel sets) and private script kernel <kaggle-user>/gemma-graph-forks-pilot (analysis/kaggle/forks_pilot.py), version 1 pushed at about 18:35 EST, 4 x L4, no internet. It records versions.json, runs a 12-state fidelity check (replayed vs logged prompt tokens), then 525 states x 5 arms x 3 seeds with a 9-hour budget in a fixed shuffled order. Analysis script: analysis/analyze_forks.py. Pre-registration: prereg/02-discrimination-forks.md (DRAFT; the team approves it Mon Nov 9, 9 PM).
+- **Schedule.** Nov 9 9 PM approve the pre-registration; Nov 11 7 PM edit the draft; Nov 12 noon submit.
+- **Not done.** No commit (nothing was asked). Claude Science is out of the loop. The teammate has not replied.
+
+### 2026-11-08 19:20 EDT: Independent re-derivation of the GraphLoc trace numbers (EXPLORATORY)
+
+**Why.** The project rule: every headline number is re-derived from the raw logs with an independent script before it enters the paper. Script: analysis/trace_stats.py, output analysis/trace_stats.json.
+
+- **Matches Claude Science's Oct 1 entry:** 109 of 318 base runs call a graph tool; 26 get a non-empty result; search_similar_code 135 calls, 114 empty; get_code_neighbors 8 calls; get_code_subgraph 0; compaction (a prompt drop of more than 30%) in 216 of 318 base runs (68%).
+- **Uptake, different denominator and control.** This script counts 26 events (a non-empty graph result followed by a read or edit, base arm only) with 13 hits (50%); Claude Science reported 13 of 43 (30.2%), presumably counting both arms or events without a following read. The control here draws the same number of random nodes from the same files as the returned nodes and gets 36.4%, against Claude Science's 15.8% for size-matched random nodes; the same-files control is stricter because whole-file reads touch every node in a file. Reading: the next action lands on a returned node about as often as on any other node of the same files, so the traces alone cannot show steering. The forks are the test.
+- **Later edits:** a returned node's file is edited later in 8 of 26 events, inside the node's span in 1 (Claude Science: 1 of 48).
+- **Overflow:** not re-derived here (the ATIF traces do not carry the vLLM error; Claude Science read the run records).
+- **Also seen:** search_similar_code results carry similarity 0.9999 for unrelated test functions (the duplicate-embedding problem from the Sep 30 audit), so even non-empty search results are mostly noise.
