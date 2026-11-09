@@ -1,13 +1,12 @@
 # Does Gemma check the code graph? Paused-run replays with true and false edges
 
-DRAFT, Nov 8 (evening). Budget 3,000 words; this draft is about 1,900 without the results. Numbers marked [R]
-come from the Kaggle replay run and are filled in by `analysis/analyze_forks.py`; every other number is from the
-public GraphLoc traces, re-derived by `analysis/trace_stats.py`, or from the offline audit in
+DRAFT, Nov 9 morning, with the confirmatory results. Budget 3,000 words. Run numbers come from
+`analysis/results/v5/analysis.txt`; trace numbers from `analysis/trace_stats.py`; audit numbers from
 `experiments/00-pointer-audit/`.
 
 ## Abstract
 
-[150 words, written last.]
+The competition's code graph barely changes what its Gemma-4-31B agent resolves. We ask why, from inside the agent. We cut 407 real runs (77 tasks, GraphLoc's public traces) right after the agent opens a file, put the graph's neighbor list for a function in that file in front of the model, and replay one step through the official harness, in five versions: nothing added, the list as the result of an inserted tool call, the same text as a harness note, and both again with one true neighbor replaced by a plausible false one. The rebuilt prompts match the logged ones within 1.7% (median). With nothing added, the agent's next read or edit reaches a listed neighbor in an unopened file 2.1% of the time; with the list, 2.8% to 3.3%, a change of 0.8 points [-0.1, 1.7]. The false neighbor was followed 0 times in 2,442 replays, the matched true one 6 times in 2,358. The channel changes behavior around the graph, not where the agent goes: a tool result makes it call the graph again (3.2% versus 0.3%), a note makes it think (median 185 versus 98 output tokens). At the navigation step, Gemma neither follows the graph nor checks it, which is why delivery alone cannot rescue it.
 
 ## 1. The question
 
@@ -83,8 +82,8 @@ The history is loaded into the harness's own compiled agent (the sample prompt, 
 sub-agent) as an ADK session, event by event, with the model's recorded thoughts and tool calls and the recorded
 tool results. The arm's last piece is delivered as the new message. The agent makes one model call through vLLM
 and stops at the model's response; no tool ever executes. Each (state, arm) runs with three seeds. Fidelity is
-checked directly: for a sample of states, arm A's prompt size reported by vLLM is compared with the size logged
-at the same step of the original run [R].
+checked directly: for 24 states, arm A's prompt size reported by vLLM is compared with the size logged at the
+same step of the original run (Section 4).
 
 ### 3.4 Outcomes and pre-registered tests
 
@@ -106,18 +105,58 @@ Intervals are 95% bootstrap intervals clustered by state. The rules, thresholds 
 
 ## 4. Results
 
-[R] Fidelity: replayed versus logged prompt size.
-[R] Per-arm rates with intervals: any unopened true neighbor touched; the swapped-out entry; the decoy; arm A base.
-[R] D with 95% and 90% intervals; the verdict under the pre-registered rule.
-[R] Channel: P versus H, P' versus H'.
-[R] Interface failures per arm; decoy position (descriptive).
+The confirmatory run (v5) replayed all 407 states under five arms and three seeds, 6,105 replays, in 4.1 hours on
+four L4 GPUs, with no model errors. 21 replays were interface failures (12 malformed arguments, 9 no call) and
+are excluded from rates; 393 states have every arm and seed. A first run (v4) had re-sent the agent's earlier
+thoughts and failed the fidelity gate (6.1%); its outcomes, read before the fix, pointed the same way and are
+reported only in the log.
+
+**Fidelity.** Across 24 states, arm A's prompt as counted by vLLM differs from the logged prompt at the same
+step by 1.7% (median; mean 3.0%). Every replayed prompt is slightly smaller than the original, by about 150
+tokens, consistent with small differences in the tool declarations between harness versions; two states differ
+by 9.5% and 25% for reasons we could not trace. The arms differ only by their last piece: the note adds 178
+tokens to arm A's prompt and the inserted call 181.
+
+**Following (H1).** The next call touches a listed true neighbor in an unopened file in 2.1% of arm A replays
+[0.9, 3.7], in 3.1% with the list as a tool result [1.5, 4.8], 3.3% with the decoy list as a tool result, 2.8%
+as a note [1.4, 4.5] and 2.9% as a note with the decoy. Pooling the two true-list arms against A gives +0.8
+points [-0.1, +1.7]: H1 is not supported. Per listed entry, the touch rate is 0.25% in A and 0.36% to 0.54%
+with the list.
+
+**Discrimination (H2).** Under the pre-registered rule, H2 is not tested when H1 fails; we report the quantities.
+The swapped-out true entry was followed in 6 of 2,358 replays (0.25%) and the decoy in 0 of 2,442. D = 0.25
+points [0.00, 0.76]. In arm A neither was ever touched.
+
+**Channel (H3).** The tool result and the note move following by the same amount: +0.25 points [-0.7, +1.2].
+
+**Natural use (H4).** With nothing added, the next call is a graph tool in 0.34% of replays [0.08, 0.68].
+
+**What the channel does change (secondary, listed in advance).** After the inserted tool call, the next call is a
+graph tool in 3.2% of replays [1.8, 4.8] (2.9% with the decoy list), against 0.3% in arm A and 0.6% after the
+note; 27 of those 65 calls query a listed entry. The note restarts thinking: thought text appears in 99.6% of
+note replays and the median completion is 185 tokens, against 58% and 98 tokens in arm A and 72% and 127 after
+the tool result. In that thinking the agent names one of the fresh true entries in 10% of note replays and 5% of
+tool-result replays, and the decoy in 2% and 1% (one decoy against two to four true entries per list). Named,
+rarely followed: the words move more than the next call.
+
+The next call's shape barely changes: `read_file` in 58% of arm A replays and 50% to 54% with the list, shell
+views of files in 29% to 33%, writes and edits in 6% to 8%.
 
 ## 5. What it means for the organizers
 
-[One paragraph per outcome. If the agent follows without checking: the graph's gaps (it holds 1 of 56 async
-functions in the audit) become the agent's detours, so fix coverage before pushing the graph. If it checks: push
-the neighborhood, it is safe and the agent will not ask for it on its own. If it ignores even what it is handed:
-delivery is not the bottleneck at the navigation step.]
+Of the three readings we pre-registered, the data pick the third: at the moment the agent decides where to look
+next, the graph's neighborhood neither steers it nor is checked by it. Pushing the graph into the context, which
+other work found decisive for search results on this model, does not work here, and whether the agent asked for
+it or was handed it makes no difference to where it goes. GraphLoc's end-to-end null is therefore not a delivery
+failure that better prompting would fix at this step; the agent reads the issue, opens the file it names, and
+keeps reading or running code regardless of the list.
+
+Two effects do belong to the channel. A tool result makes the agent treat the graph as a thread to pull (one call
+in thirty leads to another, usually on a listed entry), and a note makes it stop and think. If the organizers
+want the graph used, the lever is the loop, not the text: a graph call that the harness answers early and keeps
+answering, rather than a block of names. And because nothing was followed, nothing false was followed either;
+the graph's gaps (it holds 1 of 56 async functions in our audit) are not yet the agent's errors, but they would
+become so only once following rises, which is exactly when a false-edge test like this one should be run again.
 
 ## 6. Related work
 
