@@ -629,11 +629,16 @@ def make_state(r, task, g, files, steps, agent, fork_idx, gold_ids, gold_paths):
     # minus gold, in-view, true neighbors and the node itself, padded from the node's directory to the true count.
     rw = rewired_neighbors(g)
     rng_r = random.Random(int(hashlib.sha256(f"rewired:{r['task']}_r{r['run']}_{fork_idx}".encode()).hexdigest(), 16))
-    banned_r = set(true_nb) | in_view | gold_ids[r['task']] | {node}
-    rewired = [n for n in sorted(rw.get(node, set())) if n not in banned_r and N.span(r['task'], n)]
-    fill_pool = [n for n in g['ids'] if n not in banned_r and n not in rewired]
-    fill_pool = [n for n in fill_pool if (sp := N.span(r['task'], n)) and not is_test(sp['path'])
-                 and (sp['path'].rsplit('/', 1)[0] if '/' in sp['path'] else '') == node_dir]
+    banned_r = set(true_nb) | in_view | gold_ids[r['task']] | {node, decoy}
+
+    def eligible_r(n):  # same eligibility as the scored true entries: unseen name, unopened and non-gold file
+        sp = N.span(r['task'], n)
+        return bool(sp) and sp['path'] not in shown_files and sp['path'] not in gold_paths[r['task']]
+
+    rewired = [n for n in sorted(rw.get(node, set())) if n not in banned_r and eligible_r(n)]
+    fill_pool = [n for n in g['ids'] if n not in banned_r and n not in rewired and eligible_r(n)]
+    fill_pool = [n for n in fill_pool if not is_test(N.span(r['task'], n)['path'])
+                 and (N.span(r['task'], n)['path'].rsplit('/', 1)[0] if '/' in N.span(r['task'], n)['path'] else '') == node_dir]
     rewired_fill = 0
     while len(rewired) < len(true_nb) and fill_pool:
         pick = rng_r.choice(sorted(fill_pool))

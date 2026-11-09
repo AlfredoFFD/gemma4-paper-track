@@ -29,7 +29,7 @@ one, and is compared with H for that reason.
 Comparison arms come from run v5: H and H' (note, bare names), P and P' (tool result), A (nothing added). The
 model, server configuration, harness wheels and replay code are the same; the two runs are pooled by state and seed.
 
-## Amendment of Nov 9, 1:15 PM EST: the rewired-graph control (frozen before any output of v6 or v7 was read)
+## Amendment of Nov 9, about 12:53 PM EST: the rewired-graph control (frozen before any output of v6 or v7 was read; the time was first written as 1:15 PM by a clock error and corrected at 1:00 PM)
 
 Proposed by the team through a second session while v6 was running. Two more arms on the same states and seeds,
 run as kernel v7:
@@ -40,9 +40,12 @@ run as kernel v7:
 | R_E | the E note with the same rewired list, each entry encoded with its file, lines and first definition line |
 
 The rewired entries are, like the true entries, in unopened files and unseen names; they are scored exactly like
-the true entries ("any rewired entry touched"). Construction fact, recorded at export: the rewiring's own
-neighbors were often excluded (gold, in view, true neighbors, no resolvable span), so 814 of the rewired entries
-across 313 states were padded from the node's directory; every rewired list has exactly the true list's length.
+the true entries ("any rewired entry touched"). Construction fact, recorded at export (after a code review at
+1:00 PM made the rewired entries meet the same eligibility as the scored true entries: unopened, non-gold file,
+unseen name): the rewiring's own neighbors were often excluded, so 847 of the rewired entries across 298 states
+were padded from the node's directory; 382 lists have exactly the true list's length and 25 are shorter because
+the directory ran out of eligible nodes. A first version of these lists (kernel v7, cancelled before it ran) had
+not excluded opened files.
 
 - B4, structure versus vocabulary: at each dose (D versus R_D, E versus R_E), the difference between any-true
   following under the true list and any-rewired following under the rewired list. "Structure matters" if, in at
