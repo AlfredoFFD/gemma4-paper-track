@@ -37,9 +37,9 @@ OUT.mkdir(parents=True, exist_ok=True)
 
 HARNESS_VARIANT = os.environ.get('HARNESS_VARIANT', 'v28')  # harness wheels closest to the traces' era
 SEEDS = [1, 2, 3]
-EXPERIMENT = 'B'  # 'A': pre-registration 02 arms (run v5); 'B': pre-registration 03 arms (directive, encoding)
-ARMS = ['D', 'Dp', 'E'] if EXPERIMENT == 'B' else ['A', 'P', 'Pp', 'H', 'Hp']
-FIDELITY_N = int(os.environ.get('FIDELITY_N', '6' if EXPERIMENT == 'B' else '24'))
+EXPERIMENT = 'R'  # 'A': prereg 02 arms (v5); 'B': prereg 03 arms D, D', E (v6); 'R': prereg 03 rewired controls (v7)
+ARMS = {'A': ['A', 'P', 'Pp', 'H', 'Hp'], 'B': ['D', 'Dp', 'E'], 'R': ['RD', 'RE']}[EXPERIMENT]
+FIDELITY_N = int(os.environ.get('FIDELITY_N', '24' if EXPERIMENT == 'A' else '6'))
 STATES_N = int(os.environ.get('STATES_N', '0'))  # 0 = all
 CONCURRENCY = int(os.environ.get('CONCURRENCY', '8'))
 TIME_BUDGET_S = int(os.environ.get('TIME_BUDGET_S', str(int(8.5 * 3600))))  # leaves room for the summary under the 12 h session cap

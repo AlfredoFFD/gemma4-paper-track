@@ -107,6 +107,59 @@ def harness_neighbors(g, node):
     return sorted(g['nbr'].get(node, set()))[:MAX_NEIGHBORS]
 
 
+REWIRE_SWAPS_PER_EDGE = 10
+
+
+def rewired_neighbors(g):
+    """Neighbor sets of a degree-preserving random rewiring of the repo graph (GraphAudit's control).
+
+    The undirected simple graph is rewired by seeded double-edge swaps (10 per edge; a swap is skipped if it
+    would create a self-loop or a duplicate edge), so every node keeps its degree while the structure is
+    random. Cached per graph in data/cache/rewired/<graph>.json with the seed.
+    """
+    if 'rewired' in g:
+        return g['rewired']
+    cache = DATA / 'cache' / 'rewired' / f"{g['key']}.json"
+    if cache.exists():
+        d = json.loads(cache.read_text(encoding='utf-8'))
+        g['rewired'] = {k: set(v) for k, v in d['neighbors'].items()}
+        return g['rewired']
+    edges = sorted({tuple(sorted((u, v))) for u, vs in g['nbr'].items() for v in vs if u != v})
+    rng = random.Random(int(hashlib.sha256(g['key'].encode()).hexdigest(), 16))
+    edge_set = set(edges)
+    n_swaps = REWIRE_SWAPS_PER_EDGE * len(edges)
+    done = 0
+    for _ in range(n_swaps):
+        i, j = rng.randrange(len(edges)), rng.randrange(len(edges))
+        if i == j:
+            continue
+        a, b = edges[i]
+        c, d = edges[j]
+        if rng.random() < 0.5:
+            c, d = d, c
+        if a == d or c == b:
+            continue
+        e1, e2 = tuple(sorted((a, d))), tuple(sorted((c, b)))
+        if e1 in edge_set or e2 in edge_set:
+            continue
+        edge_set.discard(edges[i])
+        edge_set.discard(edges[j])
+        edge_set.add(e1)
+        edge_set.add(e2)
+        edges[i], edges[j] = e1, e2
+        done += 1
+    nbr = collections.defaultdict(set)
+    for u, v in edges:
+        nbr[u].add(v)
+        nbr[v].add(u)
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps({'graph': g['key'], 'seed': 'sha256(graph key)', 'edges': len(edges), 'swaps_done': done,
+                                 'swaps_attempted': n_swaps, 'neighbors': {k: sorted(v) for k, v in nbr.items()}}),
+                     encoding='utf-8')
+    g['rewired'] = nbr
+    return nbr
+
+
 def mentioned(g, text):
     toks = set(IDENT.findall(text))
     dotted = {k for k in toks if '.' in k}
@@ -572,6 +625,38 @@ def make_state(r, task, g, files, steps, agent, fork_idx, gold_ids, gold_paths):
 
     e_obs = {'status': 'ok', 'node': node, 'neighbors': [encoded(n) for n in true_nb], 'count': len(true_nb)}
 
+    # Rewired control (pre-registration 03 amendment): the node's neighbors in a degree-preserving random rewiring,
+    # minus gold, in-view, true neighbors and the node itself, padded from the node's directory to the true count.
+    rw = rewired_neighbors(g)
+    rng_r = random.Random(int(hashlib.sha256(f"rewired:{r['task']}_r{r['run']}_{fork_idx}".encode()).hexdigest(), 16))
+    banned_r = set(true_nb) | in_view | gold_ids[r['task']] | {node}
+    rewired = [n for n in sorted(rw.get(node, set())) if n not in banned_r and N.span(r['task'], n)]
+    fill_pool = [n for n in g['ids'] if n not in banned_r and n not in rewired]
+    fill_pool = [n for n in fill_pool if (sp := N.span(r['task'], n)) and not is_test(sp['path'])
+                 and (sp['path'].rsplit('/', 1)[0] if '/' in sp['path'] else '') == node_dir]
+    rewired_fill = 0
+    while len(rewired) < len(true_nb) and fill_pool:
+        pick = rng_r.choice(sorted(fill_pool))
+        fill_pool.remove(pick)
+        rewired.append(pick)
+        rewired_fill += 1
+    rewired = sorted(rewired)[:len(true_nb)]
+    rw_spans = {n: N.span(r['task'], n) for n in rewired}
+    r_obs = {'status': 'ok', 'node': node, 'neighbors': rewired, 'count': len(rewired)}
+
+    def encoded_r(n):
+        entry = {'name': n}
+        sp = rw_spans.get(n)
+        if sp:
+            entry['file'] = sp['path']
+            if sp['end'] is not None:
+                entry['lines'] = f"{sp['start']}-{sp['end']}"
+        if g['text1'].get(n):
+            entry['def'] = g['text1'][n]
+        return entry
+
+    re_obs = {'status': 'ok', 'node': node, 'neighbors': [encoded_r(n) for n in rewired], 'count': len(rewired)}
+
     next_call = (nxt.get('tool_calls') or [None])[0]
     observed, observed_unshown = {}, {}
     if next_call:
@@ -593,6 +678,7 @@ def make_state(r, task, g, files, steps, agent, fork_idx, gold_ids, gold_paths):
         'true_neighbors': true_nb, 'neighbor_spans': nb_spans, 'shown_files': sorted(shown_files),
         'unshown_true_neighbors': unshown_true, 'fresh_true_neighbors': fresh_true,
         'decoy': decoy, 'decoy_span': N.span(r['task'], decoy), 'decoy_pool': pool_kind, 'decoy_pool_size': len(pool),
+        'rewired_entries': rewired, 'rewired_spans': rw_spans, 'rewired_fill': rewired_fill,
         'swapped_out': swapped, 'swapped_out_alone_in_file': swapped in alone,
         'swapped_out_is_test': is_test(nb_spans[swapped]['path']),
         'decoy_position': decoy_list.index(decoy), 'swapped_position': true_nb.index(swapped), 'decoy_list': decoy_list,
@@ -604,6 +690,8 @@ def make_state(r, task, g, files, steps, agent, fork_idx, gold_ids, gold_paths):
             'D': {'user_text': D_WORDING.format(node=node, json=json.dumps(p_obs))},
             'Dp': {'user_text': D_WORDING.format(node=node, json=json.dumps(pp_obs))},
             'E': {'user_text': E_WORDING.format(node=node, json=json.dumps(e_obs))},
+            'RD': {'user_text': D_WORDING.format(node=node, json=json.dumps(r_obs))},
+            'RE': {'user_text': E_WORDING.format(node=node, json=json.dumps(re_obs))},
         },
         'observed_next_call': next_call, 'observed_next_call_valid': valid_call(next_call) if next_call else False,
         'observed_next_thinking': (nxt.get('message') or '')[:2000],

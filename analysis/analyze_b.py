@@ -15,7 +15,8 @@ import nodes as N  # noqa: E402
 from analyze_forks import GRAPH_TOOLS, KNOWN_TOOLS, boot_ci, diff_ci  # noqa: E402
 from fork_states import touches, valid_call  # noqa: E402
 
-ARMS_ALL = ['A', 'P', 'Pp', 'H', 'Hp', 'D', 'Dp', 'E']
+ARMS_ALL = ['A', 'P', 'Pp', 'H', 'Hp', 'D', 'Dp', 'E', 'RD', 'RE']
+REWIRED = {'RD', 'RE'}
 
 
 def load_rows(path):
@@ -26,11 +27,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('results_dir_b')
     ap.add_argument('--v5', default=str(Path(__file__).resolve().parent / 'results' / 'v5' / 'forks'))
+    ap.add_argument('--rewired', default=None, help='results dir of the rewired-control run (arms RD, RE)')
     ap.add_argument('--states', default=str(Path(__file__).resolve().parent / 'fork_states' / 'states.jsonl'))
     args = ap.parse_args()
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     states = {(s['task'], s['run'], s.get('fork', 0)): s for s in (json.loads(l) for l in open(args.states, encoding='utf-8'))}
     rows = load_rows(Path(args.v5) / 'results.jsonl') + load_rows(Path(args.results_dir_b) / 'results.jsonl')
+    if args.rewired:
+        rows += load_rows(Path(args.rewired) / 'results.jsonl')
     print(f'{len(rows)} replays (v5 + B) over {len({(r["task"], r["run"], r.get("fork", 0)) for r in rows})} states')
 
     fail = collections.Counter()
@@ -60,6 +64,7 @@ def main():
         return
 
     any_true = {a: collections.defaultdict(list) for a in arms_present}
+    any_rewired = {a: collections.defaultdict(list) for a in arms_present}   # the rewired list's own entries
     swapped = {a: collections.defaultdict(list) for a in arms_present}
     decoy = {a: collections.defaultdict(list) for a in arms_present}
     graph_next = {a: collections.defaultdict(list) for a in arms_present}
@@ -87,6 +92,9 @@ def main():
                        for n in s['true_neighbors'] if spans.get(n) and n in unshown}
             hit = [bool(v) and v != 'graph' for v in touched.values()]
             any_true[arm][key].append(int(any(hit)))
+            rsp = s.get('rewired_spans', {})
+            rhit = [touches(call, rsp[n], n, line_lengths=lengths(rsp[n]['path'])) for n in s.get('rewired_entries', []) if rsp.get(n)]
+            any_rewired[arm][key].append(int(any(bool(v) and v != 'graph' for v in rhit)))
             sw = touched.get(s['swapped_out'])
             swapped[arm][key].append(int(bool(sw) and sw != 'graph'))
             dec = touches(call, dspan, s['decoy'], line_lengths=lengths(dspan['path'])) if dspan else None
@@ -133,6 +141,15 @@ def main():
     if 'E' in arms_present and 'H' in arms_present:
         print('B3 encoding: any true | E minus any true | H (two-sided)')
         show('B3', diff_ci(any_true['E'], any_true['H']))
+    if REWIRED & set(arms_present):
+        print('Rewired control: any rewired entry touched (its own list), and any true neighbor touched, by arm')
+        for a in arms_present:
+            show(f'{a} rewired-list entries', boot_ci(any_rewired[a]))
+        print('B4 structure vs vocabulary: true list minus rewired list at the same dose')
+        if 'D' in arms_present and 'RD' in arms_present:
+            show('D minus R_D', diff_ci(any_true['D'], any_rewired['RD']))
+        if 'E' in arms_present and 'RE' in arms_present:
+            show('E minus R_E', diff_ci(any_true['E'], any_rewired['RE']))
     print('\nSecondary: graph tool as the next call, by arm')
     for a in arms_present:
         show(a, boot_ci(graph_next[a]))
