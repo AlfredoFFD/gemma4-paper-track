@@ -164,10 +164,20 @@ def valid_call(call):
     if name == 'read_file':
         if not isinstance(args.get('filepath'), str) or not args['filepath']:
             return False
+        bounds = []
         for k in ('start_line', 'end_line'):
             v = args.get(k)
-            if v is not None and not (isinstance(v, int) or (isinstance(v, str) and INT_LIKE.match(v))):
+            if v is None:
+                bounds.append(None)
+                continue
+            if isinstance(v, bool) or not (isinstance(v, int) or (isinstance(v, str) and INT_LIKE.match(v))):
                 return False
+            iv = int(v)
+            if iv < 1:
+                return False
+            bounds.append(iv)
+        if bounds[0] is not None and bounds[1] is not None and bounds[0] > bounds[1]:
+            return False
         return True
     if name == 'edit_file':
         return (isinstance(args.get('filepath'), str) and bool(args['filepath'])
@@ -183,6 +193,88 @@ def valid_call(call):
     if name == 'get_code_subgraph':
         return isinstance(args.get('nodes'), (list, str))
     return name in ('get_status', 'submit_patch')
+
+
+VIEW_CMDS = ('cat', 'sed', 'head', 'tail', 'grep', 'rg', 'less', 'more', 'awk')
+
+
+def _count_arg(toks, default=10):
+    """The N of head/tail: -n N, -nN, -N, --lines=N; else the default."""
+    for i, t in enumerate(toks[1:], 1):
+        if t in ('-n', '--lines') and i + 1 < len(toks) and toks[i + 1].lstrip('-+').isdigit():
+            return int(toks[i + 1].lstrip('-+'))
+        if t.startswith('--lines=') and t[8:].lstrip('-+').isdigit():
+            return int(t[8:].lstrip('-+'))
+        if t.startswith('-n') and t[2:].lstrip('-+').isdigit():
+            return int(t[2:].lstrip('-+'))
+        if t.startswith('-') and t[1:].isdigit():
+            return int(t[1:])
+    return default
+
+
+def shell_view_range(cmd, path, short, file_lines):
+    """Which lines of `path` a shell pipeline shows.
+
+    Returns ('lines', a, b) for a known line range, ('named', None, None) when a grep stage selects lines by the
+    node's own name, or None when the pipeline shows nothing of that file (ls, echo, find, python, wc, an unknown
+    subset of lines, or a tail without a known file length). Stages are split on '|' and each command word is
+    read from its own tokens, so a path such as headers.py never reads as a head command.
+    """
+    import shlex
+    stages = [s.strip() for s in cmd.split('|') if s.strip()]
+    toks_of = []
+    for st in stages:
+        try:
+            toks_of.append(shlex.split(st))
+        except ValueError:
+            toks_of.append(st.split())
+    src = None
+    for i, toks in enumerate(toks_of):
+        if toks and toks[0] in VIEW_CMDS and any(t == path or t.endswith('/' + path) or t == './' + path for t in toks[1:]):
+            src = i
+            break
+    if src is None:
+        return None
+    a, b = 1, file_lines if file_lines else None  # None = up to the end of a file of unknown length
+    named = False
+    for i in range(src, len(toks_of)):
+        toks = toks_of[i]
+        if not toks:
+            continue
+        c = toks[0]
+        st = stages[i]
+        if c in ('cat', 'less', 'more'):
+            continue
+        if c == 'sed':
+            m, m1 = SED_RANGE.search(st), SED_LINE.search(st)
+            if m:
+                a2, b2 = int(m.group(1)), int(m.group(2))
+            elif m1:
+                a2 = b2 = int(m1.group(1))
+            else:
+                return ('named', None, None) if named else None  # pattern-based sed: unknown lines
+            if i == src:
+                a, b = a2, b2
+            else:  # sed on a stream counts lines from the stream's first line
+                a, b = a + a2 - 1, (a + b2 - 1 if b is None else min(b, a + b2 - 1))
+        elif c == 'head':
+            n = _count_arg(toks)
+            b = a + n - 1 if b is None else min(b, a + n - 1)
+        elif c == 'tail':
+            n = _count_arg(toks)
+            if b is None:
+                return None
+            a = max(a, b - n + 1)
+        elif c in ('grep', 'rg', 'awk'):
+            if c != 'awk' and short in st:
+                named = True
+            else:
+                return ('named', None, None) if named else None
+        else:
+            return None  # wc, python, xargs ...: nothing of the file is shown
+    if named:
+        return ('named', None, None)
+    return ('lines', a, b)
 
 
 def touches(call, target, node_id, file_lines=None):
@@ -212,36 +304,13 @@ def touches(call, target, node_id, file_lines=None):
     if name in ('edit_file', 'write_file'):
         return 'edit' if args.get('filepath') == path else None
     if name == 'run_command':
-        cmd = str(args.get('command', ''))
-        m0 = CONTENT_CMD.match(cmd)
-        if not m0:
+        view = shell_view_range(str(args.get('command', '')), path, short, file_lines)
+        if view is None:
             return None
-        if not (path in cmd or (path.rsplit('/', 1)[-1] in cmd and short in cmd)):
-            return None
-        first = m0.group(1)
-        if 'head' in cmd:
-            m = HEAD_N.search(cmd)
-            n = int(m.group(1)) if m else 10  # head's default
-            return 'read' if overlap(1, n) else None
-        if 'tail' in cmd:
-            m = TAIL_N.search(cmd)
-            n = int(m.group(1)) if m else 10
-            if file_lines is None:
-                return None
-            return 'read' if overlap(max(1, file_lines - n + 1), file_lines) else None
-        if first == 'sed':
-            m = SED_RANGE.search(cmd)
-            if m:
-                return 'read' if overlap(int(m.group(1)), int(m.group(2))) else None
-            m = SED_LINE.search(cmd)
-            if m:
-                return 'read' if overlap(int(m.group(1)), int(m.group(1))) else None
-            return None  # pattern-based sed: unknown lines shown
-        if first in ('grep', 'rg'):
-            return 'read' if short in cmd else None  # shows matching lines only: counts when it names the node
-        if first in ('cat', 'less', 'more'):
+        kind, a, b = view
+        if kind == 'named':
             return 'read'
-        return None  # awk and anything else: unknown lines shown
+        return 'read' if overlap(a, b) else None
     if name in ('get_code_neighbors', 'get_code_subgraph', 'search_similar_code'):
         blob = json.dumps(args)
         return 'graph' if node_id in blob or ('.' + short) in blob or f'"{short}"' in blob else None

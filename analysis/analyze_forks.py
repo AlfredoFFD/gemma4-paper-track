@@ -41,6 +41,8 @@ def boot_ci(values_by_cluster, n=2000, seed=0, stat='mean'):
 def diff_ci(a_by_cluster, b_by_cluster, n=2000, seed=0, level=0.95):
     """Paired-by-cluster bootstrap of mean(a) - mean(b)."""
     clusters = sorted(set(a_by_cluster) | set(b_by_cluster))
+    if not clusters or not any(a_by_cluster.values()) or not any(b_by_cluster.values()):
+        return None, None, None  # no eligible pairs: no estimate
     rng = random.Random(seed)
 
     def m(d, cl):
@@ -89,6 +91,9 @@ def main():
     seeds = sorted({r['seed'] for r in ok_rows})
     complete = {k: v for k, v in by_state.items() if len(v) == len(ARMS) * len(seeds)}
     print(f'states with every arm and seed present: {len(complete)} (seeds {seeds})')
+    if not complete:
+        print('No state has every arm and seed: nothing to estimate. Stopping.')
+        return
 
     any_true = {a: collections.defaultdict(list) for a in ARMS}      # any listed true neighbor touched
     swapped = collections.defaultdict(list)                          # P,H: the swapped-out entry touched
