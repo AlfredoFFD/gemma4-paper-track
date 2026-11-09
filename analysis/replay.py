@@ -24,7 +24,8 @@ from google.genai import types
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / 'data'
-ARMS = ('A', 'P', 'Pp', 'H', 'Hp')
+ARMS = ('A', 'P', 'Pp', 'H', 'Hp')          # pre-registration 02
+ARMS_B = ('D', 'Dp', 'E')                     # pre-registration 03
 APP_NAME = 'swegemma_eval'
 USER_ID = 'eval_user'
 MODEL_ALIAS = 'gemma-4-31b-it-qat-w4a16-ct'
@@ -93,7 +94,7 @@ def arm_messages(state, arm, agent_name):
         last = events.pop()
         return events, types.Content(role='user', parts=last.content.parts)
     payload = state['arms'][arm]
-    if arm in ('P', 'Pp'):
+    if 'call' in payload:  # P, P': an inserted tool call whose result is the new message
         inv = events[-1].invocation_id
         cid = 'call_inserted'
         events.append(Event(invocation_id=inv, author=agent_name, content=types.Content(role='model', parts=[
@@ -101,7 +102,7 @@ def arm_messages(state, arm, agent_name):
         new = types.Content(role='user', parts=[types.Part(function_response=types.FunctionResponse(
             name=payload['call']['name'], response=payload['response'], id=cid))])
         return events, new
-    if arm in ('H', 'Hp'):
+    if 'user_text' in payload:  # H, H', D, D', E: a user-role note is the new message
         return events, types.Content(role='user', parts=[types.Part(text=payload['user_text'])])
     raise ValueError(arm)
 

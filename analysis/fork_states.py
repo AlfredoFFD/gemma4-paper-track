@@ -61,6 +61,11 @@ MAX_STDOUT_CHARS = 5000   # harness run_command cap
 COMPACTION_RATIO = 0.7
 MAX_PROMPT = 12500
 H_WORDING = 'Code graph note from the harness. get_code_neighbors(node="{node}") returned:\n{json}'
+# Pre-registration 03 arms. D: an instruction instead of a report (same list). E: the H note with each neighbor
+# written as name, file, line range and first definition line (true list only).
+D_WORDING = ('Instruction from the harness. Before you edit anything, look at the code graph neighbors of "{node}" '
+             'below and read the ones you have not opened yet.\n{json}')
+E_WORDING = H_WORDING
 
 
 def load_tasks():
@@ -84,6 +89,8 @@ def graph_for(task):
     if key not in _graphs:
         g = json.load(open(DATA / 'graphs' / f'{key}.json', encoding='utf-8'))
         ids = [n['id'] for n in g['nodes']]
+        text1 = {n['id']: (n.get('text') or '').strip().splitlines()[0][:120] if (n.get('text') or '').strip() else ''
+                 for n in g['nodes']}
         nbr = collections.defaultdict(set)
         for e in g['edges']:  # self-loops stay: the harness lists the node itself when it calls itself
             nbr[e['source']].add(e['target'])
@@ -91,7 +98,7 @@ def graph_for(task):
         by_short = collections.defaultdict(list)
         for i in ids:
             by_short[i.rsplit('.', 1)[-1]].append(i)
-        _graphs[key] = {'key': key, 'ids': ids, 'idset': set(ids), 'nbr': nbr, 'by_short': by_short}
+        _graphs[key] = {'key': key, 'ids': ids, 'idset': set(ids), 'nbr': nbr, 'by_short': by_short, 'text1': text1}
     return _graphs[key]
 
 
@@ -552,6 +559,19 @@ def make_state(r, task, g, files, steps, agent, fork_idx, gold_ids, gold_paths):
     p_obs = {'status': 'ok', 'node': node, 'neighbors': true_nb, 'count': len(true_nb)}
     pp_obs = {'status': 'ok', 'node': node, 'neighbors': decoy_list, 'count': len(decoy_list)}
 
+    def encoded(n):  # arm E: where the neighbor lives and how its definition starts
+        entry = {'name': n}
+        sp = nb_spans.get(n)
+        if sp:
+            entry['file'] = sp['path']
+            if sp['end'] is not None:
+                entry['lines'] = f"{sp['start']}-{sp['end']}"
+        if g['text1'].get(n):
+            entry['def'] = g['text1'][n]
+        return entry
+
+    e_obs = {'status': 'ok', 'node': node, 'neighbors': [encoded(n) for n in true_nb], 'count': len(true_nb)}
+
     next_call = (nxt.get('tool_calls') or [None])[0]
     observed, observed_unshown = {}, {}
     if next_call:
@@ -581,6 +601,9 @@ def make_state(r, task, g, files, steps, agent, fork_idx, gold_ids, gold_paths):
             'Pp': {'call': {'name': 'get_code_neighbors', 'args': {'node': node}}, 'response': pp_obs},
             'H': {'user_text': H_WORDING.format(node=node, json=json.dumps(p_obs))},
             'Hp': {'user_text': H_WORDING.format(node=node, json=json.dumps(pp_obs))},
+            'D': {'user_text': D_WORDING.format(node=node, json=json.dumps(p_obs))},
+            'Dp': {'user_text': D_WORDING.format(node=node, json=json.dumps(pp_obs))},
+            'E': {'user_text': E_WORDING.format(node=node, json=json.dumps(e_obs))},
         },
         'observed_next_call': next_call, 'observed_next_call_valid': valid_call(next_call) if next_call else False,
         'observed_next_thinking': (nxt.get('message') or '')[:2000],
