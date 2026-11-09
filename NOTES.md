@@ -494,3 +494,10 @@ reading found and what it changes, so Claude Science can revise its pre-registra
 - **Later edits:** a returned node's file is edited later in 8 of 26 events, inside the node's span in 1 (Claude Science: 1 of 48).
 - **Overflow:** not re-derived here (the ATIF traces do not carry the vLLM error; Claude Science read the run records).
 - **Also seen:** search_similar_code results carry similarity 0.9999 for unrelated test functions (the duplicate-embedding problem from the Sep 30 audit), so even non-empty search results are mostly noise.
+
+### 2026-11-08 21:35 EDT: Review rounds 3 and 4; truncation caps; 407 states
+
+- **Codex round 3:** reversed or boolean read ranges passed validation; pipeline ranges (sed then head) were scored in file coordinates; a file named headers.py read as a head command; an empty run produced exact estimates. Fixed: strict range validation, a pipeline-aware shell view parser (stages split on the pipe, command word per stage, default head/tail of 10, single-line sed, grep counts only by name), no estimate without eligible pairs. Unit tests on the review's cases pass.
+- **Codex round 4:** the harness caps read_file at 150 lines and 10,000 characters and shell output at 5,000 characters (swegemma/budget.py; every trace read without a range reports end_line 150), so "whole-file read" never meant the whole file. Fixed in both places: what counts as shown when a state is built uses the observation's real start and line count; replay scoring applies the harness's caps with the file's line lengths. Pre-registration clarified with the time.
+- **Effect:** 407 states from 77 tasks (more nodes are now fresh). Observed base rates: the swapped-out entry touched by the agent's own next call in 1 of 407 states, any unopened listed neighbor in 12 (2.9%). Trace uptake re-derived with the caps: 7 of 26 (27%), same-files random control 23%.
+- **Kaggle:** v4 could not start: the account's two batch GPU slots are held by v2 and v3, which keep running after a new push. Stopping them needs the Kaggle web UI (Chrome is not signed in to Kaggle).

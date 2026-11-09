@@ -55,6 +55,9 @@ MAX_AMBIGUITY = 5
 MAX_NEIGHBORS = 50
 PREFERRED_DEGREE = 20
 MAX_STATES_PER_RUN = 3
+MAX_FILE_LINES = 150      # harness read_file cap (swegemma/budget.py)
+MAX_FILE_CHARS = 10000    # harness read_file cap
+MAX_STDOUT_CHARS = 5000   # harness run_command cap
 COMPACTION_RATIO = 0.7
 MAX_PROMPT = 12500
 H_WORDING = 'Code graph note from the harness. get_code_neighbors(node="{node}") returned:\n{json}'
@@ -132,21 +135,56 @@ def _int(v):
         return None
 
 
+def visible_range(start, end, line_lengths, max_lines=MAX_FILE_LINES, max_chars=MAX_FILE_CHARS):
+    """The lines a harness read actually shows, after its line cap and character cap (rules of read_file)."""
+    total = len(line_lengths)
+    if total == 0:
+        return None
+    start = max(start or 1, 1)
+    end = min(end if end is not None else total, total)
+    if start > end:
+        return None
+    if max_lines is not None and end - start + 1 > max_lines:
+        end = start + max_lines - 1
+    if max_chars is not None:
+        used = 0
+        last = start - 1
+        for ln in range(start, end + 1):
+            if used >= max_chars:  # this line starts beyond the cut: not shown at all
+                break
+            last = ln
+            used += line_lengths[ln - 1] + 1
+        end = last
+    return (start, end) if end >= start else None
+
+
 def shows_content(step):
-    """(path, start, end, text) if this step's tool result shows file content, else None."""
+    """(path, start, end, text) if this step's tool result shows file content, else None.
+
+    The range is what the harness returned, not what was asked: read_file reports its start and end, and the
+    content line count tells how many lines survived the character cap; a shell view's range starts at the sed or
+    head start (1 for cat) and spans the stdout's line count.
+    """
     if not step.get('tool_calls'):
         return None
     tc = step['tool_calls'][0]
     o = parse_obs(step) or {}
     name, args = tc['function_name'], tc['arguments']
     if name == 'read_file' and o.get('status') == 'ok' and o.get('content'):
-        return (args.get('filepath'), _int(args.get('start_line')), _int(args.get('end_line')), o['content'])
+        start = _int(o.get('start_line')) or _int(args.get('start_line')) or 1
+        n = o['content'].count('\n') + 1
+        return (args.get('filepath'), start, start + n - 1, o['content'])
     if name == 'run_command' and o.get('status') == 'ok' and o.get('stdout'):
         cmd = str(args.get('command', ''))
         if CONTENT_CMD.match(cmd):
             paths = PATH_TOKEN.findall(cmd)
-            m = SED_RANGE.search(cmd)
-            return (paths[-1] if paths else None, int(m.group(1)) if m else None, int(m.group(2)) if m else None, o['stdout'])
+            m, m1 = SED_RANGE.search(cmd), SED_LINE.search(cmd)
+            a = int(m.group(1)) if m else int(m1.group(1)) if m1 else 1
+            n = o['stdout'].count('\n') + 1
+            first = CONTENT_CMD.match(cmd).group(1)
+            if first in ('grep', 'rg', 'awk') or 'tail' in cmd.split('|')[0]:
+                return (paths[-1] if paths else None, None, None, o['stdout'])  # lines unknown; names still count
+            return (paths[-1] if paths else None, a, a + n - 1, o['stdout'])
     return None
 
 
@@ -277,18 +315,22 @@ def shell_view_range(cmd, path, short, file_lines):
     return ('lines', a, b)
 
 
-def touches(call, target, node_id, file_lines=None):
+def touches(call, target, node_id, file_lines=None, line_lengths=None):
     """How the next call touches a target node: 'read', 'edit', 'graph', or None.
 
-    A shell command counts as a read only when it shows file content (cat, sed, head, tail, grep, rg, awk, less,
-    more) of the target's file and its line range (sed -n a,bp; head -N; tail -N) overlaps the node's span.
-    Malformed calls (see valid_call) never count.
+    The lines a call shows are what the harness would return: read_file is capped at 150 lines and 10,000
+    characters from its start line; a shell view (cat, sed, head, tail, grep, rg, less, more) of the target's file
+    shows its pipeline's line range, capped at 5,000 characters of output. `line_lengths` (characters per line of
+    the target's file) makes the character caps exact; without it only the line caps apply. Malformed calls (see
+    valid_call) never count.
     """
     if not valid_call(call):
         return None
     name, args = call['function_name'], call['arguments']
     path, s, e = target['path'], target['start'], target['end']
     short = node_id.rsplit('.', 1)[-1]
+    if line_lengths is not None and file_lines is None:
+        file_lines = len(line_lengths)
 
     def overlap(a, b):
         if a is None and b is None:
@@ -297,10 +339,23 @@ def touches(call, target, node_id, file_lines=None):
         b = b if b is not None else 10**9
         return not (b < s or (e is not None and a > e))
 
+    def capped(a, b, max_chars):
+        """Apply a character cap to a line range using the file's line lengths; (a, b) when lengths are unknown."""
+        if line_lengths is None:
+            return a, b
+        v = visible_range(a, b, line_lengths, max_lines=None, max_chars=max_chars)
+        return v if v else (None, None)
+
     if name == 'read_file':
-        if args.get('filepath') == path:
-            return 'read' if overlap(_int(args.get('start_line')), _int(args.get('end_line'))) else None
-        return None
+        if args.get('filepath') != path:
+            return None
+        a = _int(args.get('start_line')) or 1
+        b = _int(args.get('end_line'))
+        if line_lengths is not None:
+            v = visible_range(a, b, line_lengths)
+            return 'read' if v and overlap(*v) else None
+        b = min(b, a + MAX_FILE_LINES - 1) if b is not None else a + MAX_FILE_LINES - 1
+        return 'read' if overlap(a, b) else None
     if name in ('edit_file', 'write_file'):
         return 'edit' if args.get('filepath') == path else None
     if name == 'run_command':
@@ -310,7 +365,10 @@ def touches(call, target, node_id, file_lines=None):
         kind, a, b = view
         if kind == 'named':
             return 'read'
-        return 'read' if overlap(a, b) else None
+        a2, b2 = capped(a, b, MAX_STDOUT_CHARS)
+        if a2 is None:
+            return None
+        return 'read' if overlap(a2, b2) else None
     if name in ('get_code_neighbors', 'get_code_subgraph', 'search_similar_code'):
         blob = json.dumps(args)
         return 'graph' if node_id in blob or ('.' + short) in blob or f'"{short}"' in blob else None
@@ -393,9 +451,9 @@ def make_state(r, task, g, files, steps, agent, fork_idx, gold_ids, gold_paths):
 
     def in_shown(n):
         for a, b in shown_ranges.get(spans[n]['path'], []):
-            lo = a if a is not None else 1
-            hi = b if b is not None else 10**9
-            if spans[n]['end'] is None or not (hi < spans[n]['start'] or lo > spans[n]['end']):
+            if a is None or b is None:
+                continue  # a grep, awk or tail view: the lines shown are unknown, so the node does not count as shown
+            if spans[n]['end'] is None or not (b < spans[n]['start'] or a > spans[n]['end']):
                 return True
         return False
 
@@ -465,7 +523,8 @@ def make_state(r, task, g, files, steps, agent, fork_idx, gold_ids, gold_paths):
         for n in true_nb:
             if nb_spans[n]:
                 src = N.file_text(r['task'], nb_spans[n]['path'])
-                observed[n] = touches(next_call, nb_spans[n], n, file_lines=len(src.splitlines()) if src else None)
+                ll = [len(x) for x in src.splitlines()] if src else None
+                observed[n] = touches(next_call, nb_spans[n], n, line_lengths=ll)
                 if n in unshown_true:
                     observed_unshown[n] = observed[n]
     return {

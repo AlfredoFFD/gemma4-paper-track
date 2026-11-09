@@ -20,13 +20,14 @@ of a tool call or as a note from the harness?
   compaction, with a logged prompt of at most 12,500 tokens at the next call. The cut rule, the in-view rule, the
   node-choice rule and the decoy rule are in `analysis/fork_states.py` (docstring) and were fixed before any
   replay. Up to three fork points per run (the first three content-showing steps). The export gave 525 states
-  from 241 runs and 88 tasks; after the Nov 8, 8:30 PM amendment (both compared entries fresh) it gives 396
-  states from 73 tasks.
+  from 241 runs and 88 tasks; after the Nov 8, 8:30 PM amendment (both compared entries fresh) it gave 396
+  states from 73 tasks; after the 9:20 PM clarification (the harness's read caps define what was shown) it gives
+  407 states from 77 tasks.
 - Replay: the history is reloaded into the harness's own ADK agent (the base agent: sample prompt, nine tools, no
   adapters, no sub-agent) and the model makes one call through vLLM. No tool executes. Code: `analysis/replay.py`,
   `analysis/kaggle/forks_pilot.py`. Harness wheels: the v28 copies (swegemma 0.2.7), the closest to the traces'
   era; the Kaggle run records every version in `versions.json`.
-- Seeds: 1, 2, 3 per state and arm, passed to vLLM. Three seeds, five arms, 396 states = 5,940 replays. The
+- Seeds: 1, 2, 3 per state and arm, passed to vLLM. Three seeds, five arms, 407 states = 6,105 replays. The
   states run in a fixed shuffled order with a 9-hour budget; if the session ends early, the analysis uses every
   state whose five arms and three seeds all finished, which is a random subset.
 
@@ -60,7 +61,10 @@ the node's span (no range = whole file), an `edit_file` or `write_file` of that 
 separately as `graph`. Clarification added Nov 8, 8:05 PM, after a code review and still before any output was
 read: only content-showing commands count (not `ls`, `echo`, `find`, `python`), `head -N` and `tail -N` ranges
 are respected, and a call with malformed arguments (a non-numeric line, a missing path) is an interface failure,
-never a touch.
+never a touch. Second clarification, Nov 8, 9:20 PM, still before any output was read: the lines a call shows are
+the lines the harness would return, i.e. at most 150 lines and 10,000 characters from a read's start line and at
+most 5,000 characters of shell output, so a read with no range shows lines 1-150, not the whole file. The same
+caps define which nodes count as already shown when a state is built.
 
 - Primary, discrimination: D = P(touch of the swapped-out true neighbor | arms P and H) minus P(touch of the decoy
   | arms P' and H'). The two entries occupy one list slot each, both in unopened files, matched by state and seed.
@@ -93,11 +97,11 @@ Confidence intervals are 95% bootstrap intervals clustered by state (2,000 resam
 
 ## Power, stated as assumptions
 
-With 396 states x 3 seeds = 1,188 replays per arm, D is estimated from 2,376 replays on each side. In the traces,
-the agent's own next call touched the swapped-out entry in 7 of 396 states (1.8%) and any unopened true neighbor
-in 25 (6.3%); those are the expected arm-A base rates. If showing the list lifts the swapped-out entry to 10%,
-a decoy rate of 5% or below is distinguishable from it; a difference under about 3.5 points is not, and the
-intervals will say so. If following stays near the base rate in every arm (H1 fails), the paper reports that as
+With 407 states x 3 seeds = 1,221 replays per arm, D is estimated from 2,442 replays on each side. In the traces,
+scored with the harness's caps, the agent's own next call touched the swapped-out entry in 1 of 407 states and
+any unopened true neighbor in 12 (2.9%); those are the expected arm-A base rates. If showing the list lifts the
+swapped-out entry to 8%, a decoy rate of 3% or below is distinguishable from it; a difference under about 3
+points is not, and the intervals will say so. If following stays near the base rate in every arm (H1 fails), the paper reports that as
 the result and does not test H2.
 
 ## What is reported regardless of outcome

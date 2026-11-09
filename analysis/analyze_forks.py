@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import nodes as N  # noqa: E402
 from fork_states import touches, valid_call  # noqa: E402
 
 ARMS = ['A', 'P', 'Pp', 'H', 'Hp']
@@ -108,17 +109,21 @@ def main():
         spans = s['neighbor_spans']
         dspan = s['decoy_span']
         unshown = set(s.get('unshown_true_neighbors', s['true_neighbors']))
-        flines = s.get('file_lines', {})
+
+        def lengths(path):  # characters per line of a snapshot file, for the harness's character caps
+            src = N.file_text(s['task'], path)
+            return [len(x) for x in src.splitlines()] if src else None
+
         for (arm, seed), r in reps.items():
             call = r['next_call']
-            touched = {n: touches(call, spans[n], n, file_lines=flines.get(n))
+            touched = {n: touches(call, spans[n], n, line_lengths=lengths(spans[n]['path']))
                        for n in s['true_neighbors'] if spans.get(n) and n in unshown}
             hit_true = [bool(v) and v != 'graph' for v in touched.values()]
             any_true[arm][key].append(int(any(hit_true)))
             for v in hit_true:
                 per_entry_true[arm][key].append(int(v))
             sw = touched.get(s['swapped_out'])
-            dec = touches(call, dspan, s['decoy'], file_lines=flines.get(s['decoy'])) if dspan else None
+            dec = touches(call, dspan, s['decoy'], line_lengths=lengths(dspan['path'])) if dspan else None
             if arm in ('P', 'H'):
                 swapped[key].append(int(bool(sw) and sw != 'graph'))
                 channel_true[arm][key].append(int(any(hit_true)))
