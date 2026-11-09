@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from fork_states import touches  # noqa: E402
+from fork_states import touches, valid_call  # noqa: E402
 
 ARMS = ['A', 'P', 'Pp', 'H', 'Hp']
 GRAPH_TOOLS = {'get_code_neighbors', 'get_code_subgraph', 'search_similar_code'}
@@ -76,6 +76,8 @@ def main():
             fail[(r['arm'], 'no_call')] += 1
         elif call['function_name'] not in KNOWN_TOOLS:
             fail[(r['arm'], 'unknown_tool')] += 1
+        elif not valid_call(call):
+            fail[(r['arm'], 'malformed_args')] += 1
         else:
             ok_rows.append(r)
     print('interface failures (arm, kind):', dict(fail))
@@ -101,15 +103,17 @@ def main():
         spans = s['neighbor_spans']
         dspan = s['decoy_span']
         unshown = set(s.get('unshown_true_neighbors', s['true_neighbors']))
+        flines = s.get('file_lines', {})
         for (arm, seed), r in reps.items():
             call = r['next_call']
-            touched = {n: touches(call, spans[n], n) for n in s['true_neighbors'] if spans.get(n) and n in unshown}
+            touched = {n: touches(call, spans[n], n, file_lines=flines.get(n))
+                       for n in s['true_neighbors'] if spans.get(n) and n in unshown}
             hit_true = [bool(v) and v != 'graph' for v in touched.values()]
             any_true[arm][key].append(int(any(hit_true)))
             for v in hit_true:
                 per_entry_true[arm][key].append(int(v))
             sw = touched.get(s['swapped_out'])
-            dec = touches(call, dspan, s['decoy']) if dspan else None
+            dec = touches(call, dspan, s['decoy'], file_lines=flines.get(s['decoy'])) if dspan else None
             if arm in ('P', 'H'):
                 swapped[key].append(int(bool(sw) and sw != 'graph'))
                 channel_true[arm][key].append(int(any(hit_true)))

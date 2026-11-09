@@ -41,7 +41,7 @@ ARMS = ['A', 'P', 'Pp', 'H', 'Hp']
 FIDELITY_N = int(os.environ.get('FIDELITY_N', '12'))
 STATES_N = int(os.environ.get('STATES_N', '0'))  # 0 = all
 CONCURRENCY = int(os.environ.get('CONCURRENCY', '8'))
-TIME_BUDGET_S = int(os.environ.get('TIME_BUDGET_S', str(9 * 3600)))
+TIME_BUDGET_S = int(os.environ.get('TIME_BUDGET_S', str(int(8.5 * 3600))))  # leaves room for the summary under the 12 h session cap
 T0 = time.time()
 
 
@@ -140,6 +140,8 @@ def task_of(state):
 
 async def one(state, arm, seed, sem):
     async with sem:
+        if time.time() - T0 > TIME_BUDGET_S:  # checked once a slot is free, so queued jobs stop after the budget
+            return None
         agent = agents[seed]
         return await replay.run_one_step(agent, state, arm, seed)
 
@@ -152,6 +154,7 @@ async def fidelity():
     rows = []
     with open(OUT / 'fidelity.jsonl', 'w') as f:
         for s, o in zip(picks, outs):
+            o = o or {'error': 'budget exhausted before the fidelity check'}
             got = (o.get('usage') or {}).get('prompt_tokens')
             row = {'task': s['task'], 'run': s['run'], 'fork': s.get('fork', 0), 'logged_prompt_tokens': s['prompt_tokens_next_call_logged'],
                    'replayed_prompt_tokens': got, 'diff': (got - s['prompt_tokens_next_call_logged']) if got else None,
@@ -184,9 +187,9 @@ async def pilot():
 
     async def run_and_write(s, arm, seed):
         nonlocal n_ok, n_err
-        if time.time() - T0 > TIME_BUDGET_S:
-            return
         o = await one(s, arm, seed, sem)
+        if o is None:
+            return
         o['decoy'] = s['decoy'] if arm in ('Pp', 'Hp') else None
         f.write(json.dumps(o) + '\n')
         f.flush()

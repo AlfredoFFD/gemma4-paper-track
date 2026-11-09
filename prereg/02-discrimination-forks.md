@@ -53,7 +53,10 @@ A replay's outcome is the model's first function call after the fork. "Touch" of
 uptake definition, implemented in `fork_states.touches`: a `read_file` of the node's file whose line range overlaps
 the node's span (no range = whole file), an `edit_file` or `write_file` of that file, or a shell view (`cat`, `sed`,
 `grep`, ...) of that file overlapping the span or naming the node. Graph-tool calls that name the node count
-separately as `graph`.
+separately as `graph`. Clarification added Nov 8, 8:05 PM, after a code review and still before any output was
+read: only content-showing commands count (not `ls`, `echo`, `find`, `python`), `head -N` and `tail -N` ranges
+are respected, and a call with malformed arguments (a non-numeric line, a missing path) is an interface failure,
+never a touch.
 
 - Primary, discrimination: D = P(touch of the swapped-out true neighbor | arms P and H) minus P(touch of the decoy
   | arms P' and H'). The two entries occupy one list slot each, both in unopened files, matched by state and seed.

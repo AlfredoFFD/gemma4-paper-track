@@ -151,8 +151,46 @@ def shows_content(step):
     return None
 
 
-def touches(call, target, node_id):
-    """How the next call touches a target node: 'read', 'edit', 'graph', or None."""
+HEAD_N = re.compile(r'\bhead\s+(?:-n\s*|-)(\d+)')
+TAIL_N = re.compile(r'\btail\s+(?:-n\s*|-)(\d+)')
+INT_LIKE = re.compile(r'^\s*-?\d+\s*$')
+
+
+def valid_call(call):
+    """False for calls whose arguments the harness could not have executed (malformed): they are interface failures."""
+    if not call or not isinstance(call.get('arguments'), dict):
+        return False
+    name, args = call.get('function_name'), call['arguments']
+    if name == 'read_file':
+        if not isinstance(args.get('filepath'), str) or not args['filepath']:
+            return False
+        for k in ('start_line', 'end_line'):
+            v = args.get(k)
+            if v is not None and not (isinstance(v, int) or (isinstance(v, str) and INT_LIKE.match(v))):
+                return False
+        return True
+    if name in ('edit_file', 'write_file'):
+        return isinstance(args.get('filepath'), str) and bool(args['filepath'])
+    if name == 'run_command':
+        return isinstance(args.get('command'), str) and bool(args['command'].strip())
+    if name == 'get_code_neighbors':
+        return isinstance(args.get('node'), str)
+    if name == 'search_similar_code':
+        return isinstance(args.get('query'), str)
+    if name == 'get_code_subgraph':
+        return isinstance(args.get('nodes'), (list, str))
+    return name in ('get_status', 'submit_patch')
+
+
+def touches(call, target, node_id, file_lines=None):
+    """How the next call touches a target node: 'read', 'edit', 'graph', or None.
+
+    A shell command counts as a read only when it shows file content (cat, sed, head, tail, grep, rg, awk, less,
+    more) of the target's file and its line range (sed -n a,bp; head -N; tail -N) overlaps the node's span.
+    Malformed calls (see valid_call) never count.
+    """
+    if not valid_call(call):
+        return None
     name, args = call['function_name'], call['arguments']
     path, s, e = target['path'], target['start'], target['end']
     short = node_id.rsplit('.', 1)[-1]
@@ -172,10 +210,22 @@ def touches(call, target, node_id):
         return 'edit' if args.get('filepath') == path else None
     if name == 'run_command':
         cmd = str(args.get('command', ''))
-        if path in cmd or (path.rsplit('/', 1)[-1] in cmd and short in cmd):
-            m = SED_RANGE.search(cmd)
-            return 'read' if overlap(int(m.group(1)) if m else None, int(m.group(2)) if m else None) else None
-        return None
+        if not CONTENT_CMD.match(cmd):
+            return None
+        if not (path in cmd or (path.rsplit('/', 1)[-1] in cmd and short in cmd)):
+            return None
+        m = SED_RANGE.search(cmd)
+        if m:
+            return 'read' if overlap(int(m.group(1)), int(m.group(2))) else None
+        m = HEAD_N.search(cmd)
+        if m:
+            return 'read' if overlap(1, int(m.group(1))) else None
+        m = TAIL_N.search(cmd)
+        if m:
+            if file_lines is None:
+                return None
+            return 'read' if overlap(max(1, file_lines - int(m.group(1)) + 1), file_lines) else None
+        return 'read'
     if name in ('get_code_neighbors', 'get_code_subgraph', 'search_similar_code'):
         blob = json.dumps(args)
         return 'graph' if node_id in blob or ('.' + short) in blob or f'"{short}"' in blob else None
@@ -325,7 +375,8 @@ def make_state(r, task, g, files, steps, agent, fork_idx, gold_ids, gold_paths):
     if next_call:
         for n in true_nb:
             if nb_spans[n]:
-                observed[n] = touches(next_call, nb_spans[n], n)
+                src = N.file_text(r['task'], nb_spans[n]['path'])
+                observed[n] = touches(next_call, nb_spans[n], n, file_lines=len(src.splitlines()) if src else None)
                 if n in unshown_true:
                     observed_unshown[n] = observed[n]
     return {
@@ -348,8 +399,11 @@ def make_state(r, task, g, files, steps, agent, fork_idx, gold_ids, gold_paths):
             'H': {'user_text': H_WORDING.format(node=node, json=json.dumps(p_obs))},
             'Hp': {'user_text': H_WORDING.format(node=node, json=json.dumps(pp_obs))},
         },
-        'observed_next_call': next_call, 'observed_next_thinking': (nxt.get('message') or '')[:2000],
+        'observed_next_call': next_call, 'observed_next_call_valid': valid_call(next_call) if next_call else False,
+        'observed_next_thinking': (nxt.get('message') or '')[:2000],
         'observed_touch': observed, 'observed_touch_unshown': observed_unshown,
+        'file_lines': {n: (len(t.splitlines()) if (t := N.file_text(r['task'], sp['path'])) else None)
+                       for n, sp in list(nb_spans.items()) + [(decoy, N.span(r['task'], decoy))] if sp},
         'gold_ids': sorted(gold_ids[r['task']]),
         'steps': steps[:steps.index(agent[fork_idx]) + 1],
     }
