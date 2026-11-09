@@ -1,6 +1,7 @@
 # Pre-registration 03: does framing or encoding make Gemma follow the graph, and does it then check?
 
-Status: FROZEN on Nov 9, 2026, 9:05 AM EST, before any replay of these arms ran. Written after the results of
+Status: FROZEN on Nov 9, 2026, about 12:20 PM EST (the first version of this line said 9:05 AM, a clock error
+corrected at 12:55 PM), before any replay of these arms ran; the run (kernel v6) started at 12:50 PM. Written after the results of
 pre-registration 02 (run v5) were read: following of the graph's neighbor list was near the base rate in every arm,
 so the discrimination test there had no power. This extension changes only the last piece inserted at the fork;
 the states, seeds, outcome definition, caps, exclusions and analysis code are those of pre-registration 02.
