@@ -38,7 +38,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 HARNESS_VARIANT = os.environ.get('HARNESS_VARIANT', 'v28')  # harness wheels closest to the traces' era
 SEEDS = [1, 2, 3]
 ARMS = ['A', 'P', 'Pp', 'H', 'Hp']
-FIDELITY_N = int(os.environ.get('FIDELITY_N', '12'))
+FIDELITY_N = int(os.environ.get('FIDELITY_N', '24'))
 STATES_N = int(os.environ.get('STATES_N', '0'))  # 0 = all
 CONCURRENCY = int(os.environ.get('CONCURRENCY', '8'))
 TIME_BUDGET_S = int(os.environ.get('TIME_BUDGET_S', str(int(8.5 * 3600))))  # leaves room for the summary under the 12 h session cap
@@ -84,6 +84,7 @@ versions = {
     'wheelhouse_files': sorted(p.name for p in WHEELHOUSE.glob('*.whl')),
     'model_path': MODEL_PATH, 'model_files': sorted(p.name for p in Path(MODEL_PATH).glob('*'))[:40],
     'seeds': SEEDS, 'arms': ARMS, 'concurrency': CONCURRENCY,
+    'thoughts_in_history': False,  # see replay.history_events: the original prompts carried no earlier thoughts
     'gpu': subprocess.run(['nvidia-smi', '--query-gpu=name,memory.total', '--format=csv,noheader'], capture_output=True, text=True).stdout.strip().splitlines(),
 }
 (OUT / 'versions.json').write_text(json.dumps(versions, indent=1))

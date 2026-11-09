@@ -104,6 +104,18 @@ swapped-out entry to 8%, a decoy rate of 3% or below is distinguishable from it;
 points is not, and the intervals will say so. If following stays near the base rate in every arm (H1 fails), the paper reports that as
 the result and does not test H2.
 
+## Run record
+
+- Run v4 (Nov 8, 8:32 PM to Nov 9, 12:16 AM EST; 6,105 replays, 9 context-window errors) FAILED the fidelity
+  gate: median absolute relative difference 6.1% (n = 12). Cause, established from the same run: the replay
+  re-sent each earlier thought as reasoning, and vLLM renders that when the conversation ends with a tool result
+  (arms A, P, P') but not when it ends with a user note (H, H'). The arms ending with a note matched the logged
+  sizes (1.3% median), so the original prompts carried no earlier thoughts; re-sending them also made the two
+  channels differ by more than the channel. Its outcomes were read before the fix (near-zero following in every
+  arm) and are EXPLORATORY.
+- Run v5: identical to v4 except that thoughts are not re-sent (`replay.INCLUDE_THOUGHTS = False`) and the fidelity
+  sample is 24 states. No hypothesis, threshold, rule or state changed. It is the confirmatory run.
+
 ## What is reported regardless of outcome
 
 All of the rates above with intervals, the fidelity table, the per-arm failure counts, the decoy positions, and the

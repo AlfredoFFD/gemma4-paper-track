@@ -43,8 +43,19 @@ def _kind(step):
     return (step.get('extra') or {}).get('event_type') or ('tool' if step.get('tool_calls') else step['source'])
 
 
-def history_events(state, agent_name):
-    """ADK events for the history up to and including the fork step's tool result."""
+INCLUDE_THOUGHTS = False  # the original prompts did not carry earlier thoughts (fidelity check of Nov 8/9), so neither do the forks
+
+
+def history_events(state, agent_name, include_thoughts=None):
+    """ADK events for the history up to and including the fork step's tool result.
+
+    Thought text is left out by default: the pilot of Nov 8 showed that re-sending it as reasoning makes the
+    rebuilt prompt larger than the logged one by about the thoughts' size in the arms that end with a tool result,
+    while the arms that end with a user note matched the logged size. The original runs therefore did not carry
+    earlier thoughts, and including them would also make the tool-result arms differ from the note arms.
+    """
+    if include_thoughts is None:
+        include_thoughts = INCLUDE_THOUGHTS
     inv = f"inv-{state['task']}-r{state['run']}-f{state.get('fork', 0)}"
     events, k = [], 0
     for s in state['steps']:
@@ -56,7 +67,7 @@ def history_events(state, agent_name):
                                 content=types.Content(role='user', parts=[types.Part(text=s.get('message') or '')])))
             continue
         parts = []
-        if s.get('message'):
+        if s.get('message') and (kind != 'thinking' or include_thoughts):
             parts.append(types.Part(text=s['message'], thought=(kind == 'thinking')))
         calls = []
         for tc in s.get('tool_calls') or []:
