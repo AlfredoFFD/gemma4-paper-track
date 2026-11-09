@@ -173,7 +173,7 @@ def shows_content(step):
     if name == 'read_file' and o.get('status') == 'ok' and o.get('content'):
         start = _int(o.get('start_line')) or _int(args.get('start_line')) or 1
         n = o['content'].count('\n') + 1
-        return (args.get('filepath'), start, start + n - 1, o['content'])
+        return (norm_path(args.get('filepath')), start, start + n - 1, o['content'])
     if name == 'run_command' and o.get('status') == 'ok' and o.get('stdout'):
         cmd = str(args.get('command', ''))
         if CONTENT_CMD.match(cmd):
@@ -182,9 +182,10 @@ def shows_content(step):
             a = int(m.group(1)) if m else int(m1.group(1)) if m1 else 1
             n = o['stdout'].count('\n') + 1
             first = CONTENT_CMD.match(cmd).group(1)
+            p = norm_path(paths[-1]) if paths else None
             if first in ('grep', 'rg', 'awk') or 'tail' in cmd.split('|')[0]:
-                return (paths[-1] if paths else None, None, None, o['stdout'])  # lines unknown; names still count
-            return (paths[-1] if paths else None, a, a + n - 1, o['stdout'])
+                return (p, None, None, o['stdout'])  # lines unknown; names still count
+            return (p, a, a + n - 1, o['stdout'])
     return None
 
 
@@ -237,17 +238,41 @@ VIEW_CMDS = ('cat', 'sed', 'head', 'tail', 'grep', 'rg', 'less', 'more', 'awk')
 
 
 def _count_arg(toks, default=10):
-    """The N of head/tail: -n N, -nN, -N, --lines=N; else the default."""
+    """The N of head/tail as (n, sign): -n N, -nN, -N, --lines=N. sign is '+' for +N (tail -n +N: from line N;
+    head -n +N: first N), '-' for an explicit -N after -n (head -n -N: all but the last N; tail -n -N: last N),
+    '' otherwise."""
+    def parse(v):
+        sign = v[0] if v[:1] in '+-' else ''
+        digits = v[1:] if sign else v
+        return (int(digits), sign) if digits.isdigit() else None
+
     for i, t in enumerate(toks[1:], 1):
-        if t in ('-n', '--lines') and i + 1 < len(toks) and toks[i + 1].lstrip('-+').isdigit():
-            return int(toks[i + 1].lstrip('-+'))
-        if t.startswith('--lines=') and t[8:].lstrip('-+').isdigit():
-            return int(t[8:].lstrip('-+'))
-        if t.startswith('-n') and t[2:].lstrip('-+').isdigit():
-            return int(t[2:].lstrip('-+'))
+        if t in ('-n', '--lines') and i + 1 < len(toks):
+            p = parse(toks[i + 1])
+            if p:
+                return p
+        if t.startswith('--lines='):
+            p = parse(t[8:])
+            if p:
+                return p
+        if t.startswith('-n') and len(t) > 2:
+            p = parse(t[2:])
+            if p:
+                return p
         if t.startswith('-') and t[1:].isdigit():
-            return int(t[1:])
-    return default
+            return int(t[1:]), ''
+    return default, ''
+
+
+def norm_path(p):
+    """The harness treats src/mod.py, ./src/mod.py and /workspace/src/mod.py as the same file."""
+    if not isinstance(p, str):
+        return p
+    p = p.strip()
+    for prefix in ('/workspace/', 'workspace/', './'):
+        while p.startswith(prefix):
+            p = p[len(prefix):]
+    return p
 
 
 def shell_view_range(cmd, path, short, file_lines):
@@ -268,7 +293,7 @@ def shell_view_range(cmd, path, short, file_lines):
             toks_of.append(st.split())
     src = None
     for i, toks in enumerate(toks_of):
-        if toks and toks[0] in VIEW_CMDS and any(t == path or t.endswith('/' + path) or t == './' + path for t in toks[1:]):
+        if toks and toks[0] in VIEW_CMDS and any(norm_path(t) == path for t in toks[1:]):
             src = i
             break
     if src is None:
@@ -296,13 +321,21 @@ def shell_view_range(cmd, path, short, file_lines):
             else:  # sed on a stream counts lines from the stream's first line
                 a, b = a + a2 - 1, (a + b2 - 1 if b is None else min(b, a + b2 - 1))
         elif c == 'head':
-            n = _count_arg(toks)
-            b = a + n - 1 if b is None else min(b, a + n - 1)
+            n, sign = _count_arg(toks)
+            if sign == '-':  # all but the last n lines
+                if b is None:
+                    return None
+                b = b - n
+            else:
+                b = a + n - 1 if b is None else min(b, a + n - 1)
         elif c == 'tail':
-            n = _count_arg(toks)
-            if b is None:
-                return None
-            a = max(a, b - n + 1)
+            n, sign = _count_arg(toks)
+            if sign == '+':  # from the stream's n-th line on
+                a = a + n - 1
+            else:
+                if b is None:
+                    return None
+                a = max(a, b - n + 1)
         elif c in ('grep', 'rg', 'awk'):
             if c != 'awk' and short in st:
                 named = True
@@ -310,6 +343,8 @@ def shell_view_range(cmd, path, short, file_lines):
                 return ('named', None, None) if named else None
         else:
             return None  # wc, python, xargs ...: nothing of the file is shown
+        if b is not None and b < a:
+            return None  # the pipeline left no lines
     if named:
         return ('named', None, None)
     return ('lines', a, b)
@@ -347,7 +382,7 @@ def touches(call, target, node_id, file_lines=None, line_lengths=None):
         return v if v else (None, None)
 
     if name == 'read_file':
-        if args.get('filepath') != path:
+        if norm_path(args.get('filepath')) != path:
             return None
         a = _int(args.get('start_line')) or 1
         b = _int(args.get('end_line'))
@@ -357,7 +392,7 @@ def touches(call, target, node_id, file_lines=None, line_lengths=None):
         b = min(b, a + MAX_FILE_LINES - 1) if b is not None else a + MAX_FILE_LINES - 1
         return 'read' if overlap(a, b) else None
     if name in ('edit_file', 'write_file'):
-        return 'edit' if args.get('filepath') == path else None
+        return 'edit' if norm_path(args.get('filepath')) == path else None
     if name == 'run_command':
         view = shell_view_range(str(args.get('command', '')), path, short, file_lines)
         if view is None:
@@ -395,7 +430,7 @@ def build_states(r, tasks, gold_ids, gold_paths):
             break
         for tc in s.get('tool_calls') or []:
             n, a = tc['function_name'], tc['arguments']
-            if n in ('edit_file', 'submit_patch') or (n == 'write_file' and a.get('filepath') in files):
+            if n in ('edit_file', 'submit_patch') or (n == 'write_file' and norm_path(a.get('filepath')) in files):
                 reason = f'{n}_before_fork'
                 break
         if reason:
