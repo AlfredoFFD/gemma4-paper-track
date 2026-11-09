@@ -19,13 +19,14 @@ of a tool call or as a note from the harness?
   after the first tool result that shows file content, before any edit of repository code and before any
   compaction, with a logged prompt of at most 12,500 tokens at the next call. The cut rule, the in-view rule, the
   node-choice rule and the decoy rule are in `analysis/fork_states.py` (docstring) and were fixed before any
-  replay. Up to three fork points per run (the first three content-showing steps). The export gives 525 states
-  from 241 runs and 88 tasks.
+  replay. Up to three fork points per run (the first three content-showing steps). The export gave 525 states
+  from 241 runs and 88 tasks; after the Nov 8, 8:30 PM amendment (both compared entries fresh) it gives 396
+  states from 73 tasks.
 - Replay: the history is reloaded into the harness's own ADK agent (the base agent: sample prompt, nine tools, no
   adapters, no sub-agent) and the model makes one call through vLLM. No tool executes. Code: `analysis/replay.py`,
   `analysis/kaggle/forks_pilot.py`. Harness wheels: the v28 copies (swegemma 0.2.7), the closest to the traces'
   era; the Kaggle run records every version in `versions.json`.
-- Seeds: 1, 2, 3 per state and arm, passed to vLLM. Three seeds, five arms, 525 states = 7,875 replays. The
+- Seeds: 1, 2, 3 per state and arm, passed to vLLM. Three seeds, five arms, 396 states = 5,940 replays. The
   states run in a fixed shuffled order with a 9-hour budget; if the session ends early, the analysis uses every
   state whose five arms and three seeds all finished, which is a random subset.
 
@@ -40,8 +41,11 @@ of a tool call or as a note from the harness?
 | H' | as H, with the P' list |
 
 The two compared entries both live in files the agent has not opened before the fork, so following either one takes
-a new read. The swapped-out entry is a seeded random choice among such true neighbors (preferring one whose file
-holds no other listed entry). The decoy is a real node in an unopened file that holds no listed entry, not a
+a new read, and neither name has appeared in the prompt or in any tool result before the fork (amendment of Nov 8,
+8:30 PM, before any output was read: a review found the swapped-out entry already named in view in about half the
+states while the decoy never was, which would favor the true entry for reasons that have nothing to do with the
+graph). The swapped-out entry is a seeded random choice among such true neighbors (preferring one whose file holds
+no other listed entry). The neighbor list is the harness's exact output, self-loops included (same amendment). The decoy is a real node in an unopened file that holds no listed entry, not a
 neighbor, not a gold unit, not in view, not a test, drawn from the swapped-out entry's directory (else the queried
 node's directory, else the package). Both list positions are logged. Rationale, found on the Nov 8 export before
 any replay: most true neighbors sit in the file the agent just opened, so re-reading it would have counted as
@@ -89,10 +93,10 @@ Confidence intervals are 95% bootstrap intervals clustered by state (2,000 resam
 
 ## Power, stated as assumptions
 
-With 525 states x 3 seeds = 1,575 replays per arm, D is estimated from 3,150 replays on each side. In the traces,
-the agent's own next call touched the swapped-out entry in 11 of 525 states (2.1%) and any unopened true neighbor
-in 34 (6.5%); those are the expected arm-A base rates. If showing the list lifts the swapped-out entry to 10%,
-a decoy rate of 5% or below is distinguishable from it; a difference under about 3 points is not, and the
+With 396 states x 3 seeds = 1,188 replays per arm, D is estimated from 2,376 replays on each side. In the traces,
+the agent's own next call touched the swapped-out entry in 7 of 396 states (1.8%) and any unopened true neighbor
+in 25 (6.3%); those are the expected arm-A base rates. If showing the list lifts the swapped-out entry to 10%,
+a decoy rate of 5% or below is distinguishable from it; a difference under about 3.5 points is not, and the
 intervals will say so. If following stays near the base rate in every arm (H1 fails), the paper reports that as
 the result and does not test H2.
 

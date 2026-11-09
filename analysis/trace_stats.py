@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import nodes as N  # noqa: E402
-from fork_states import graph_for, load_tasks, parse_obs, touches  # noqa: E402
+from fork_states import CONTENT_CMD, PATH_TOKEN, graph_for, load_tasks, parse_obs, touches  # noqa: E402
 from graphloc_traces import iter_runs, load  # noqa: E402
 
 GRAPH_TOOLS = ('get_code_neighbors', 'search_similar_code', 'get_code_subgraph')
@@ -76,7 +76,17 @@ def main():
                     empty[tool] += 1
                     continue
                 nonempty = True
-                nxt = next((a for a in agent[i + 1:] if (a.get('tool_calls') or [{}])[0].get('function_name') in READ_EDIT), None)
+                def _shows(a):
+                    tc0 = (a.get('tool_calls') or [{}])[0]
+                    fn = tc0.get('function_name')
+                    if fn in ('read_file', 'edit_file', 'write_file'):
+                        return True
+                    if fn == 'run_command':  # only commands that show file content, not ls/find/python
+                        cmd = str((tc0.get('arguments') or {}).get('command', ''))
+                        return bool(CONTENT_CMD.match(cmd) and PATH_TOKEN.search(cmd))
+                    return False
+
+                nxt = next((a for a in agent[i + 1:] if _shows(a)), None)
                 if nxt is None:
                     continue
                 call = nxt['tool_calls'][0]

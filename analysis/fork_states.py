@@ -82,10 +82,9 @@ def graph_for(task):
         g = json.load(open(DATA / 'graphs' / f'{key}.json', encoding='utf-8'))
         ids = [n['id'] for n in g['nodes']]
         nbr = collections.defaultdict(set)
-        for e in g['edges']:
-            if e['source'] != e['target']:
-                nbr[e['source']].add(e['target'])
-                nbr[e['target']].add(e['source'])
+        for e in g['edges']:  # self-loops stay: the harness lists the node itself when it calls itself
+            nbr[e['source']].add(e['target'])
+            nbr[e['target']].add(e['source'])
         by_short = collections.defaultdict(list)
         for i in ids:
             by_short[i.rsplit('.', 1)[-1]].append(i)
@@ -153,6 +152,7 @@ def shows_content(step):
 
 HEAD_N = re.compile(r'\bhead\s+(?:-n\s*|-)(\d+)')
 TAIL_N = re.compile(r'\btail\s+(?:-n\s*|-)(\d+)')
+SED_LINE = re.compile(r"sed\s+-n\s+'?(\d+)p'?")
 INT_LIKE = re.compile(r'^\s*-?\d+\s*$')
 
 
@@ -169,8 +169,11 @@ def valid_call(call):
             if v is not None and not (isinstance(v, int) or (isinstance(v, str) and INT_LIKE.match(v))):
                 return False
         return True
-    if name in ('edit_file', 'write_file'):
-        return isinstance(args.get('filepath'), str) and bool(args['filepath'])
+    if name == 'edit_file':
+        return (isinstance(args.get('filepath'), str) and bool(args['filepath'])
+                and isinstance(args.get('old_string'), str) and isinstance(args.get('new_string'), str))
+    if name == 'write_file':
+        return isinstance(args.get('filepath'), str) and bool(args['filepath']) and isinstance(args.get('content'), str)
     if name == 'run_command':
         return isinstance(args.get('command'), str) and bool(args['command'].strip())
     if name == 'get_code_neighbors':
@@ -210,22 +213,35 @@ def touches(call, target, node_id, file_lines=None):
         return 'edit' if args.get('filepath') == path else None
     if name == 'run_command':
         cmd = str(args.get('command', ''))
-        if not CONTENT_CMD.match(cmd):
+        m0 = CONTENT_CMD.match(cmd)
+        if not m0:
             return None
         if not (path in cmd or (path.rsplit('/', 1)[-1] in cmd and short in cmd)):
             return None
-        m = SED_RANGE.search(cmd)
-        if m:
-            return 'read' if overlap(int(m.group(1)), int(m.group(2))) else None
-        m = HEAD_N.search(cmd)
-        if m:
-            return 'read' if overlap(1, int(m.group(1))) else None
-        m = TAIL_N.search(cmd)
-        if m:
+        first = m0.group(1)
+        if 'head' in cmd:
+            m = HEAD_N.search(cmd)
+            n = int(m.group(1)) if m else 10  # head's default
+            return 'read' if overlap(1, n) else None
+        if 'tail' in cmd:
+            m = TAIL_N.search(cmd)
+            n = int(m.group(1)) if m else 10
             if file_lines is None:
                 return None
-            return 'read' if overlap(max(1, file_lines - int(m.group(1)) + 1), file_lines) else None
-        return 'read'
+            return 'read' if overlap(max(1, file_lines - n + 1), file_lines) else None
+        if first == 'sed':
+            m = SED_RANGE.search(cmd)
+            if m:
+                return 'read' if overlap(int(m.group(1)), int(m.group(2))) else None
+            m = SED_LINE.search(cmd)
+            if m:
+                return 'read' if overlap(int(m.group(1)), int(m.group(1))) else None
+            return None  # pattern-based sed: unknown lines shown
+        if first in ('grep', 'rg'):
+            return 'read' if short in cmd else None  # shows matching lines only: counts when it names the node
+        if first in ('cat', 'less', 'more'):
+            return 'read'
+        return None  # awk and anything else: unknown lines shown
     if name in ('get_code_neighbors', 'get_code_subgraph', 'search_similar_code'):
         blob = json.dumps(args)
         return 'graph' if node_id in blob or ('.' + short) in blob or f'"{short}"' in blob else None
@@ -333,14 +349,18 @@ def make_state(r, task, g, files, steps, agent, fork_idx, gold_ids, gold_paths):
     node_path = spans[node]['path']
     nb_files = collections.Counter(sp['path'] for sp in nb_spans.values() if sp)
     unshown_true = [n for n in true_nb if nb_spans[n] and nb_spans[n]['path'] not in shown_files]
-    if not unshown_true:
-        return {'task': r['task'], 'run': r['run'], 'excluded': 'no_true_neighbor_in_unopened_file', 'node': node}
+    # The swapped-out entry must be as fresh as the decoy: file unopened and name not yet seen in the prompt or
+    # any tool result (the decoy is drawn from outside the in-view set by construction).
+    fresh_true = [n for n in unshown_true if n not in in_view]
+    if not fresh_true:
+        return {'task': r['task'], 'run': r['run'], 'excluded': 'no_fresh_true_neighbor', 'node': node}
+
     def is_test(path):
         return '/tests/' in '/' + path or path.rsplit('/', 1)[-1].startswith('test_')
 
-    alone = [n for n in unshown_true if nb_files[nb_spans[n]['path']] == 1]  # its file holds no other listed entry
-    nontest = [n for n in unshown_true if not is_test(nb_spans[n]['path'])]
-    swap_pool = sorted(set(alone) & set(nontest)) or sorted(nontest) or sorted(alone) or sorted(unshown_true)
+    alone = [n for n in fresh_true if nb_files[nb_spans[n]['path']] == 1]  # its file holds no other listed entry
+    nontest = [n for n in fresh_true if not is_test(nb_spans[n]['path'])]
+    swap_pool = sorted(set(alone) & set(nontest)) or sorted(nontest) or sorted(alone) or sorted(fresh_true)
     swapped = rng.choice(swap_pool)
     swapped_dir = nb_spans[swapped]['path'].rsplit('/', 1)[0] if '/' in nb_spans[swapped]['path'] else ''
     node_dir = node_path.rsplit('/', 1)[0] if '/' in node_path else ''
@@ -388,7 +408,7 @@ def make_state(r, task, g, files, steps, agent, fork_idx, gold_ids, gold_paths):
         'node': node, 'node_span': spans[node], 'node_named_in_issue': node in issue_nodes,
         'node_in_shown_file': node_path in shown_files, 'in_view_count': len(in_view),
         'true_neighbors': true_nb, 'neighbor_spans': nb_spans, 'shown_files': sorted(shown_files),
-        'unshown_true_neighbors': unshown_true,
+        'unshown_true_neighbors': unshown_true, 'fresh_true_neighbors': fresh_true,
         'decoy': decoy, 'decoy_span': N.span(r['task'], decoy), 'decoy_pool': pool_kind, 'decoy_pool_size': len(pool),
         'swapped_out': swapped, 'swapped_out_alone_in_file': swapped in alone,
         'swapped_out_is_test': is_test(nb_spans[swapped]['path']),
