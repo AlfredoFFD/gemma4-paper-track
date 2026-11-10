@@ -630,3 +630,12 @@ reading found and what it changes, so Claude Science can revise its pre-registra
   - Thought mentions depend on the matching rule: 10.8, 12.2, 11.0 (substring, among replays with a thought) against 9.9, 11.4, 10.3 (whole word, all replays). Same reading; both are in the draft.
 - **Not covered by the re-derivation.** The two other grep readings of the recount, the session durations, the v4 fidelity figure, and the trace numbers of section 2. The Sep 30 audit numbers quoted in section 2 (84% of tasks; 10% and 19% reach) still have no independent re-derivation.
 - **Not reviewed.** `rederive_s5.py` has had no second reader. Its exact agreement with the frozen table on every registered value is the evidence that its loader and complete-state rule are right; its name matching for any-means and mentions is its own choice.
+
+### 2026-11-09 23:51 EST: Three corrections relayed from the earlier owner session; push
+
+- **Source.** The earlier owner session's last message, relayed by the team, listed three corrections to the draft.
+  1. "407 real runs" in the abstract and "241 runs" in section 3.1: already corrected at 23:36 (407 points, 205 runs).
+  2. Section 3.2 said the rewired entries are held to the eligibility of the scored true entries. Checked in `analysis/fork_states.py`: the scored true entries are `unshown_true` (a known span in a file not yet opened, line 573); the rewired entries exclude the true neighbors, the names in view, the gold nodes, the node and the decoy (`banned_r`, line 632) and must pass `eligible_r`. Section 3.2 now states the two filters. Section 5 now says that the text of pre-registration 03 describes one filter for both sets while the code applied it to the rewired entries only.
+  3. Section 4 described the wide grep reading as "recursive searches naming an entry". In `analysis/recount_b_outcomes.py` it is a recursive grep over a directory that contains the entry's file (`covers`, line 161). Reworded.
+- **Push.** [team] said "yes push them" at about 11:50 PM. Commits `9b5a95c`, `073e10f`, `4e13a40` and the commit that carries this entry go to the private repository.
+- **Word count.** After tonight's corrections the draft is over 3,000 words without its header note. About 200 words have to come out when experiment C is folded in.

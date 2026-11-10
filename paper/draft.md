@@ -74,8 +74,9 @@ Every arm seeds the same history. Only the last piece differs.
 
 The swapped-out neighbor and the decoy both live in unopened files and neither name has appeared in the prompt.
 The decoy is a real non-neighbor function from the same directory, not a fix location and not a test. The rewired
-list comes from seeded double-edge swaps (ten per edge), which keep every node's degree; its entries are held to
-the eligibility of the scored true entries (unopened files, unseen names, no fix-location files) and padded from
+list comes from seeded double-edge swaps (ten per edge), which keep every node's degree; its entries are in
+unopened files, with unseen names and outside fix-location files (the scored true entries need only an unopened
+file; Section 5), and padded from
 the node's directory where the rewired neighborhood is short (847 padded entries in 298 states).
 
 ### 3.3 Replay
@@ -140,7 +141,7 @@ make the agent call the graph again (3.2% of next calls, against 0.3% in A).
 **Independent recount.** A second script, written without the first, rescored all 46,560 (replay, entry-class)
 cells from the raw replay logs. Under the reading of the grep rule closest to the registered text it differs in
 28 cells, all shell searches, and every decision stands (B1 +1.55 [0.43, 2.75], B3 +5.33 [3.35, 7.30], B4 +4.04
-and +7.22). Under a wider reading that also credits recursive searches naming an entry, base rates rise (A 3.5%,
+and +7.22). Under a wider reading that also credits recursive searches over a directory that contains an entry's file, base rates rise (A 3.5%,
 E 9.1%), B3 and B4 stand (+4.73 [2.75, 6.70]; +4.47, +7.90) and B1 does not (+0.77 [−0.52, 2.06]). We therefore
 rest the paper on B3 and B4 and call B1 scorer-dependent. E against A is a factor of 2.6 to 3.8 depending on the
 reading.
@@ -173,7 +174,7 @@ not in attention.
 ranks 4 to 7 in 1.3%, rank 8 or later in 0.4%. The tool sorts alphabetically.
 
 **The structure effect is smaller on matched entries.** The rewired entries were filtered (unseen names, no
-fix-location files); the scored true entries were not all. Restricting the true entries to the same filter
+fix-location files); the scored true entries were not all (the pre-registration's text says both sets met one filter; the code applied it to the rewired entries only). Restricting the true entries to the same filter
 (3,292 of 3,704), E falls to 2.49% [1.20, 3.87], E − H is still +2.32 [1.12, 3.69], but true minus rewired is
 +1.46 [0.00, 3.01] under E (lower bound −0.09 in an independent bootstrap) and +0.34 [−0.60, 1.29] under D. Most of the B4 gap comes from true neighbors in
 fix-location files and names already in view, which the agent has its own reasons to visit and the list makes
