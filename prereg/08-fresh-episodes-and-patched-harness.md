@@ -175,3 +175,7 @@ fingerprints; the raw per-replay records; and the harness, server, model and san
   ok, first prompts 67 tokens above the logged size). The wrapper now takes an output folder, so the parts "fix" and
   "fresh" run in separate containers and never write one file: "fix" to `/vol/out_g`, "fresh" to `/vol/out_g_fresh`.
   New md5 of `analysis/modal_g/forks_g_modal.py`: `adf7960dd962c13fdd82347318985c96`. The runner is unchanged.
+- 2:04 PM: the part "fresh" runs inside the run of pre-registration 09 (`analysis/modal_g/forks_09_runner.py`, a copy of
+  this runner). Arm N is unchanged there (same code path, seeds, horizon and tools); two further arms run beside it
+  with the same seeds. Rule N1 is evaluated on arm N of that run by `analysis/analyze_09.py`, which calls this
+  pre-registration's own function for it. The part "fix" has been running since 1:55 PM with the files above.
