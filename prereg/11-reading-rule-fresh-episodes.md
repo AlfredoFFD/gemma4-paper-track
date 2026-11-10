@@ -91,3 +91,6 @@ Every count above, each rule with its verdict or "too few reads to test", and th
   runs, so their "first reads" are first only within the replay and the test says nothing about the rule; its
   output was seen (after an ADDRESS 597 of 620 ask past line 1, after a PATH ONLY 36 of 604). No threshold was
   changed.
+- Nov 10, 2026, 4:10 PM EST, for the record: the run of pre-registration 09 ended at 4:07 PM; its rows were fetched
+  then and analyzed in this order: `analyze_09.py` (the rules of pre-registrations 08 and 09), then `analyze_11.py`
+  with the hash above. Stored outputs: `analysis/results/09/analyze_09.txt` and `analysis/results/09/analyze_11.txt`.
