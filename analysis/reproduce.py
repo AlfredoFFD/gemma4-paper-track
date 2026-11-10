@@ -91,6 +91,9 @@ JOBS = [
     ('13 the address written as a search hit: X1, X2', 'registered',
      ['analysis/analyze_13.py', f'{R}/13/forks'], f'{R}/13/analyze_13.txt',
      [f'{R}/13/forks/results.jsonl', f'{R}/c/forks/results.jsonl']),
+    ('13 the address written as a search hit, independent', 'independent',
+     ['analysis/rederive_13.py', f'{R}/13/forks', f'{R}/c/forks', '--no-write'], f'{R}/rederive_13.txt',
+     [f'{R}/13/forks/results.jsonl', f'{R}/c/forks/results.jsonl', 'data/snapshots']),
     ('is a line number used more when the line is out of sight', 'exploratory',
      ['analysis/explore_depth.py'], f'{R}/explore_depth.txt', [f'{R}/09/forks/results_09.jsonl', f'{R}/d1/forks/results.jsonl']),
     ('where a first read of a listed file starts', 'exploratory',
@@ -132,6 +135,9 @@ JOBS = [
      PUBLIC + ['data/tasks.jsonl', 'data/graphs', 'data/snapshots']),
     ('public runs, whole runs: fix sites the agent never saw, independent', 'independent',
      ['analysis/rederive_public_missed_regions.py'], f'{R}/public/rederive_missed_regions.txt',
+     PUBLIC + ['data/tasks.jsonl', 'data/graphs', 'data/snapshots']),
+    ('public runs, whole runs: the kind of graph edge, independent', 'independent',
+     ['analysis/rederive_public_missed_links.py'], f'{R}/public/rederive_missed_links.txt',
      PUBLIC + ['data/tasks.jsonl', 'data/graphs', 'data/snapshots']),
 ]
 
