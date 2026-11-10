@@ -9,6 +9,8 @@ short-circuits any execution.
 
 Used on Kaggle against the vLLM server, and locally with a fake model to check the plumbing:
     py analysis/replay.py test analysis/fork_states/<task>_r<run>.json
+Arm names given after the path are tested as well; the state must carry them (the experiment C arms, for example):
+    py analysis/replay.py test analysis/fork_states_c/<task>_r<run>_f<fork>.json Ep EL ES
 """
 import asyncio
 import json
@@ -26,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / 'data'
 ARMS = ('A', 'P', 'Pp', 'H', 'Hp')          # pre-registration 02
 ARMS_B = ('D', 'Dp', 'E')                     # pre-registration 03
+ARMS_C = ('Ep', 'EL', 'ES')                   # experiment C: arm E's entries on the decoy list; location only; definition line only
 APP_NAME = 'swegemma_eval'
 USER_ID = 'eval_user'
 MODEL_ALIAS = 'gemma-4-31b-it-qat-w4a16-ct'
@@ -230,6 +233,16 @@ async def _test(state_path):
         n = len(base) - 1
         same = dumps[arm][:n] == base[:n]
         print(f'prefix of {n} messages identical between A and {arm}: {same}')
+    for arm in ARMS[ARMS.index('Hp') + 1:]:  # arms named on the command line: for a note arm, arm A's messages and then the note alone
+        note = state['arms'][arm].get('user_text')
+        if note is None:
+            continue
+        got = dumps[arm]
+        body = got[-1].get('content')
+        body = body if isinstance(body, str) else ''.join(p.get('text', '') for p in body or [] if isinstance(p, dict))
+        print(f'{arm}: the {len(base)} messages of arm A come first: {got[:len(base)] == base} | exactly one more message: '
+              f'{len(got) == len(base) + 1} | it is a user message whose text equals the note: '
+              f'{got[-1].get("role") == "user" and body == note} ({len(note)} characters)')
     print('\nsystem message (first 200 chars):', repr(str(base[0].get('content'))[:200]))
     print('tool declaration names:', [t['function']['name'] for t in tools])
 
@@ -237,4 +250,5 @@ async def _test(state_path):
 if __name__ == '__main__':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     if sys.argv[1] == 'test':
+        ARMS = ARMS + tuple(a for a in sys.argv[3:] if a not in ARMS)  # arms named after the path are tested as well
         asyncio.run(_test(sys.argv[2]))

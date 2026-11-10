@@ -662,6 +662,30 @@ def make_state(r, task, g, files, steps, agent, fork_idx, gold_ids, gold_paths):
 
     re_obs = {'status': 'ok', 'node': node, 'neighbors': [encoded_r(n) for n in rewired], 'count': len(rewired)}
 
+    # Experiment C arms: every entry written exactly as arm E writes it (same keys, order and missing-field rule).
+    decoy_sp = N.span(r['task'], decoy)
+
+    def encoded_d(n):  # arm E's entry on the decoy list: the decoy with its own span, every other entry as in E
+        if n != decoy:
+            return encoded(n)
+        entry = {'name': n}
+        if decoy_sp:
+            entry['file'] = decoy_sp['path']
+            if decoy_sp['end'] is not None:
+                entry['lines'] = f"{decoy_sp['start']}-{decoy_sp['end']}"
+        if g['text1'].get(n):
+            entry['def'] = g['text1'][n]
+        return entry
+
+    def kept(entry, keys):  # an arm E entry reduced to the listed keys, in arm E's order; a missing field stays missing
+        return {k: v for k, v in entry.items() if k in keys}
+
+    ep_obs = {'status': 'ok', 'node': node, 'neighbors': [encoded_d(n) for n in decoy_list], 'count': len(decoy_list)}
+    el_obs = {'status': 'ok', 'node': node, 'neighbors': [kept(encoded(n), ('name', 'file', 'lines')) for n in true_nb],
+              'count': len(true_nb)}
+    es_obs = {'status': 'ok', 'node': node, 'neighbors': [kept(encoded(n), ('name', 'def')) for n in true_nb],
+              'count': len(true_nb)}
+
     next_call = (nxt.get('tool_calls') or [None])[0]
     observed, observed_unshown = {}, {}
     if next_call:
@@ -697,6 +721,9 @@ def make_state(r, task, g, files, steps, agent, fork_idx, gold_ids, gold_paths):
             'E': {'user_text': E_WORDING.format(node=node, json=json.dumps(e_obs))},
             'RD': {'user_text': D_WORDING.format(node=node, json=json.dumps(r_obs))},
             'RE': {'user_text': E_WORDING.format(node=node, json=json.dumps(re_obs))},
+            'Ep': {'user_text': E_WORDING.format(node=node, json=json.dumps(ep_obs))},
+            'EL': {'user_text': E_WORDING.format(node=node, json=json.dumps(el_obs))},
+            'ES': {'user_text': E_WORDING.format(node=node, json=json.dumps(es_obs))},
         },
         'observed_next_call': next_call, 'observed_next_call_valid': valid_call(next_call) if next_call else False,
         'observed_next_thinking': (nxt.get('message') or '')[:2000],
@@ -756,4 +783,6 @@ def main():
 
 
 if __name__ == '__main__':
+    if len(sys.argv) > 1:  # optional output directory (experiment C bundle: analysis/fork_states_c); default unchanged
+        OUT = Path(sys.argv[1]).resolve()
     main()
