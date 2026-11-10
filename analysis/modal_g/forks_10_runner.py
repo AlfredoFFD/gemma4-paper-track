@@ -97,7 +97,7 @@ versions = {
     'wheelhouse_files': sorted(p.name for p in WHEELHOUSE.glob('*.whl')),
     'model_path': MODEL_PATH, 'model_files': sorted(p.name for p in Path(MODEL_PATH).glob('*'))[:40],
     'model_server': {k: os.environ.get(k) for k in ('TOOL_CALL_PARSER', 'REASONING_PARSER', 'CHAT_TEMPLATE_KWARGS', 'MODEL_DTYPE', 'REASONING_CONFIG')},
-    'stop_sequences': os.environ.get('STOP_SEQUENCES'),
+    'stop_sequences': os.environ.get('STOP_SEQUENCES'), 'max_output_tokens': os.environ.get('MAX_OUTPUT_TOKENS'),
     'platform': 'modal', 'python': sys.version, 'tensor_parallel_size': int(os.environ.get('TP_SIZE', '1')), 'seeds': SEEDS, 'arms': ARMS, 'experiment': EXPERIMENT, 'concurrency': CONCURRENCY,
     'thoughts_in_history': False,  # see replay.history_events: the original prompts carried no earlier thoughts
     'wrapped_arms': "arms ending in 'w': history tool results delivered as {'result': '<logged JSON string>'}",
@@ -181,13 +181,18 @@ agents = {}
 # STOP_SEQUENCES (a JSON list, unset for Gemma 4): strings at which the server ends the answer. For a model that puts
 # many calls in one answer it is the closing tag of a call, so the answer ends with its first call, the only one scored.
 _stop = json.loads(os.environ.get('STOP_SEQUENCES', '') or '[]')
-log('stop sequences:', _stop)
+# MAX_OUTPUT_TOKENS (unset for Gemma 4): replaces the agent's output limit of 16,384 tokens, for a model whose
+# answer sometimes does not end. An answer cut by the limit before its first call is complete has no call.
+_max_out = int(os.environ.get('MAX_OUTPUT_TOKENS', '0') or 0)
+log('stop sequences:', _stop, '| output limit:', _max_out or 'the agent configuration')
 for seed in SEEDS:
     task = {'instance_id': 'replay', 'repo': 'replay/replay', 'base_commit': ''}
     a = replay.build_agent(agent_dir, registry, task)
     a.generate_content_config.seed = seed
     if _stop:
         a.generate_content_config.stop_sequences = list(_stop)
+    if _max_out:
+        a.generate_content_config.max_output_tokens = _max_out
     agents[seed] = a
 log('agents built; tools:', [getattr(t, 'name', getattr(t, '__name__', '?')) for t in agents[SEEDS[0]].tools])
 

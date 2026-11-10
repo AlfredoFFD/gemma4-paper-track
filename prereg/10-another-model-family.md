@@ -111,3 +111,16 @@ why.
   the environment (`STOP_SEQUENCES`; unset, nothing changes) and the wrapper passes `["</tool_call>"]`. The gate is
   applied to a third smoke test with this configuration. New md5: `analysis/modal_g/forks_10_runner.py`
   `ec3ffed6f6b56fa1c9f38b1a4ae8ad7e`, `analysis/modal_g/forks_10_modal.py` `c4e48c88cdd2fa070afc01e9549f9a1b`.
+- Nov 10, 2026, 3:19 PM EST, after the third smoke test was stopped by hand at 3:18 PM and before the fourth: with
+  the stop string set, four of the first six requests returned at once and two were still generating after more
+  than three minutes, so some answers of this model do not end and contain no closing tag of a call. Nothing was read from
+  that test but the server's load lines; it wrote no rows. A local check without a model confirmed that the stop
+  string reaches the request. Change: the output limit for this model is 2,048 tokens instead of the agent's 16,384
+  (13 times the median answer of the second smoke test, 156 tokens; the longest answer there that ended on its own
+  with one call had 1,145). The runner reads the limit from the environment (`MAX_OUTPUT_TOKENS`; unset, nothing
+  changes). An answer cut by the limit before its first call is complete has no call and counts as an interface
+  failure under the frozen rule, apart from the outcome; if that pushes any arm under 80% usable in the fourth smoke
+  test, the gate fails and the experiment is dropped. The smoke test skips the prompt-size pass, which is not a gate
+  here. This is the last change: the one-hour limit runs out at 3:38 PM. New md5:
+  `analysis/modal_g/forks_10_runner.py` `8b34d586f75214d1f6c7e0cd4762fb9a`, `analysis/modal_g/forks_10_modal.py`
+  `1f1e617b613b858b8ca7a39ae6065ded`.
