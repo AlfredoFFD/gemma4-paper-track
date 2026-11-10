@@ -32,6 +32,7 @@ RUNS = (
     ('Gemma-4-31B', 'parts and false entry', 'c', 'fork_states_d', ('H', 'ES', 'EL', 'E')),
     ('Gemma-4-31B', 'tool channel', 'd1', 'fork_states_d', ('P', 'PE', 'E')),
     ('Gemma-4-31B', 'rendering', 'w', 'fork_states_d', ('Aw', 'Hw', 'Ew')),
+    ('Gemma-4-31B', 'newest wheels', 'g_onestep', 'fork_states_d', ('H', 'E')),
     ('Gemma 4 26B-A4B', 'second model', 'd2_26b', 'fork_states_d', ('A', 'H', 'E')),
     ('Gemma 4 E4B', 'second model', 'd2_e4b', 'fork_states_d', ('A', 'H', 'E')),
 )
