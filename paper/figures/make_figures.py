@@ -1265,7 +1265,7 @@ def fig_table(spec, out_dir):
         cut = min([i for i in (oc.find(';'), oc.find(':')) if i >= 0], default=-1)
         verdict, qual = (oc, '') if cut < 0 else (oc[:cut].strip(), oc[cut + 1:].strip())
         ocl = verdict.lower()
-        positive = ocl in ('met', 'passed')
+        positive = ocl in ('met', 'passed') or ocl.startswith('met, ')
         o_color = MUTED if ocl == 'pending' else (COLORS['legible'] if positive else INK)
         o_style = 'italic' if ocl == 'pending' else 'normal'
         o_weight = 'bold' if positive or ocl == 'not met' else 'normal'

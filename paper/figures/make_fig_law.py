@@ -5,9 +5,11 @@ Usage: py -I -X utf8 paper/figures/make_fig_law.py [--out <dir>]
 Every count is read from a stored report in this repository; the script fails if a line it needs is missing:
   analysis/results/public/address.txt        other teams' public runs of Gemma 4 agents on this benchmark
   analysis/results/public/outside.txt        public trajectories of other agents and models
+  analysis/results/09/analyze_11.txt         our fresh episodes (pre-registration 11: thresholds fixed before the data)
   analysis/results/explore_first_reads.txt   the one-step replays, restated as first reads of a listed neighbor's file
-The counts are exploratory (no rule was registered for them). Panel (a) is observational; panel (b) is the
-experiment: the same graph neighbors, written without and with line numbers.
+The public counts and the replay counts are exploratory (no rule was registered for them); the fresh-episode row is
+the registered test. Panel (a) is observational; panel (b) is the experiment: the graph's answer, written without
+and with line numbers (in the replays the list is given to the agent; in the fresh episodes it asked for it).
 """
 import argparse
 import re
@@ -60,12 +62,24 @@ def public_rows():
     return rows
 
 
+def fresh_rows():
+    """Our fresh episodes (pre-registration 11): the row for panel (a) and the graph-answer row for panel (b)."""
+    t = (RES / '09' / 'analyze_11.txt').read_text(encoding='utf-8')
+    with_n = need(r'^\s+all arms\s+ADDRESS\s+(\d+) of (\d+)', t, 'fresh episodes: ADDRESS')
+    without = need(r'^\s+all arms\s+PATH ONLY\s+(\d+) of (\d+)', t, 'fresh episodes: PATH ONLY')
+    g_name = need(r'^\s+arm N\s+GRAPH NAME\s+(\d+) of (\d+)', t, 'fresh episodes: GRAPH NAME')
+    g_addr = need(r'^\s+all arms\s+GRAPH ADDRESS\s+(\d+) of (\d+)', t, 'fresh episodes: GRAPH ADDRESS')
+    episodes = sum(int(n) - int(e) for n, e in re.findall(r'arm \w+: (\d+) episodes, (\d+) with an error', t))
+    return ((f'Our {episodes} fresh episodes, 31B\nthresholds fixed in advance', without, with_n),
+            ('fresh episodes, Gemma-4-31B:\nthe graph tools\' own answers', g_name, g_addr))
+
+
 def replay_rows():
     """[(label, (k, n) without line numbers, (k, n) with them)] from the replay report's pooled lines."""
     t = (RES / 'explore_first_reads.txt').read_text(encoding='utf-8')
     rows = []
-    for label, model in (('Gemma-4-31B', 'Gemma-4-31B'), ('Gemma 4 26B-A4B', 'Gemma 4 26B-A4B'), ('Gemma 4 E4B', 'Gemma 4 E4B'),
-                         ('Qwen2.5-Coder-32B', 'Qwen2.5-Coder-32B')):
+    for label, model in (('paused steps, Gemma-4-31B', 'Gemma-4-31B'), ('paused steps, Gemma 4 26B-A4B', 'Gemma 4 26B-A4B'),
+                         ('paused steps, Gemma 4 E4B', 'Gemma 4 E4B'), ('paused steps, Qwen2.5-Coder-32B', 'Qwen2.5-Coder-32B')):
         pat = rf'^\s+{re.escape(model)}\s+%s\s*: first reads (\d+), ask past line 1 (\d+)'
         if not re.search(pat % 'with', t, re.M):
             if model.startswith('Qwen'):
@@ -77,7 +91,7 @@ def replay_rows():
     return rows
 
 
-def panel(ax, rows, title, legend, n_slots):
+def panel(ax, rows, title, legend, n_slots, bold=()):
     h = 0.34
     ys = []
     for i, (label, without, with_n) in enumerate(rows):
@@ -86,9 +100,12 @@ def panel(ax, rows, title, legend, n_slots):
         for (k, n), dy, color in ((without, +h / 2, GREY), (with_n, -h / 2, BLUE)):
             share = 100 * k / n
             ax.barh(y + dy, share, height=h, color=color, edgecolor='none', zorder=2)
-            ax.text(share + 1.2, y + dy, f'{k} of {n}', va='center', ha='left', fontsize=8, color=INK, zorder=3)
+            ax.text(share + 1.2, y + dy, f'{k:,} of {n:,}', va='center', ha='left', fontsize=8, color=INK, zorder=3)
     ax.set_yticks(ys)
     ax.set_yticklabels([r[0] for r in rows], fontsize=8.5)
+    for i, t in enumerate(ax.get_yticklabels()):
+        if i in bold:
+            t.set_fontweight('bold')
     ax.set_ylim(-n_slots + 0.45, 0.6)  # the same row height in both panels
     ax.spines['bottom'].set_position(('data', -len(rows) + 0.45))
     ax.set_xlim(0, 118)
@@ -108,14 +125,26 @@ def main():
     ap.add_argument('--out', default=str(FIG))
     args = ap.parse_args()
     pub, rep = public_rows(), replay_rows()
+    ours, graph = fresh_rows()
+    pub.append(ours)
+    rep.append(graph)
     n_slots = max(len(pub), len(rep))
     fig, (a, b) = plt.subplots(1, 2, figsize=(10.4, 0.62 * n_slots + 0.95),
-                               gridspec_kw={'width_ratios': [1.2, 1], 'wspace': 0.6})
-    panel(a, pub, '(a) Public runs, by what the result just before named', ['a file', 'a file with a line number'], n_slots)
-    panel(b, rep, '(b) Our replays, by how the graph list was written',
-          ['without line numbers', 'with file and line range'], n_slots)
+                               gridspec_kw={'width_ratios': [1.2, 1], 'wspace': 0.66})
+    panel(a, pub, '(a) Observed: by what the result just before named', ['a file', 'a file with a line number'], n_slots,
+          bold=(len(pub) - 1,))
+    panel(b, rep, '(b) Tested: the graph\'s answer, by how it is written',
+          ['names only', 'names with file and line range'], n_slots)
     fig.suptitle('First reads of a file that ask for lines past line 1', fontsize=10.5, color=INK, x=0.5, y=0.985)
     fig.subplots_adjust(left=0.2, right=0.985, top=0.86, bottom=0.14)
+    # the two things an agent is shown, in the free corner under panel (b)
+    x0, y0 = 0.60, 0.215
+    fig.text(x0, y0, 'What the agent is shown', fontsize=8.8, color=INK, ha='left', va='top')
+    for i, (name, text, color) in enumerate((('a numbered search', 'fastapi/_compat.py:272:def copy_field_info(', BLUE),
+                                             ('the graph tools', '"fastapi._compat.copy_field_info"', INK2))):
+        y = y0 - 0.052 - i * 0.072
+        fig.text(x0, y, name, fontsize=8.2, color=INK2, ha='left', va='top')
+        fig.text(x0 + 0.105, y, text, fontsize=7.8, color=color, family='DejaVu Sans Mono', ha='left', va='top')
     out = Path(args.out)
     for ext in ('png', 'svg'):
         fig.savefig(out / f'fig_law.{ext}', dpi=300)
