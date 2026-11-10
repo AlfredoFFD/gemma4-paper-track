@@ -16,6 +16,7 @@ other teams' published agent runs did. The data itself is not in this repository
 | `graph_calls.txt` | `analysis/public_runs_graph_calls.py` | both arms of the GraphLoc end-to-end runs: how often the agent called a graph tool, when, and whether the tool returned anything |
 | `missed_regions.txt` | `analysis/public_runs_missed_regions.py` | both arms of the GraphLoc end-to-end runs, the gold patches, the competition's code graphs and the task snapshots (through `analysis/nodes.py`): the changed regions a run never saw, and whether the graph, true or rewired with 20 seeds, links them to code the run had been shown |
 | `coedit_sites.txt` | `analysis/public_runs_coedit_sites.py` | the same runs, graphs and snapshots: from a place of the fix that a run was shown, whether the neighbor list the harness would print for it, or a short list built from such lists, holds a place the run missed; true graph against 20 rewirings |
+| `missed_links.txt` | `analysis/public_runs_missed_links.py` | the same runs, graphs and snapshots: what kind of edge joins a missed place to code the run had been shown (a class and its member, shown code that names the missed place, or a missed place that names shown code, read from the source), and the comparison with 20 rewirings on the graph without class-member edges |
 
 Each script prints its report; the stored file is that output with LF line endings. `analysis/reproduce.py` re-runs
 the first, second and fourth when the data is present and reports them as SKIPPED when it is not; the third needs
