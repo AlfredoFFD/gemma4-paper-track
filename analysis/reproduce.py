@@ -102,6 +102,9 @@ JOBS = [
      ['analysis/public_runs_graph_calls.py'], f'{R}/public/graph_calls.txt', PUBLIC),
     ('public runs, whole runs, independent', 'independent',
      ['analysis/rederive_public_time_to_fix.py'], f'{R}/public/rederive_time_to_fix.txt', PUBLIC + ['data/tasks.jsonl']),
+    ('public runs, whole runs: fix sites the agent never saw, against the code graph and rewired graphs', 'exploratory',
+     ['analysis/public_runs_missed_regions.py'], f'{R}/public/missed_regions.txt',
+     PUBLIC + ['data/tasks.jsonl', 'data/graphs', 'data/snapshots']),
 ]
 
 

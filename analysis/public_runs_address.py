@@ -271,7 +271,7 @@ def main():
                            'way': way, 'ranged': ranged, 'covers': bool(ranged and any(lo <= x <= hi for x in lines)),
                            'near': bool(ranged and any(0 <= x - start <= 30 for x in lines)),
                            'exact': bool(ranged and start in lines), 'prev_fn': prev_fn, 'prev_cmd': prev_cmd,
-                           'chance': None}
+                           'chance': None, 'minline': min(lines) if lines else None}
                     total = parsed.get('total_lines') if isinstance(parsed, dict) else None
                     if rec['first'] and cls == 'ADDRESS' and ranged and isinstance(total, int) and total > 0:
                         length = min(hi - lo + 1, total)
@@ -412,6 +412,17 @@ def main():
                 tot[kind][0] += (r.get('lo') or 1) > 1
         for kind, (m, n) in sorted(tot.items(), key=lambda kv: -kv[1][1]):
             print(f'   just before: {kind:<46} {pct(m, n)}')
+
+    print()
+    print('9. First reads after an ADDRESS, by where the smallest named line lies (a read from line 1 returns at most')
+    print('   lines 1 to 150, so a named line past 150 is out of sight from the top)')
+    groups = [('three 31B sources', lambda r: r['source'] in main31)] + [(k, lambda r, k=k: r['source'] == k) for k in order]
+    for label, keep in groups:
+        sel = [r for r in recs if keep(r) and r['first'] and r['cls'] == 'ADDRESS']
+        near = [r for r in sel if r['minline'] <= 150]
+        far = [r for r in sel if r['minline'] > 150]
+        if sel:
+            print(f'   {label:<46} within the first 150 lines {pct(sum(r["ranged"] for r in near), len(near)):<22} past line 150 {pct(sum(r["ranged"] for r in far), len(far))}')
 
 
 if __name__ == '__main__':

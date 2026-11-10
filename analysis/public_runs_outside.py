@@ -109,7 +109,8 @@ def source_a(rows):
                     cls, lines = classify(f, prev_cmd, prev_text)
                     hi = float('inf') if (end is None or end < 0) else end
                     yield {'issue': row.get('instance_id'), 'model': row.get('model'), 'first': f not in seen, 'cls': cls,
-                           'ranged': ranged, 'covers': bool(ranged and any(start <= x <= hi for x in lines))}
+                           'ranged': ranged, 'covers': bool(ranged and any(start <= x <= hi for x in lines)),
+                           'minline': min(lines) if lines else None}
                     seen.add(f)
                     prev_cmd = 'str_replace_editor view ' + str(args.get('path'))
                 elif fn.get('name') == 'bash':
@@ -145,7 +146,8 @@ def source_b(rows):
                 ranged = line is not None and line > 1
                 cls, lines = classify(f, prev_cmd, prev_text, search_file=True)
                 yield {'issue': row.get('instance_id'), 'model': row.get('model_name'), 'first': f not in seen, 'cls': cls,
-                       'ranged': ranged, 'covers': bool(ranged and any(abs(x - line) <= 50 for x in lines))}
+                       'ranged': ranged, 'covers': bool(ranged and any(abs(x - line) <= 50 for x in lines)),
+                       'minline': min(lines) if lines else None}
                 seen.add(f)
             else:
                 seen.update(rel(t) for t in viewed_files(cmd))
@@ -160,7 +162,7 @@ def dci(t):
     return 'n/a' if t[0] is None else f'{100 * t[0]:+.1f} points [{100 * t[1]:+.1f}, {100 * t[2]:+.1f}]'
 
 
-def report(title, rows, extract):
+def report(title, rows, extract, window, note):
     rows = list(rows)
     recs = list(extract(rows))
     issues = {r.get('instance_id') for r in rows}
@@ -184,6 +186,11 @@ def report(title, rows, extract):
             print(f'      {cls:<10} RANGED {pct(sum(r["ranged"] for r in sel), len(sel)):<22} by issue {ci(boot_ci(by[cls]))}{extra}')
         if flag:
             print(f'      ADDRESS minus PATH ONLY, by issue: {dci(diff_ci(by["ADDRESS"], by["PATH ONLY"]))}')
+            sel = [r for r in recs if r['first'] and r['cls'] == 'ADDRESS']
+            near = [r for r in sel if r['minline'] <= window]
+            far = [r for r in sel if r['minline'] > window]
+            print(f'      ADDRESS by the smallest named line: within the first {window} lines RANGED {pct(sum(r["ranged"] for r in near), len(near))}; '
+                  f'past line {window} RANGED {pct(sum(r["ranged"] for r in far), len(far))} ({note})')
     print()
 
 
@@ -196,7 +203,9 @@ def main():
     print()
     titles = ('A. SWE-agent with function calling, Claude 3.7 Sonnet (SWE-bench/SWE-smith-trajectories, split tool)',
               'B. Classic SWE-agent, Llama-based models (nebius/SWE-agent-trajectories, split train)')
-    for (dataset, split, stem), title, extract in zip(SOURCES, titles, (source_a, source_b)):
+    views = ((150, 'a view without a range shows the whole file here; 150 is the cap of the competition harness'),
+             (100, 'an open without a line shows lines 1 to 100 here'))
+    for (dataset, split, stem), title, extract, (window, note) in zip(SOURCES, titles, (source_a, source_b), views):
         local = OUT / f'{stem}_rows_0_{ROWS - 1}.jsonl'
         if args.viewer:
             rows = rows_of(dataset, split, ROWS)
@@ -207,7 +216,7 @@ def main():
             print(f'   local copy not found ({local.name}); run analysis/fetch_outside_rows.py, or pass --viewer')
             print()
             continue
-        report(title, rows, extract)
+        report(title, rows, extract, window, note)
 
 
 if __name__ == '__main__':
