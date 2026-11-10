@@ -8,7 +8,7 @@ as installed (run logs of v5 and v8, variant v28): adk_eval_core 0.1.0, adk_subm
 
 ## Abstract
 
-The competition's code graph barely changes what its Gemma-4-31B agent resolves. We ask why, from inside the
+A graph-based localization skill barely changes what the competition's Gemma-4-31B agent resolves. We ask why, from inside the
 agent. We pause real runs at 407 points (205 runs, 77 tasks) right after the agent opens a file, put the graph's neighbor list for a
 function in that file in front of the model, and replay one step through the official harness in ten versions,
 12,210 replays, with decision rules fixed in advance. With nothing added, the next call reaches a listed neighbor
@@ -23,9 +23,9 @@ to say the agent checks edges.
 
 ## 1. The question
 
-The competition ships a precomputed code graph of each repository and three tools to query it. The most careful
-public entry so far, GraphLoc, found that adding the graph tools moves the resolve rate by about one task in a
-hundred (28.9% to 29.9%, interval −4.1 to +6.3 points). An end-to-end score cannot say why. The agent may never
+The competition ships a precomputed code graph of each repository and three tools to query it. The closest
+public entry, GraphLoc, found that adding a graph-localization skill to the baseline agent moves the resolve rate by
+about one task in a hundred (28.9% to 29.9%, interval −4.1 to +6.3 points). An end-to-end score cannot say why. The agent may never
 ask the graph; it may ask and ignore the answer; it may be unable to act on the answer as printed; or it may
 follow the answer to the wrong place.
 
@@ -45,8 +45,9 @@ the base agent's 318 traces, with our own scripts:
   calls, 114 return nothing. `get_code_neighbors` is called 8 times; `get_code_subgraph` never.
 - After a non-empty answer, the next read or edit lands on a returned node 27% of the time; random nodes from the
   same files score 23%. Traces cannot tell steering from the agent's own direction. Forks can.
-- The graph contains a fix location in 84% of tasks, but one hop from a function the issue names reaches fix code
-  the issue does not already name in 10% of tasks (19% at two hops).
+- The graph holds every function or class the fix edits in 84% of tasks, but one hop from a function the issue
+  names reaches fix code the issue does not already name in 10% of tasks (15% to 19% at two hops, with and
+  without the tool's 50-neighbor cap).
 - Compaction fires in 68% of runs, so replays must start before it.
 
 ## 3. Method
@@ -209,20 +210,24 @@ makes the graph's errors more actionable; in our audit the graph holds 1 of 56 a
 
 ## 7. Related work
 
-The nearest study measures how small coding agents use code graphs and embeddings in a localization harness; its
-graph tool already prints signatures and qualified paths, it varies the tool set rather than the encoding, and it
-reports that forcing the graph call does not help and that agents expand once and stop (2610.33958). Our
-instruction arms agree from a different design. RepoNav attributes localization gains to how retrieved snippets
-are organized (2609.08355); other work compares which repository views are exposed (2611.07286) and tool
-architectures (2608.11386); a same-track entry finds that signatures carry the value and bare call edges do not
-(Zenodo 10.5281/zenodo.23927441); LocAgent builds graph-guided localization end to end (2503.09089). That tool
-output format changes agent behavior is therefore known. On channel and trust: handed-over search content is used
-more than fetched content on this model (2609.05587); a harness-inserted tool result is trusted like a real call
-(2605.09822); small agents agree with a wrong graph tool (2606.14476); fork designs exist for tool results in
-scientific QA (2610.26836) and after compaction (2609.36526, 2610.31710). GraphLoc and GraphAudit ask whether
-this graph helps end to end and in retrieval; the rewiring control is GraphAudit's. In what we searched (queries
-and dates in `docs/lit/`), no work shows an agent one fixed set of graph edges in two encodings, or a rewired
-graph, and scores its next action against a no-list base rate.
+How a graph is written as text changes what a language model does with it on static graph tasks (*Talk like a
+Graph*, ICLR 2024; KG-LLM-Bench, 2504.07087); we ask that question inside an agent's loop. The nearest study
+measures how small coding agents use code graphs and embeddings in a localization harness; its graph tool
+already prints signatures and qualified paths, it varies the tool set rather than the encoding, and it reports
+that forcing the graph call does not help and that agents expand once and stop (2610.33958). Our instruction
+arms agree from a different design. LocAgent compares six text formats of its graph tool's output over whole
+localization runs (37 tasks) and finds that adding entity attributes to a row format lowers module-level
+accuracy (2503.09089, App. A.1.2). RepoNav attributes localization gains to how retrieved snippets are organized
+(2609.08355); other work compares which repository views are exposed (2611.07286) and tool architectures
+(2608.11386); a same-track entry finds that a signature map beats snippet retrieval and that adding call edges
+to it does not help (Zenodo 10.5281/zenodo.23927441). That tool output format changes agent behavior is
+therefore known. On channel and trust: pushed corrupted search results are adopted more than tool-returned ones
+on this model (2609.05587); a harness-inserted tool result is trusted like a real call (2605.09822); small Qwen
+agents copy a GNN tool's often wrong labels (2606.14476); fork designs exist for tool results in scientific QA
+(2610.26836) and after compaction (2609.36526, 2610.31710). GraphLoc asks whether this graph helps localization
+and repair, GraphAudit whether it helps retrieval; the rewiring control is GraphAudit's. In what we searched
+(queries and dates in `docs/lit/`), no work fixes one set of graph edges, varies only its encoding or rewires
+it, and scores the agent's next action against a no-list base rate.
 
 ## 8. Limitations
 
