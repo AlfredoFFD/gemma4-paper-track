@@ -83,7 +83,7 @@ Every count above, each rule with its verdict or "too few reads to test", and th
 
 ## Amendments
 
-- Nov 10, 2026, 3:50 PM EST, before any row of the full run was fetched for analysis: the analysis script is
+- Nov 10, 2026, 3:49 PM EST, before any row of the full run was fetched for analysis: the analysis script is
   written, md5 of `analysis/analyze_11.py` `9545a6db7ed9699412fcb3aebf46ae94`. The smoke-test rows of
   pre-registration 09 were not kept (that test wrote inside its container), so the script was tested instead on the
   tracked rows of the five-call run of pre-registration 06, which have the same format
