@@ -109,14 +109,17 @@ def smoke(model_dir: str, parser: str = 'hermes', reasoning: str = 'none', templ
 
 @app.function(image=image, gpu='A100-80GB', volumes={M: vol}, timeout=10 * 3600, cpu=8, memory=49152, max_containers=1)
 def full(model_dir: str, out: str = 'out_10', parser: str = 'hermes', reasoning: str = 'none', template_kwargs: str = '',
-         dtype: str = 'auto'):
+         dtype: str = 'auto', budget_s: int = 11700):
     out = f'/vol/{out}'
-    env = _env(out, model_dir, parser, reasoning, template_kwargs, dtype)
+    # budget_s: the runner starts no new replay after this many seconds (3.25 hours keeps the run near its budget);
+    # states are taken in a fixed shuffled order, so a run cut by the budget is a random subset of states.
+    # 16 requests at a time (the other runs sent 8): this model's long answers hold a slot for about a minute each.
+    env = _env(out, model_dir, parser, reasoning, template_kwargs, dtype, TIME_BUDGET_S=str(budget_s), CONCURRENCY='16')
     os.makedirs(out, exist_ok=True)
     json.dump({'platform': 'modal', 'gpu': _gpu(), 'python': sys.version, 'model_dir': model_dir,
                'model_server': {'tool_call_parser': parser, 'reasoning_parser': reasoning,
                                 'chat_template_kwargs': template_kwargs, 'dtype': dtype, 'reasoning_config': REASONING_CONFIG},
-               'stop_sequences': STOP_SEQUENCES, 'max_output_tokens': MAX_OUTPUT_TOKENS,
+               'stop_sequences': STOP_SEQUENCES, 'max_output_tokens': MAX_OUTPUT_TOKENS, 'time_budget_s': budget_s,
                'started_utc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}, open(out + '/platform_actual.json', 'w'))
 
     def committer():  # rows reach the volume as they are written

@@ -124,3 +124,18 @@ why.
   here. This is the last change: the one-hour limit runs out at 3:38 PM. New md5:
   `analysis/modal_g/forks_10_runner.py` `8b34d586f75214d1f6c7e0cd4762fb9a`, `analysis/modal_g/forks_10_modal.py`
   `1f1e617b613b858b8ca7a39ae6065ded`.
+- Nov 10, 2026, 3:30 PM EST, the gate: the fourth smoke test ended at 3:29 PM with 96 replays and no error. Usable
+  by the frozen interface-failure rule (`analysis/gates_c.py`): A 21 of 24 (88%), H 20 of 24 (83%), E 21 of 24
+  (88%), RE 21 of 24 (88%); every failure is an answer without a call. Every arm is at or above 80%: the gate is
+  passed, 51 minutes after the first smoke test started. Recorded with it, from counts only (no call's content and
+  no outcome was read): 31 of the 96 answers reached the 2,048-token limit; the median answer had 436 tokens; 47
+  answers held more than one call, up to 64, so the stop string did not end answers at the first call and the
+  output limit is what bounds an answer (the stop string stays in the request; why it has no effect was not
+  examined); in one of the eight states no answer held a call, and in six every answer did. The scored call is the
+  first call of an answer, as registered. Expect about 13% interface failures and about three states in four
+  complete in the full run. For the full run, two settings that do not change what the model is asked: 16 requests
+  at a time (8 in the other runs), and no new replay after 3.25 hours, which holds the run near its budget; the
+  runner takes states in a fixed shuffled order, so a run cut by the budget is a random subset of states, and the
+  rule's threshold of 200 complete states decides whether it applies. New md5 of
+  `analysis/modal_g/forks_10_modal.py`: `de186530152038b7ae0258b81ab28313`; the runner is unchanged
+  (`8b34d586f75214d1f6c7e0cd4762fb9a`).
