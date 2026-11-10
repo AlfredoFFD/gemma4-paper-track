@@ -167,3 +167,6 @@ fingerprints; the raw per-replay records; and the harness, server, model and san
   wheels): the tool declarations of the newest wheels are longer.
 - New md5: `analysis/modal_g/forks_g_runner.py` `db233368dbc98e1b972f1f93376e58a9`, `analysis/modal_g/forks_g_modal.py`
   `665d841ff93ddffe73f8b92183782f98`. No other file changed.
+- 1:48 PM, before the second smoke test: the runner's smoke mode also prints how many graph-tool calls executed and
+  their result status (a print in smoke mode only; nothing else changed). New md5 of
+  `analysis/modal_g/forks_g_runner.py`: `391894bd7fd7c2c14fcd2e83637ab169`.

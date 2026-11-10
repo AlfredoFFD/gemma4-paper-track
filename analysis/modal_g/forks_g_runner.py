@@ -412,6 +412,15 @@ if MODE == 'smoke' or LOCAL_TEST:  # plumbing only: prompt sizes of the fresh st
                 plumb[(r['arm'], 'returned from the start line the model wrote')] += int(want is not None and res.get('start_line') == want)
     for (arm, what), n in sorted(plumb.items()):
         print(f'plumbing, arm {arm}: {what}: {n}', flush=True)
+    gt = collections.Counter()
+    for r in rows:
+        for st in r.get('steps') or []:
+            for c in st['calls']:
+                if c['function_name'] in GRAPH_TOOLS:
+                    status = (c.get('result') or {}).get('status') if c['executed'] else 'not executed'
+                    gt[(r['population'], c['function_name'], str(status))] += 1
+    for key, n in sorted(gt.items()):
+        print('plumbing, graph tool calls (population, tool, result status):', key, n, flush=True)
     print('restored_calls recorded by arm:', dict(collections.Counter({a: sum(r.get('restored_calls', 0) for r in rows if r['arm'] == a)
                                                                     for a in {r['arm'] for r in rows}})), flush=True)
 
