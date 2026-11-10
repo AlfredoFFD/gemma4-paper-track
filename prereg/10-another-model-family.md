@@ -76,3 +76,10 @@ spread a true effect of 3 points or more is detected; a smaller one will usually
 The rule with its interval, met or not; every arm's rates; interface failures by arm; the raw per-replay records;
 the versions and server settings recorded by the run; and, if the gate fails, that the experiment was not run and
 why.
+
+## Amendments
+
+- Nov 10, 2026, 2:36 PM EST, while the model was being fetched and before any replay: the wrapper's smoke test now
+  writes its rows to the volume (`/vol/smoke_10`), so that the gate can be computed with the frozen
+  interface-failure rule on the laptop; the frozen rule is not available inside the container. Nothing else changed.
+  New md5 of `analysis/modal_g/forks_10_modal.py`: `955b7f0856b8e1511389e128a9f82d67`.

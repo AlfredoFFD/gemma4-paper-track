@@ -80,7 +80,10 @@ def fetch(repo: str, model_dir: str):
 
 @app.function(image=image, gpu='A100-80GB', volumes={M: vol}, timeout=3600, cpu=8, memory=49152, max_containers=1)
 def smoke(model_dir: str, parser: str = 'hermes', reasoning: str = 'none', template_kwargs: str = '', dtype: str = 'auto'):
-    out = '/root/smoke_10'
+    out = '/vol/smoke_10'  # on the volume, so that the gate can be computed locally with the frozen interface-failure rule
+    if os.path.exists(out):
+        for name in os.listdir(out):
+            os.remove(os.path.join(out, name))
     env = _env(out, model_dir, parser, reasoning, template_kwargs, dtype, STATES_N='8', FIDELITY_N='6')
     print('python', sys.version, '| gpu', _gpu(), '| model', model_dir)
     p = subprocess.run([sys.executable, RUNNER], env=env)
@@ -89,6 +92,7 @@ def smoke(model_dir: str, parser: str = 'hermes', reasoning: str = 'none', templ
         s = json.load(open(out + '/summary.json'))
         print('rows', s.get('rows'), 'elapsed_s', s.get('elapsed_s'),
               {a: {k: d.get(k) for k in ('n', 'errors', 'with_call', 'prompt_tokens_mean')} for a, d in s.get('by_arm', {}).items()})
+    vol.commit()
     return p.returncode
 
 
