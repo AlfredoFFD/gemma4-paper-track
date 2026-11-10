@@ -66,6 +66,8 @@ JOBS = [
      ['analysis/explore_name_cost.py'], f'{R}/k/explore_name_cost.txt', [f'{R}/k/forks/results_k.jsonl']),
     ('where a first read of a listed file starts', 'exploratory',
      ['analysis/explore_first_reads.py'], f'{R}/explore_first_reads.txt', [f'{R}/d1/forks/results.jsonl']),
+    ('a path that swallowed the line bounds', 'exploratory',
+     ['analysis/explore_path_leak.py'], f'{R}/explore_path_leak.txt', [f'{R}/d1/forks/results.jsonl']),
     ('mangled argument names: counts', 'exploratory',
      ['analysis/mangled_args.py', f'{R}/v5/forks/results.jsonl', f'{R}/v6/forks/results.jsonl', f'{R}/v8/forks/results.jsonl',
       f'{R}/d1/forks/results.jsonl', f'{R}/d2_26b/forks/results.jsonl', f'{R}/d2_e4b/forks/results.jsonl'],
