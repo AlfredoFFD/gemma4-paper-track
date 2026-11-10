@@ -60,6 +60,8 @@ JOBS = [
      ['analysis/explore_defect_cost.py'], f'{R}/k/explore_defect_cost.txt', [f'{R}/k/forks/results_k.jsonl']),
     ('supplement: task-clustered intervals, the false entry in detail, seed agreement, calls to the fix', 'exploratory',
      ['analysis/explore_supplement.py'], f'{R}/explore_supplement.txt', [f'{R}/k/forks/results_k.jsonl']),
+    ('what a name without an address costs in calls', 'exploratory',
+     ['analysis/explore_name_cost.py'], f'{R}/k/explore_name_cost.txt', [f'{R}/k/forks/results_k.jsonl']),
     ('where a first read of a listed file starts', 'exploratory',
      ['analysis/explore_first_reads.py'], f'{R}/explore_first_reads.txt', [f'{R}/d1/forks/results.jsonl']),
     ('mangled argument names: counts', 'exploratory',
