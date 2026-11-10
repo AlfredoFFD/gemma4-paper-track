@@ -79,3 +79,42 @@ posts graph on/off ablations: github.com/Benadict-Git/codegraph-loc.
 - *TACT* ([2605.05980](https://arxiv.org/abs/2605.05980)): steering Gemma-4-26B coding agents.
 - *SWE-Bench Illusion* ([2506.12286](https://arxiv.org/abs/2506.12286)): models name buggy files from issue text alone.
 - Run-to-run variance: identical runs at T=0 flip about 9% of outcomes ([2607.09691](https://arxiv.org/abs/2607.09691)).
+
+## Competition forum threads read on Nov 10, 2026 (main competition and paper track)
+
+Read by Claude Code in a signed-in browser; searched in the main competition's discussion for `start_line`, `argument`,
+`tool call parser`, `silently`, `read_file` and `get_code_neighbors`. Thread numbers are the ids in the URL
+`kaggle.com/competitions/gemma-4-developer-agent/discussion/<id>`.
+
+- **744272, "Tool results reach the model double-JSON-encoded" (about Oct 1).** The swegemma tools returned a JSON
+  string, the agent framework wrapped it as `{"result": <string>}`, the client library serialized that again, and the
+  chat template put the string verbatim into the tool response. The post proposed returning a dictionary. Kaggle
+  staff answered that the fix is in the Sep 30 wheelhouse: tool results now reach the model as one level of JSON, and
+  `edit_file` retries a match with escapes removed.
+  - **A fixed-context test in the same thread:** a participant held 30 real edit contexts fixed, varied only how the
+    `read_file` observation was encoded, and sampled the next call three times per condition: failed `edit_file`
+    calls were 22% with the double encoding, 62% with one level of JSON and 0% with raw text; "a call that loses an
+    argument because a string was closed with a backtick" stayed (4 of 45 with the double encoding, 7 of 40 with one
+    level).
+  - **What this means for us.** (1) It is the public source for the rendering difference that experiment F tests,
+    and it dates the change (Sep 30, harness v28). (2) It is a small precedent for our method: fixed real contexts,
+    one observation re-encoded, the next call sampled. Cite it. (3) It reports failed edits and one kind of lost
+    argument under one level of JSON. It does not report mangled line-bound names in `read_file`, their silent
+    removal by the agent framework, or rates on reads.
+- **745731, "Notes on the graph tools from auditing all 127 graphs" (about Oct 9).** `get_code_neighbors` matches
+  exact ids only; the neighbor list does not say which way an edge goes, is sorted alphabetically and cut at 50;
+  edges are stored in both directions and classes are linked to their members; no graph has an async def and calls
+  through `self` are missing; the released graphs hold 14% to 21% of recorded call pairs in three repositories; the
+  embeddings follow graph distance more than code text. It names earlier reports of the missing async defs (thread
+  742911) and of exact-name matching (745220). No agent behavior is measured. Cite it for the tool facts we use
+  (alphabetical order, missing async defs).
+- **755291, "Where 76% of a 300-second agent budget actually goes" (Nov 3).** Notes that `read_file` truncates at
+  150 lines: a 754-line file "was read 6 times, still never fully seen", and 1,152 lines were fetched twice in four
+  runs. It attributes this to the cap and prompt habits. Consistent with our reading that ranged reads return the
+  top of the file when the bound's name is mangled; the post does not identify that cause.
+- **Tool-call parser reports** (745138, 746336, 753521, 753973): hangs and dropped calls in the server's Gemma 4
+  parser. None describes argument names with a stray quote.
+- **Paper track, "CodeGraphQA (how Gemma 4 reads code graphs)" (Nov 4):** a pre-registration hash only; the document
+  is not public. By its title it is question answering over the graphs.
+- **Not found in these searches:** any report that a line-bound argument arrives under a mangled name and is
+  dropped, or any test of the neighbor list's encoding inside an agent run.
