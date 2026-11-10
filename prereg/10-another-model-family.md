@@ -83,8 +83,8 @@ why.
   writes its rows to the volume (`/vol/smoke_10`), so that the gate can be computed with the frozen
   interface-failure rule on the laptop; the frozen rule is not available inside the container. Nothing else changed.
   New md5 of `analysis/modal_g/forks_10_modal.py`: `955b7f0856b8e1511389e128a9f82d67`.
-- Nov 10, 2026, 2:47 PM EST, after the first smoke test (started 2:38 PM) and before any replay returned a model
-  answer: the model server refused all 96 smoke requests. The agent's configuration sends a thinking-token budget with
+- Nov 10, 2026, 2:46 PM EST (the commit of this amendment is stamped 2:45:58 PM; its first version said 2:47 PM,
+  ahead of the clock), after the first smoke test (started 2:38 PM) and before any replay returned a model answer: the model server refused all 96 smoke requests. The agent's configuration sends a thinking-token budget with
   every request, and the server accepts that field only if it was started with a reasoning configuration; for Gemma 4
   the harness supplies one by default, for another model it does not. Gate on this smoke test: 0 of 24 usable in every
   arm (failure kind: error); no model output exists. Change: the runner reads a reasoning configuration from the
