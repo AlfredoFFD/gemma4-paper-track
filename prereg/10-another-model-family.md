@@ -97,3 +97,17 @@ why.
   temperature 0.2 and top-p 0.95 come from the agent's configuration, as in every other run. New md5:
   `analysis/modal_g/forks_10_runner.py` `dbcedd51640c45b869356c1d2f5450d8`, `analysis/modal_g/forks_10_modal.py`
   `85fab02719044af02c5219c99e421b42`. The one-hour limit of the gate counts from 2:38 PM.
+- Nov 10, 2026, 3:10 PM EST, after the second smoke test was stopped by hand at 3:09 PM and before the third: with
+  the reasoning configuration the server accepted the requests. 37 of the 96 smoke replays had returned when the
+  test was stopped: all 37 with a call and no error (A 10, H 10, E 9, RE 8), median answer 156 tokens. The other
+  requests were still generating after minutes. One returned answer showed why: 144 calls in a single answer, 7,590
+  tokens, 215 seconds; 16 of the 37 answers held more than one call. This model can put many calls in one answer,
+  up to the agent's limit of 16,384 output tokens, which the Gemma 4 models did not do; at that pace the full run
+  would cost several times its budget. Only counts were read from these rows (errors, calls per answer, tokens,
+  seconds); no call's content and no outcome. Change: the request carries a stop string, the closing tag of a call
+  (`</tool_call>`), so the server ends the answer when its first call is complete. The registered outcome reads the
+  first call of an answer and nothing after it, so the scored call is the one the model would have written first in
+  any case; what is lost is the rest of the answer, which is not analyzed. The runner reads the stop strings from
+  the environment (`STOP_SEQUENCES`; unset, nothing changes) and the wrapper passes `["</tool_call>"]`. The gate is
+  applied to a third smoke test with this configuration. New md5: `analysis/modal_g/forks_10_runner.py`
+  `ec3ffed6f6b56fa1c9f38b1a4ae8ad7e`, `analysis/modal_g/forks_10_modal.py` `c4e48c88cdd2fa070afc01e9549f9a1b`.
