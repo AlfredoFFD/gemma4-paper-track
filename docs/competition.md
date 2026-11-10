@@ -213,3 +213,37 @@ CLI, or the notebook itself). Everything else is the agent's reading and gets ch
 - Does the 3,000-word cap apply to the PDF route?
 - May we publish a dataset of regenerated graphs?
 - What `token_threshold` does the scorer use?
+
+## Paper track pages read on Nov 10, 2026 (signed-in browser; Overview, Team, Writeups and Discussion)
+
+Read by Claude Code from the pages themselves. Quotes are the host's words in the discussion threads named.
+
+- **Deadline.** The page states "All submissions are due by Nov 12, 2026 at 6:59 PM EST." No extension has been
+  announced (a request of Nov 3 has no reply).
+- **Size of the field.** 786 teams and 851 submissions. Submitted writeups are hidden until the track closes
+  ("Viewable at Hackathon close"), so other entries cannot be read for prior art before the deadline.
+- **Word count** (thread "Word Count", host, Oct 27): "References will not count. Appendix will not be used for main
+  evaluation so treat is as supplementary material. I.e. can support verifiability like code release but do not
+  expect it to be read guaranteed." Whether captions count was asked and not answered. How the 3,000 words are
+  counted otherwise was asked on Nov 2 and not answered.
+- **A public repository is not a prior publication** (thread "Does a public repo count as prior publication for the
+  Paper Track?", host, Nov 4): "Prior github repo would not count as a prior publication. So yes, eligible."
+- **Derived data** (thread "Can derived localization labels from the task data be published (paper track)?", host,
+  Oct 27): "Yes, publishing derived labels is okay." For text taken from the tasks the host prefers a release keyed
+  by instance id that links to the original dataset "for the verbatim components (or via a script that downloads
+  it)" (Nov 3). Whether model trajectories on the training tasks may be public was asked on Oct 23 and not answered.
+- **External GPUs.** A question of Nov 8 about running experiments on rented cloud GPUs has no reply. The overview
+  says joining the main competition is not required for the paper track.
+- **Writeup requirements** (Overview): title and subtitle, abstract, introduction, description of the research with
+  methods and experiments, related works and citations. Optional: a public notebook in the Project Links field, or
+  an arXiv-ready PDF through the Public Project Link. "After you have saved your Writeup, you should see a 'Submit'
+  button in the top right corner." A private Kaggle resource attached to a public writeup becomes public after the
+  deadline. Drafts that are not submitted are not judged.
+- **Ties** go to the paper entered first. Whether an edit after submission changes that time was asked twice and
+  not answered: submit once.
+- **Pre-registration is common in this track.** More than ten teams posted a hash of their pre-registration in the
+  discussion forum. One of them is close in topic by its title, "CodeGraphQA (how Gemma 4 reads code graphs)",
+  posted Nov 4; its document is not public, and its title suggests question answering over the graphs, not an
+  agent's loop.
+- **Team page.** The team has one member so far. A second member has to join the competition and accept an
+  invitation before the writeup is submitted.
