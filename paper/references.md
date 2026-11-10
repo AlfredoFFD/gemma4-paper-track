@@ -3,7 +3,7 @@
 Verified reference list for `paper/draft.md` (Sections 1 and 7), built on Nov 10, 2026. Every arXiv record was
 fetched today from the arXiv export API (`https://export.arxiv.org/api/query?id_list=<id>`) and compared with the
 repo's reading notes (`docs/prior-art.md`, `docs/lit/`). The `verified:` line says exactly what was checked.
-Entries are in the order the draft cites them. Open problems are listed at the end.
+The draft numbers its references [1] to [21] in order of first citation; this file is keyed by id. Open problems are listed at the end (written before the Nov 10 updates: the Bellam entry is now split by version and the two forum threads and LARGER are added).
 
 ## Entries
 
@@ -13,8 +13,11 @@ verified: arXiv API (2310.04560): title and all three authors match `docs/prior-
 [2504.07087] Markowitz et al. KG-LLM-Bench: A Scalable Benchmark for Evaluating LLM Reasoning on Textualized Knowledge Graphs. arXiv:2504.07087, 2025. https://arxiv.org/abs/2504.07087.
 verified: arXiv API: title and first author match `docs/prior-art.md` and `refs.json` (4 authors: Markowitz, Galiya, Ver Steeg, Galstyan). The arXiv comment says "To be presented at NAACL-HLT, KnowledgeNLP Workshop (2025)"; no Crossref or ACL Anthology record was found today, so the venue is given as arXiv.
 
-[2610.33958] Bellam. How Much Do Structural Tools Help Small Coding Agents? A Pre-Registered Scale Study of Code Localization. arXiv:2610.33958, 2026. https://arxiv.org/abs/2610.33958.
-verified: arXiv API and abs pages for v1 and v2: single author Bellam. TITLE MISMATCH WITH THE NOTES: the repo's notes (`docs/lit/2026-11-09-encoding-claim-prior-art.md:36`) give "How Do Small Coding Agents Use Code Graphs and Embeddings?", which is the v1 title (abs page of 2610.33958v1, 25 Oct 2026). The current version is v2 (updated 9 Nov 2026) with the title above. The notes were made from v1; v2 was not read. To cite the version read, use arXiv:2610.33958v1 with the v1 title.
+[2610.33958v2] Bellam. How Much Do Structural Tools Help Small Coding Agents? A Pre-Registered Scale Study of Code Localization. arXiv:2610.33958v2, 2026 (revised Nov 9, 2026). https://arxiv.org/abs/2610.33958v2.
+verified: arXiv HTML of v2 read in full on Nov 10, 2026 (every section, 22 tables, figure captions, Appendices A to I); notes and the passage-by-passage check are in docs/lit/2026-11-10-bellam-v2-check.md.
+
+[2610.33958v1] Bellam. How Do Small Coding Agents Use Code Graphs and Embeddings? arXiv:2610.33958v1, 2026 (Oct 25, 2026). https://arxiv.org/abs/2610.33958v1.
+verified: arXiv API and abs page for v1 (title, single author); read in full earlier (docs/lit/2026-11-09-encoding-claim-prior-art.md). The forcing and "expand once and stop" findings the draft cites are only in v1.
 
 [2503.09089] Chen et al. LocAgent: Graph-Guided LLM Agents for Code Localization. Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (ACL 2025, Volume 1: Long Papers), 2025. arXiv:2503.09089. https://doi.org/10.18653/v1/2025.acl-long.426.
 verified: arXiv API: title and first author match `docs/prior-art.md` and `refs.json` (9 authors, current version v2); Crossref: same title, first authors Chen, Tang, Deng, container ACL 2025 Long Papers, DOI 10.18653/v1/2025.acl-long.426, matching "ACL 2025" in `docs/prior-art.md`.
@@ -48,6 +51,15 @@ verified: arXiv API: title, first author and author order match the reading note
 
 [2610.31710] Sun et al. Compact-Bench: Measuring What Context Compaction Costs Long-Horizon Coding Agents. arXiv:2610.31710, 2026. https://arxiv.org/abs/2610.31710.
 verified: arXiv API: title and all five authors, in order, match the reading note (`notes/2610.31710.md`). The note read v1 (22 Oct 2026); the current version is v2 (updated 28 Oct 2026), not read.
+
+[2605.16352] Hu, Su, Zhao, Zhu, Haque. LARGER: Lexically Anchored Repository Graph Exploration and Retrieval. arXiv:2605.16352v1, 2026 (May 8, 2026). https://arxiv.org/abs/2605.16352v1.
+verified: arXiv HTML of v1 read in full on Nov 10, 2026 and checked against the 21-page PDF; notes in docs/lit/2026-11-10-larger-check.md.
+
+[forum-744272] Tool results reach the model double-JSON-encoded. Discussion 744272 with replies, Gemma 4 Developer Agent Competition, Kaggle, Sep 2026. https://www.kaggle.com/competitions/gemma-4-developer-agent/discussion/744272.
+verified: the thread and its replies read in a signed-in browser on Nov 10, 2026 (the report, the proposed fix, the reply that the fix is in the Sep 30 wheelhouse, and a participant's comparison of three encodings of a file read on 30 fixed edit contexts); summary in docs/prior-art.md. Authors are forum users and are not named here.
+
+[forum-745731] Notes on the graph tools from auditing all 127 graphs. Discussion 745731, Gemma 4 Developer Agent Competition, Kaggle, Oct 2026. https://www.kaggle.com/competitions/gemma-4-developer-agent/discussion/745731.
+verified: the post read in a signed-in browser on Nov 10, 2026 (exact-id matching, alphabetical order cut at 50, no edge direction, missing async definitions); summary in docs/prior-art.md.
 
 [GraphLoc] zzgtylors (Kaggle username; real name not recorded). Where Does the Graph Help? A Localization Audit of the Gemma 4 Developer Agent Code Graphs. Kaggle writeup, Gemma 4 Developer Agent Paper Track, 2026; public notebooks dated Sep 25-27, 2026, Apache-2.0. Notebooks: https://www.kaggle.com/code/zzgtylors/graphloc-auditing-gemma-4-agent-code-graphs, https://www.kaggle.com/code/zzgtylors/graphloc-can-gemma-4-pick-the-code-to-change, https://www.kaggle.com/code/zzgtylors/graphloc-end-to-end-gemma-4-agent-skill, https://www.kaggle.com/code/zzgtylors/graphloc-end-to-end-failure-analysis-resource.
 verified: Kaggle CLI (`kernels list --user zzgtylors`) today: the four notebook refs above exist under zzgtylors, last run Sep 25-27, 2026. The writeup title and Apache-2.0 license are from the repo's notes only (`docs/competition.md:192-193`, `docs/prior-art.md:9-14`), not re-fetched. The writeup's own URL is not recorded in the repo.
