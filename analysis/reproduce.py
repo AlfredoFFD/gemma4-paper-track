@@ -16,6 +16,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 R = 'analysis/results'
+PUBLIC = ['data/graphloc/out', 'data/public_traces/vanductan__gemma4-patchpool',
+          'data/public_traces/niraberman__gemma4-commit-anatomy-traces', 'data/public_traces/petermugoya__what-the-agent-saw']
 
 # (label, kind, script and arguments, stored output, files that must exist)
 JOBS = [
@@ -72,6 +74,13 @@ JOBS = [
      ['analysis/mangled_sensitivity.py'], f'{R}/mangled_sensitivity.txt', [f'{R}/d1/forks/results.jsonl']),
     ('where the first read lands', 'exploratory',
      ['analysis/explore_mechanism.py'], f'{R}/explore_mechanism.txt', [f'{R}/d1/forks/results.jsonl']),
+    # Other teams' public runs: the data is not in this repository (analysis/results/public/README.md says how to get it).
+    ('public runs: where a first read of a file starts', 'exploratory',
+     ['analysis/public_runs_address.py'], f'{R}/public/address.txt', PUBLIC),
+    ('public runs: where a first read of a file starts, independent', 'independent',
+     ['analysis/rederive_public_address.py'], f'{R}/public/rederive_address.txt', PUBLIC),
+    ('public runs: mangled argument names', 'exploratory',
+     ['analysis/public_runs_defect.py'], f'{R}/public/defect.txt', PUBLIC),
 ]
 
 
