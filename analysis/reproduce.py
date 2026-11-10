@@ -81,6 +81,11 @@ JOBS = [
      ['analysis/rederive_public_address.py'], f'{R}/public/rederive_address.txt', PUBLIC),
     ('public runs: mangled argument names', 'exploratory',
      ['analysis/public_runs_defect.py'], f'{R}/public/defect.txt', PUBLIC),
+    ('public runs: malformed file reads split by kind', 'exploratory',
+     ['analysis/public_runs_defect_split.py'], f'{R}/public/defect_split.txt',
+     PUBLIC + ['data/public_traces/kmussa77__gemma4-agent-traces-graph-audit']),
+    ('public runs, whole runs: when the agent is first shown a line the fix changes', 'exploratory',
+     ['analysis/public_runs_time_to_fix.py'], f'{R}/public/time_to_fix.txt', PUBLIC + ['data/tasks.jsonl']),
 ]
 
 
