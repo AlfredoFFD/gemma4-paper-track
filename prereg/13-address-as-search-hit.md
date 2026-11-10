@@ -101,4 +101,6 @@ records; the versions recorded by the run.
 
 ## Amendments
 
-(none)
+- Nov 10, 2026, 5:15 PM EST, the gate: the smoke test ended at 5:13 PM. From the runner's summary: 24 replays on 8
+  states, 0 errors, 24 with a call (100%, the bar was 80%). The gate is passed; nothing else of those rows was read
+  and they were not kept. The full run starts now. No file changed.
