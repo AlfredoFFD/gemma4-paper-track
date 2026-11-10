@@ -17,6 +17,8 @@ Every plotted number is computed here from the raw per-replay rows with the regi
   D1, D2a, D2b  analysis/analyze_d.py (load_run, tables, imported);
   E    analysis/analyze_k.py (score, first_call_failure, imported; its usable-replay and complete-state rules);
   F    analysis/analyze_w.py (its arms, seeds and complete-state rule; any_true and failure from gates_c).
+  S    analysis/analyze_g.py, part "one step" (arms H and E on the newest harness wheels; pre-registration 08);
+  D2q  analysis/analyze_d.py as for D2a and D2b, on the run with a model of another family (pre-registration 10).
 Rates use the frozen bootstrap analyze_forks.boot_ci fed per-state lists in the order the registered script feeds it
 (which fixes the interval); differences use analyze_forks.diff_ci. Before anything is saved, every plotted value of a
 run whose registered output file exists is checked against the numbers printed there, and any mismatch stops the
@@ -63,15 +65,18 @@ TABLE_JSON = FIG / 'rules_table.json'
 # Later runs: default run directory (the directory the registered script is given), the raw rows file inside it,
 # and the registered output files the plotted numbers are checked against.
 RUN_DIRS = {'C': RES / 'c' / 'forks', 'D1': RES / 'd1' / 'forks', 'D2a': RES / 'd2_26b' / 'forks',
-            'D2b': RES / 'd2_e4b' / 'forks', 'E': RES / 'k' / 'forks', 'F': RES / 'w' / 'forks'}
+            'D2b': RES / 'd2_e4b' / 'forks', 'E': RES / 'k' / 'forks', 'F': RES / 'w' / 'forks',
+            'S': RES / 'g_onestep' / 'forks', 'D2q': RES / 'qwen' / 'forks'}
 ROWS_FILE = {'C': 'results.jsonl', 'D1': 'results.jsonl', 'D2a': 'results.jsonl', 'D2b': 'results.jsonl',
-             'E': 'results_k.jsonl', 'F': 'results.jsonl'}
+             'E': 'results_k.jsonl', 'F': 'results.jsonl', 'S': 'results.jsonl', 'D2q': 'results.jsonl'}
 OUTPUTS = {'C': [RES / 'c' / 'analyze_c.txt', RES / 'c' / 'gates_c.txt'],
            'D1': [RES / 'd1' / 'analyze_d1.txt'],
            'D2a': [RES / 'd2_26b' / 'analyze_d2_26b.txt'],
            'D2b': [RES / 'd2_e4b' / 'analyze_d2_e4b.txt'],
            'E': [RES / 'k' / 'analyze_k.txt', RES / 'k' / 'analyze_k_extra.txt', RES / 'k' / 'explore_k.txt'],
-           'F': [RES / 'w' / 'analyze_w.txt']}
+           'F': [RES / 'w' / 'analyze_w.txt'],
+           'S': [RES / 'g' / 'analyze_g.txt'],
+           'D2q': [RES / 'qwen' / 'analyze_d2_qwen.txt']}
 
 # Registered experiment B values (percent of replays), checked before any figure is saved.
 REGISTERED = {('A', 's1'): 2.15, ('P', 's1'): 3.01, ('H', 's1'): 2.75, ('D', 's1'): 4.30, ('E', 's1'): 8.25,
@@ -160,6 +165,7 @@ if str(ANALYSIS) not in sys.path:
 # The registered scripts of the later runs (their main() is not run; only functions and constants are used).
 import analyze_c as AC  # noqa: E402
 import analyze_d as AD  # noqa: E402
+import analyze_g as AG  # noqa: E402
 import analyze_k as AK  # noqa: E402
 import analyze_k_extra as AKX  # noqa: E402
 import analyze_w as AW  # noqa: E402
@@ -339,6 +345,24 @@ def exp_d(run_dir, mode):
     return dict(n_rows=len(rows), n_complete=len(complete), n_states=len(states), rates=rates, diffs=diffs)
 
 
+def exp_s(run_dir):
+    """analyze_g.py's part "one step", minus printing: arms H and E, seeds 1 to 3, gates_c.failure, complete states in
+    sorted order, any_true from gates_c."""
+    states = GC.load_states(D_STATES)
+    rows = [r for r in GC.load_rows(Path(run_dir) / 'results.jsonl')
+            if r['arm'] in AG.ONE_ARMS and r['seed'] in AG.ONE_SEEDS]
+    usable = collections.defaultdict(dict)
+    for r in rows:
+        if GC.failure(r) is None:
+            usable[GC.skey(r)][(r['arm'], r['seed'])] = r
+    need = {(a, s) for a in AG.ONE_ARMS for s in AG.ONE_SEEDS}
+    complete = sorted(k for k, v in usable.items() if need <= set(v))
+    T = {a: {k: [GC.any_true(states[k], usable[k][(a, s)]['next_call']) for s in AG.ONE_SEEDS] for k in complete}
+         for a in AG.ONE_ARMS}
+    return dict(n_rows=len(rows), n_complete=len(complete), n_states=len(states), rates={a: r_pct(T[a]) for a in AG.ONE_ARMS},
+                diffs={'S1': d_pct(T['E'], T['H'])})
+
+
 def exp_e(run_dir):
     """analyze_k.py's main(), minus printing: usable replays (first_call_failure), complete states per population,
     score (imported), per-state tables in sorted state order."""
@@ -419,7 +443,7 @@ def exp_f(run_dir):
 
 
 LOADERS = {'C': exp_c, 'D1': lambda d: exp_d(d, 'd1'), 'D2a': lambda d: exp_d(d, 'd2'),
-           'D2b': lambda d: exp_d(d, 'd2'), 'E': exp_e, 'F': exp_f}
+           'D2b': lambda d: exp_d(d, 'd2'), 'E': exp_e, 'F': exp_f, 'S': exp_s, 'D2q': lambda d: exp_d(d, 'd2')}
 MIN_COMPLETE = 200   # every pre-registration: below this, everything is EXPLORATORY
 
 
@@ -688,6 +712,26 @@ def check_f(e, path, ck):
         ck.same('F F1 median', e['points']['F1'], f1, 100, 2) if f1 else ck.missing('F F1')
 
 
+def check_s(e, path, ck):
+    """The one-step part of analyze_g.py's stored output."""
+    txt = path.read_text(encoding='utf-8')
+    part = txt.split('PART "one step"')[1] if 'PART "one step"' in txt else ''
+    if m := re.search(r'complete states: (\d+) of', part):
+        ck.same('S complete states', e['n_complete'], m.group(1), 1, None)
+    else:
+        ck.missing('S complete states')
+    for a in AG.ONE_ARMS:
+        m = re.search(rf'any unopened true neighbor touched, arm {a}: ([\d.]+) \[([\d.]+), ([\d.]+)\] \| (\d+)/(\d+)', part)
+        if not m:
+            ck.missing(f'S {a}')
+            continue
+        ck.triple(f'S {a}', e['rates'][a].raw, m.groups()[:3])
+        ck.same(f'S {a} hits', e['rates'][a].k, m.group(4), 1, None)
+        ck.same(f'S {a} n', e['rates'][a].n, m.group(5), 1, None)
+    m = re.search(r'S1 E - H: ([+-][\d.]+) \[([+-][\d.]+), ([+-][\d.]+)\]', part)
+    ck.triple('S S1', e['diffs']['S1'].raw, m.groups()) if m else ck.missing('S S1')
+
+
 def check_later(tag, e, ck):
     paths = OUTPUTS[tag]
     ck.lines.append(f'  experiment {tag}:')
@@ -699,6 +743,9 @@ def check_later(tag, e, ck):
         return
     if not paths[0].exists():
         ck.lines.append(f'    no {paths[0].relative_to(ROOT).as_posix()} yet: plotted values UNCHECKED')
+        return
+    if tag == 'S':
+        check_s(e, paths[0], ck)
         return
     (check_f if tag == 'F' else lambda e_, p_, c_: check_d(tag, e_, p_, c_))(e, paths[0], ck)
 
@@ -824,18 +871,22 @@ def fig_results(values, out_dir):
 
 # ---------------------------------------------------------------- figure 3: replications and extensions
 EXP_NAME = {'B': 'experiment B', 'C': 'experiment C', 'D1': 'experiment D1', 'D2a': 'experiment D2a',
-            'D2b': 'experiment D2b', 'E': 'experiment E', 'F': 'experiment F'}
+            'D2b': 'experiment D2b', 'E': 'experiment E', 'F': 'experiment F', 'S': 'experiment S (newest wheels)',
+            'D2q': 'experiment D2q (another model family)'}
 # Figure text names runs in words, never by experiment letter
 RUN_NAME = {'B': 'hosted run', 'C': 'rented GPU', 'D1': 'tool-channel run', 'D2a': 'second-model run',
-            'D2b': 'second-model run', 'E': 'five-call run', 'F': 'rendering run'}
+            'D2b': 'second-model run', 'E': 'five-call run', 'F': 'rendering run', 'S': 'newest-wheels run',
+            'D2q': 'other-family run'}
 # Panel (a): (source, contrast key, legible arm, bare arm, label, code)
 FOREST = [
     ('B', 'B3', 'E', 'H', 'Gemma-4-31B, note', 'E − H'),
     ('C', 'G2', 'E', 'H', 'Gemma-4-31B, note', 'E − H'),
     ('D1', 'T1', 'PE', 'P', 'Gemma-4-31B, tool result', 'PE − P'),
     ('F', 'F3', 'Ew', 'Hw', 'Gemma-4-31B, original rendering', 'Ew − Hw'),
+    ('S', 'S1', 'E', 'H', 'Gemma-4-31B, harness wheels of Oct 12', 'E − H'),
     ('D2a', 'M1', 'E', 'H', 'Gemma 4 26B-A4B, note', 'E − H'),
     ('D2b', 'M1', 'E', 'H', 'Gemma 4 E4B, note', 'E − H'),
+    ('D2q', 'M1', 'E', 'H', 'Qwen2.5-Coder-32B, note', 'E − H'),
 ]
 # Panel (b), the rented-GPU run: (rate key, color group, label, code)
 PARTS = [('H', 'bare', 'bare names', 'H'), ('ES', 'partial', 'name + first line', 'ES'),
@@ -1143,7 +1194,8 @@ def checkable(exps):
     src = {'B1': ('B', 'B1'), 'B3': ('B', 'B3'), 'B4_D': ('B', 'B4_D'), 'B4_E': ('B', 'B4_E'), 'G2': ('C', 'G2'),
            'C1': ('C', 'C1'), 'C2_EL': ('C', 'C2_EL'), 'C2_ES': ('C', 'C2_ES'), 'E_EL_90': ('C', 'E_EL_90'),
            'T1': ('D1', 'T1'), 'T2_90': ('D1', 'T2_90'), 'M1_D2a': ('D2a', 'M1'), 'M1_D2b': ('D2b', 'M1'),
-           'K1': ('E', 'K1'), 'K1_task': ('E', 'K1_task'), 'K2': ('E', 'K2'), 'F2': ('F', 'F2'), 'F3': ('F', 'F3')}
+           'K1': ('E', 'K1'), 'K1_task': ('E', 'K1_task'), 'K2': ('E', 'K2'), 'F2': ('F', 'F2'), 'F3': ('F', 'F3'),
+           'S1': ('S', 'S1'), 'M2': ('D2q', 'M1')}
     for key, (tag, k) in src.items():
         d = (exps.get(tag) or {}).get('diffs', {}).get(k)
         if d is not None:
