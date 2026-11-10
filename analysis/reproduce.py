@@ -77,6 +77,9 @@ JOBS = [
     ('08 five calls with the bound honored, and one step on the newest wheels: G1 to G3, S1', 'registered',
      ['analysis/analyze_g.py', f'{R}/g/forks', '--onestep', f'{R}/g_onestep/forks'], f'{R}/g/analyze_g.txt',
      [f'{R}/g/forks/results_g.jsonl', f'{R}/g_onestep/forks/results.jsonl', 'data/snapshots']),
+    ('08 five calls and one step on the newest wheels, independent', 'independent',
+     ['analysis/rederive_g.py', f'{R}/g/forks', f'{R}/g_onestep/forks', '--no-write'], f'{R}/rederive_g.txt',
+     [f'{R}/g/forks/results_g.jsonl', f'{R}/g_onestep/forks/results.jsonl', 'data/snapshots']),
     ('12 a file without lines: P1 to P3', 'registered',
      ['analysis/analyze_12.py', f'{R}/12/forks'], f'{R}/12/analyze_12.txt',
      [f'{R}/12/forks/results.jsonl', f'{R}/c/forks/results.jsonl']),
@@ -115,6 +118,9 @@ JOBS = [
      ['analysis/rederive_public_time_to_fix.py'], f'{R}/public/rederive_time_to_fix.txt', PUBLIC + ['data/tasks.jsonl']),
     ('public runs, whole runs: fix sites the agent never saw, against the code graph and rewired graphs', 'exploratory',
      ['analysis/public_runs_missed_regions.py'], f'{R}/public/missed_regions.txt',
+     PUBLIC + ['data/tasks.jsonl', 'data/graphs', 'data/snapshots']),
+    ('public runs, whole runs: fix sites the agent never saw, independent', 'independent',
+     ['analysis/rederive_public_missed_regions.py'], f'{R}/public/rederive_missed_regions.txt',
      PUBLIC + ['data/tasks.jsonl', 'data/graphs', 'data/snapshots']),
 ]
 
