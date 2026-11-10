@@ -7,7 +7,7 @@ said that references do not count and that an appendix is supplementary. Remove 
 
 ## Abstract
 
-A graph-localization skill barely changes what the competition's Gemma-4-31B agent resolves. We ask why, from inside the agent. We pause 205 real runs at 407 points right after the agent opens a file, show the model the code graph's neighbors of a function in that file, and replay its next step through the official harness: seven pre-registered experiments, about 40,000 replays. Bare names, as `get_code_neighbors` prints them, barely change the next call: 2.8% of replays reach a listed neighbor in an unopened file, against 2.2% with no list. The same neighbors with file and line range are followed three times as often (8.3%; +5.5 points, 95% interval 3.4 to 7.7). The gain holds inside the tool's own result (+6.4), on two other Gemma 4 models (+3.5, +3.1) and under the original harness's rendering (+5.2). The location carries all of it; the definition line adds nothing. A false neighbor written the same way is followed in 1 of 1,200 replays, the true one in 23. Five calls later the lead is +3.9 points [−1.1, 8.8]: the legible list gets the agent to the fix's lines sooner, not detectably more often. We also find that a harness change makes the 31B model mangle an argument name in a third of its ranged reads, which then silently return the top of the file. Both problems are cheap to fix.
+A graph-localization skill barely changes what the competition's Gemma-4-31B agent resolves. We ask why, from inside the agent. We pause 205 real runs at 407 points right after the agent opens a file, show the model the code graph's neighbors of a function in that file, and replay its next step through the official harness: seven pre-registered experiments, about 40,000 replays. Bare names, as `get_code_neighbors` prints them, barely change the next call: 2.75% of replays reach a listed neighbor in an unopened file, against 2.15% with no list. The same neighbors with file and line range are followed three times as often (8.25%; +5.50 points, 95% interval 3.44 to 7.65). The gain holds inside the tool's own result (+6.35), on two other Gemma 4 models (+3.53, +3.06) and under the original harness's rendering (+5.17). The location carries all of it; the definition line adds nothing. A false neighbor written the same way is followed in 1 of 1,200 replays, the true one in 23. Five calls later the lead is +3.86 points [−1.05, 8.77]: the legible list gets the agent to the fix's lines sooner, not detectably more often. We also find that a harness change makes the 31B model mangle an argument name in about a third of its ranged reads, which then silently return the top of the file. Both problems are cheap to fix.
 
 ## 1. The question
 
@@ -50,7 +50,7 @@ The history is loaded into the harness's own compiled agent as a session, and th
 
 The outcome is the model's first function call. A listed node is touched when that call reads its file over a line range that overlaps the node (within the harness's caps of 150 lines and 10,000 characters per read), edits the file, or views it with a shell command that shows those lines or names the node. Only entries in unopened files are scored. Malformed calls are counted apart as interface failures. In the five-call experiment the outcome is whether the agent is shown a line the gold patch changes. Intervals are 95% bootstrap intervals clustered by state.
 
-Seven pre-registrations (`prereg/02` to `07`) fixed every decision rule by a commit before its run; Table 1 lists each rule with its outcome, met or not. Every registered number was re-derived by a second script written without the first. Runs used hosted L4 GPUs or rented A100s; no contrast mixes runs.
+Six pre-registrations (`prereg/02` to `07`) fixed every decision rule by a commit before its run; Table 1 lists each rule with its outcome, met or not. Every registered number was re-derived by a second script written without the first. Runs used hosted L4 GPUs or rented A100s; no contrast mixes runs.
 
 ## 4. Results
 
@@ -60,9 +60,9 @@ Ten arms, 12,210 replays; 388 states are complete in all arms (Figure 2a).
 
 **Bare names barely move the next call.** With nothing added, 2.15% of replays reach a listed neighbor. The bare list gives 3.01% as a tool result and 2.75% as a note: +0.8 points pooled [−0.1, 1.7], so the registered following test was not met and discrimination could not be tested. The channel makes no difference (P − H +0.25 [−0.7, 1.2]).
 
-**An instruction helps a little.** D − H is +1.55 [0.60, 2.66], and not under a wider scoring of recursive searches (+0.77 [−0.52, 2.06]).
+**An instruction helps a little.** D − H is +1.55 [0.60, 2.66]; under a wider scoring of recursive searches it is +0.77 [−0.52, 2.06].
 
-**A legible list is followed three times as often.** E reaches a listed neighbor in 8.25% of replays: E − H = +5.50 [3.44, 7.65]. E reaches one in 41 states and H in 14 (McNemar p = 5e-7). It holds in each seed, at each cut point, with either repository left out, clustered by task ([2.16, 9.15]) and under an independent recount. Hits are concentrated: without the five tasks with the most E hits it is +2.4 to +2.7.
+**A legible list is followed three times as often.** E reaches a listed neighbor in 8.25% of replays: E − H = +5.50 [3.44, 7.65]. E reaches one in 41 states and H in 14 (McNemar p = 5e-7). It holds in each seed, at each cut point, with either repository left out, clustered by task ([2.16, 9.15]) and under an independent recount.
 
 **A rewired list is not followed.** Its entries are touched in 0.52% (R_D) and 1.03% (R_E) of replays. The registered structure rule is met (E − R_E +7.22 [4.64, 9.97]), with a qualification in Section 5.
 
@@ -84,7 +84,7 @@ Ten arms, 12,210 replays; 388 states are complete in all arms (Figure 2a).
 
 ### 4.3 Which part of an entry, and a false entry
 
-**Location carries the effect.** In one run, the list with name, file and lines (EL) is followed in 7.75% of replays and the list with name and first definition line (ES) in 3.08%, against 3.00% for bare names and 8.58% for the full entry. EL − H is +4.75 [3.00, 6.58]; ES − H is +0.08 [−0.75, 0.92]. By the registered rule, location alone is sufficient for the full effect (E − EL +0.83, 90% interval [−0.17, 1.83]).
+**Location carries the effect.** The list with name, file and lines (EL) is followed in 7.75% of replays and the list with name and first definition line (ES) in 3.08%, against 3.00% for bare names and 8.58% for the full entry. EL − H is +4.75 [3.00, 6.58]; ES − H is +0.08 [−0.75, 0.92]. By the registered rule, location alone is sufficient for the full effect (E − EL +0.83, 90% interval [−0.17, 1.83]).
 
 **A false entry is not followed.** In E′ a decoy takes the place of one true neighbor, written with its own file, lines and definition line. The true entry is followed in 23 of 1,200 replays and the decoy in 1 (+1.83 points [0.83, 3.17]). By the registered rule, the agent checks the edge.
 
@@ -100,7 +100,7 @@ Where the fix is elsewhere (114 states), the list does no harm: the fix's file i
 
 ## 5. What the encoding changes (exploratory)
 
-**Bare names already move the agent to the files.** Count a listed entry as followed by any means (its file opened at any lines, or its name or path used in a command): A is 5.2%, H 9.9%, D 12.9% and E 12.4% (H − A +4.64 [2.66, 6.79]; E − D −0.52 [−2.58, 1.46]).
+**Bare names already move the agent to the files.** Count a listed entry as followed by any means (its file opened at any lines, or its name or path used in a command): A is 5.2%, H 9.9%, D 12.9% and E 12.4% (H − A +4.64 [2.66, 6.79]).
 
 **The encoding changes where in the file the read lands.** Given that the agent opens a listed entry's file, the read covers the entity 37% to 49% of the time in every arm except E, where it is 70% [56, 82]. In A, H and D all but three of 107 hits are a `read_file` from the top of the file, so an entity is reached only if it sits in the first 150 lines. In E, 47 of 96 hits start at a listed line. The pattern repeats in the tool channel (44% for P, 68% for PE) and on 26B-A4B (49% and 72%); it is weaker on E4B (47% and 55%).
 
@@ -108,16 +108,16 @@ Where the fix is elsewhere (114 states), the list does no harm: the fix's file i
 
 **The structure effect is smaller on matched entries.** The rewired entries were filtered to unseen names outside fix-location files; the scored true entries were not. With the true entries filtered the same way, E − H is still +2.32 [1.12, 3.69], but true minus rewired is +1.46 [0.00, 3.01]: most of the registered gap comes from true neighbors the agent has its own reasons to visit. Models differ in what they do with a rewired list: 26B-A4B touches its entries in 0.34% of replays with or without it, E4B in 2.84% against 0.66% (+2.19 [0.87, 3.83]).
 
-**An interface defect.** In the replays the 31B model often writes a line bound under a mangled name, `start_line"`. The agent framework drops an argument name it does not know, so the read silently returns lines 1 to 150. A pre-registered test traces this to the harness change of Sep 30 that turned tool results from JSON strings into dictionaries [3]: with no list, 36.1% of first-call reads that carry a line bound are mangled under the current rendering and 0.3% under the old one (18.3% against 0.2% of replays, +18.2 [14.8, 21.8]); the original runs had 1.0%. With tools executing, 14.4% of 4,655 ranged reads were mangled and 658 returned the file from line 1. The no-list arm is hit hardest (25% to 41% of its ranged reads, against 6% to 10% after a legible note), a likely reason any note helped in Section 4.4. The other two models never do it. Our registered outcomes do not depend on it (E − H +5.50 becomes +5.58 with the bound honored).
+**An interface defect.** In the replays the 31B model often writes a line bound under a mangled name, `start_line"`. The agent framework drops an argument name it does not know, so the read silently returns lines 1 to 150. A pre-registered test traces this to how tool results are rendered since the harness change of Sep 30, which turned them from JSON strings into dictionaries [3]: with no list, 36.1% of first-call reads that carry a line bound are mangled under the current rendering and 0.3% under the old one (18.3% against 0.2% of replays, +18.2 [14.8, 21.8]); the original runs had 1.0%. With tools executing, 14.4% of 4,655 ranged reads were mangled and 658 returned the file from line 1. The no-list arm is hit hardest (25% to 41% of its ranged reads, against 6% to 10% after a legible note), a likely reason any note helped in Section 4.4. The other two models never do it. Our registered outcomes do not depend on it (E − H +5.50 becomes +5.58 with the bound honored).
 
 ## 6. What it means
 
-Where these agents decide where to look, the graph's failure is not a failure to attend or to tell a true edge from a false one. The tool prints names. A name gets the agent to a file, which it reads from line 1 under a 150-line cap. A file and a line range get it to the code: three times as often at the next call, ten points more often by the third, and no more often by the fifth. What a legible graph buys this agent is calls.
+Where these agents decide where to look, the graph's failure is not a failure to attend or to tell a true edge from a false one. The tool prints names. A name gets the agent to a file, which it reads from line 1 under a 150-line cap. A file and a line range get it to the code: three times as often at the next call, ten points more often by the third, and not detectably more often by the fifth. What a legible graph buys this agent is calls.
 
 Three changes follow; none needs training:
 
 1. `get_code_neighbors` should return each neighbor's file and line range. The definition line can be left out.
-2. The harness should reject an unknown argument name instead of dropping it, or render tool results as it did before Sep 30. As it stands, a third of the 31B model's ranged reads after a file read return the wrong lines.
+2. The harness should reject an unknown argument name instead of dropping it, so the model can retry. As it stands, a third of the 31B model's ranged reads after a file read return the wrong lines.
 3. The list is alphabetical and following falls with rank. An order by relevance is untested.
 
 Legible output did not make wrong edges actionable for the two larger models; the smallest one does follow a rewired list.
@@ -138,7 +138,7 @@ We measure where the agent looks, not whether it fixes the task. No run here is 
 
 ## Reproducibility
 
-Code, the seven pre-registrations with their commit times, the raw outputs of all nine runs, the independent re-derivations and the figure code are released under Apache 2.0 at [repository URL]. `analysis/reproduce.py` re-runs every analysis from the raw outputs and compares it with the stored result. The competition data is not redistributed; the state bundle is rebuilt from it by the exporter. The appendix lists the rules as text, the runs, robustness checks and every deviation.
+Code, the six pre-registrations with their commit times, the raw outputs of all nine runs, the independent re-derivations and the figure code are released under Apache 2.0 at [repository URL]. `analysis/reproduce.py` re-runs every analysis from the raw outputs and compares it with the stored result. The competition data is not redistributed; the state bundle is rebuilt from it by the exporter. The appendix lists the rules as text, the runs, robustness checks and every deviation.
 
 ## References
 
