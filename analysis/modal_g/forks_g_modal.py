@@ -16,7 +16,8 @@ dated Oct 12) unless --variant v28 is given. Volume `gemma-forks-c`, mounted at 
 
 Smoke test (fresh and fix):   modal run forks_g_modal.py --mode smoke
 Smoke test (one step):        modal run forks_g_modal.py --mode onestep-smoke
-Full runs (resumable):        modal run --detach forks_g_modal.py --mode full
+Full runs (resumable):        modal run --detach forks_g_modal.py --mode full --parts fix --out /vol/out_g
+                              modal run --detach forks_g_modal.py --mode full --parts fresh --out /vol/out_g_fresh
                               modal run --detach forks_g_modal.py --mode onestep
 From Git Bash prefix every command with MSYS_NO_PATHCONV=1 PYTHONIOENCODING=utf-8.
 """
@@ -131,13 +132,13 @@ def smoke(variant: str = 'latest', parts: str = 'fresh,fix'):
 
 
 @app.function(image=image, gpu='A100-80GB', volumes={M: vol}, timeout=12 * 3600, cpu=8, memory=49152, max_containers=1)
-def full(variant: str = 'latest', parts: str = 'fresh,fix'):
-    env = _env_g('full', G_OUT, variant, parts)
-    _platform(G_OUT, 'platform_actual_g.json', variant)
+def full(variant: str = 'latest', parts: str = 'fresh,fix', out: str = G_OUT):
+    env = _env_g('full', out, variant, parts)  # one output directory per container: two runs never write one file
+    _platform(out, 'platform_actual_g.json', variant)
     _committer()
     p = subprocess.run([sys.executable, G_INPUTS + '/forks_g_runner.py'], env=env)
     print('exit', p.returncode)
-    print('pinned', _freeze(G_OUT, 'pip_freeze_g.txt'))
+    print('pinned', _freeze(out, 'pip_freeze_g.txt'))
     vol.commit()
     return p.returncode
 
@@ -171,11 +172,11 @@ def onestep(variant: str = 'latest', arms: str = 'H,E'):
 
 
 @app.local_entrypoint()
-def main(mode: str = 'smoke', variant: str = 'latest', parts: str = 'fresh,fix', arms: str = 'H,E'):
+def main(mode: str = 'smoke', variant: str = 'latest', parts: str = 'fresh,fix', arms: str = 'H,E', out: str = G_OUT):
     if mode == 'smoke':
         print('exit', smoke.remote(variant, parts))
     elif mode == 'full':
-        print('exit', full.remote(variant, parts))
+        print('exit', full.remote(variant, parts, out))
     elif mode == 'onestep-smoke':
         print('exit', onestep_smoke.remote(variant, arms))
     elif mode == 'onestep':

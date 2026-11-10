@@ -170,3 +170,8 @@ fingerprints; the raw per-replay records; and the harness, server, model and san
 - 1:47 PM (commit 7166807), before the second smoke test: the runner's smoke mode also prints how many graph-tool calls executed and
   their result status (a print in smoke mode only; nothing else changed). New md5 of
   `analysis/modal_g/forks_g_runner.py`: `391894bd7fd7c2c14fcd2e83637ab169`.
+- 1:55 PM, before any full-run replay of the parts "fresh" and "fix": the second smoke test passed (3 fresh tasks, two
+  seeds: five of six episodes reached the eighth model call, five `search_similar_code` calls executed with status
+  ok, first prompts 67 tokens above the logged size). The wrapper now takes an output folder, so the parts "fix" and
+  "fresh" run in separate containers and never write one file: "fix" to `/vol/out_g`, "fresh" to `/vol/out_g_fresh`.
+  New md5 of `analysis/modal_g/forks_g_modal.py`: `adf7960dd962c13fdd82347318985c96`. The runner is unchanged.
