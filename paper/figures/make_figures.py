@@ -105,20 +105,21 @@ TINT = {k: v for k, v in {'none': '#e6e6e6', 'bare': '#d2d2d2', 'legible': '#a9c
 # Figure 2, experiment B only. field: 's1' any unopened true neighbor touched; 'rew' any rewired entry touched.
 # section: bars are grouped by section, with a gap and a small header between sections. mech: also in panel (b).
 ARM_SPECS = [
-    dict(arm='A', src='B', field='s1', group='none', section='true', mech=True, label='nothing added'),
-    dict(arm='P', src='B', field='s1', group='bare', section='true', label='tool result, bare names'),
-    dict(arm='H', src='B', field='s1', group='bare', section='true', mech=True, label='note, bare names'),
-    dict(arm='D', src='B', field='s1', group='bare', section='true', mech=True, label='instruction, bare names'),
+    dict(arm='A', src='B', field='s1', group='none', section='true', mech=True, label='no list'),
+    dict(arm='P', src='B', field='s1', group='bare', section='true', label='bare names, as a tool result'),
+    dict(arm='H', src='B', field='s1', group='bare', section='true', mech=True, label='bare names, as a note'),
+    dict(arm='D', src='B', field='s1', group='bare', section='true', mech=True,
+         label='bare names, with an instruction'),
     dict(arm='E', src='B', field='s1', group='legible', section='true', mech=True,
-         label='note, names + file + lines + first line'),
-    dict(arm='RD', src='B', field='rew', group='rewired', section='rewired', label='instruction, rewired list',
-         code='R$_D$'),
-    dict(arm='RE', src='B', field='rew', group='rewired', section='rewired', label='note with locations, rewired list',
+         label='addresses: file, lines, first line'),
+    dict(arm='RD', src='B', field='rew', group='rewired', section='rewired',
+         label='rewired, bare names, instruction', code='R$_D$'),
+    dict(arm='RE', src='B', field='rew', group='rewired', section='rewired', label='rewired, with addresses',
          code='R$_E$'),
 ]
 SECTION_HEADERS = {
-    'true': 'true list: any unopened true neighbor touched',
-    'rewired': 'rewired list: any rewired entry touched',
+    'true': 'the true list: the next call reads a listed neighbor',
+    'rewired': 'a rewired list: the next call reads a listed entry',
 }
 SECTION_ORDER = ['true', 'rewired']
 
@@ -752,8 +753,7 @@ def check_later(tag, e, ck):
 
 # ---------------------------------------------------------------- drawing helpers
 def _label(spec):
-    code = spec.get('code', spec['arm'])
-    return f'{spec["label"]}  ({code})'
+    return spec['label']   # conditions are named in words; the arm letters stay in the appendix
 
 
 def _fmt(v, sign=False, dec=2):
@@ -879,26 +879,27 @@ RUN_NAME = {'B': 'hosted run', 'C': 'rented GPU', 'D1': 'tool-channel run', 'D2a
             'D2q': 'other-family run'}
 # Panel (a): (source, contrast key, legible arm, bare arm, label, code)
 FOREST = [
-    ('B', 'B3', 'E', 'H', 'Gemma-4-31B, note', 'E − H'),
-    ('C', 'G2', 'E', 'H', 'Gemma-4-31B, note', 'E − H'),
-    ('D1', 'T1', 'PE', 'P', 'Gemma-4-31B, tool result', 'PE − P'),
-    ('F', 'F3', 'Ew', 'Hw', 'Gemma-4-31B, original rendering', 'Ew − Hw'),
-    ('S', 'S1', 'E', 'H', 'Gemma-4-31B, harness wheels of Oct 12', 'E − H'),
-    ('D2a', 'M1', 'E', 'H', 'Gemma 4 26B-A4B, note', 'E − H'),
-    ('D2b', 'M1', 'E', 'H', 'Gemma 4 E4B, note', 'E − H'),
-    ('D2q', 'M1', 'E', 'H', 'Qwen2.5-Coder-32B, note', 'E − H'),
+    ('B', 'B3', 'E', 'H', 'Gemma-4-31B, list as a note', 'E − H'),
+    ('C', 'G2', 'E', 'H', 'the same, second platform', 'E − H'),
+    ('D1', 'T1', 'PE', 'P', 'list as the tool\'s own result', 'PE − P'),
+    ('F', 'F3', 'Ew', 'Hw', 'tool results rendered as in the recorded runs', 'Ew − Hw'),
+    ('S', 'S1', 'E', 'H', 'harness wheels of Oct 12', 'E − H'),
+    ('D2a', 'M1', 'E', 'H', 'Gemma 4 26B-A4B', 'E − H'),
+    ('D2b', 'M1', 'E', 'H', 'Gemma 4 E4B', 'E − H'),
+    ('D2q', 'M1', 'E', 'H', 'Qwen2.5-Coder-32B', 'E − H'),
 ]
 # Panel (b), the rented-GPU run: (rate key, color group, label, code)
-PARTS = [('H', 'bare', 'bare names', 'H'), ('ES', 'partial', 'name + first line', 'ES'),
-         ('EL', 'partial', 'name + file + lines', 'EL'), ('E', 'legible', 'all three', 'E')]
-FALSE_ENTRY = [('swapped_E', 'legible', 'a true entry, listed legibly', 'E'),
-               ('decoy_Ep', 'rewired', 'a false entry written the same way', 'E′')]
+PARTS = [('H', 'bare', 'name', 'H'), ('ES', 'partial', 'name + first line of the definition', 'ES'),
+         ('EL', 'partial', 'name + file + line range', 'EL'), ('E', 'legible', 'name + file + line range + first line', 'E')]
+FALSE_ENTRY = [('swapped_E', 'legible', 'a true neighbor, with its address', 'E'),
+               ('decoy_Ep', 'rewired', 'a false one, written the same way', 'E′')]
 # Panel (c), the five-call run: (arm, line color, marker, line style, label)
-K_LINES = [('A', '#a3a3a3', 'o', (0, (4, 2)), 'nothing added (A)'),
-           ('H', '#5f5f5f', 's', '-', 'bare names (H)'),
-           ('RE', COLORS['rewired'], 'D', '-', 'rewired legible list (R$_E$)'),
-           ('E', COLORS['legible'], 'o', '-', 'legible list (E)')]
+K_LINES = [('A', '#a3a3a3', 'o', (0, (4, 2)), 'no list'),
+           ('H', '#5f5f5f', 's', '-', 'bare names'),
+           ('RE', COLORS['rewired'], 'D', '-', 'rewired list, with addresses'),
+           ('E', COLORS['legible'], 'o', '-', 'addresses')]
 K_BARS = [('A', 'none'), ('H', 'bare'), ('E', 'legible'), ('RE', 'rewired')]
+K_WORDS = {'A': 'no list', 'H': 'bare names', 'E': 'addresses', 'RE': 'rewired'}
 
 W_IN = 7.0
 LEFT = 0.40          # label column, as in Figure 2
@@ -947,8 +948,7 @@ def fig_extensions(exps, out_dir):
         if d is None:
             print(f'  not drawn: Figure 3(a) row "{label}": {key} not estimable in the {EXP_NAME[src]} run')
             continue
-        rows.append(dict(label=f'{label}  ({code})', sub=f'{RUN_NAME[src]}, {_sub(e["n_complete"])}', d=d,
-                         ra=e['rates'][a], rb=e['rates'][b], a=a, b=b))
+        rows.append(dict(label=label, sub=_sub(e['n_complete']), d=d, ra=e['rates'][a], rb=e['rates'][b], a=a, b=b))
     if rows:
         def draw_a(fig, bottom, height):
             fh = fig.get_figheight()
@@ -977,7 +977,7 @@ def fig_extensions(exps, out_dir):
             top = 0.75
             ax.text(0.682, top, 'points [95% interval]', transform=tr, ha='left', va='bottom', fontsize=7.2,
                     color=MUTED, style='italic')
-            ax.text(0.862, top, 'legible vs bare', transform=tr, ha='left', va='bottom', fontsize=7.2,
+            ax.text(0.862, top, 'addresses vs names', transform=tr, ha='left', va='bottom', fontsize=7.2,
                     color=MUTED, style='italic')
             ax.set_ylim(-(len(rows) - 1) - 0.55, top + 0.35)
             ax.set_yticks([])
@@ -986,8 +986,9 @@ def fig_extensions(exps, out_dir):
             ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(2))
             ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(
                 lambda v, _: '0' if abs(v) < 1e-9 else f'{v:+.0f}'.replace('-', MINUS)))
-            ax.set_xlabel('legible minus bare names, percentage points', fontsize=8.5)
-            return '(a)', 'The legible encoding against bare names, wherever tested'
+            ax.set_xlabel('addresses minus bare names: replays whose next call reads a listed neighbor, percentage points',
+                          fontsize=8.2)
+            return '(a)', 'Addresses against bare names, in every setting tested (the same 407 paused steps)'
         panels.append((0.50 * len(rows) + 0.30, draw_a))
 
     # (b) the rented-GPU run: which part of an entry, and a false entry
@@ -1003,11 +1004,10 @@ def fig_extensions(exps, out_dir):
         if len(fals) < len(FALSE_ENTRY):
             print('  not drawn: Figure 3(b) false-entry pair: arm E or Ep not in the experiment C run')
             fals = []
-        brows = [('header', 'each neighbor in the note written as (outcome: any unopened true neighbor touched)')]
+        brows = [('header', 'each neighbor written as (the next call reads a listed neighbor)')]
         brows += [('bar', *q) for q in parts]
         if fals:
-            brows += [('header', 'one entry: the swapped-out true neighbor under E, or the decoy in its place '
-                                 'under E′')]
+            brows += [('header', 'one entry of the list (the next call reads that entry)')]
             brows += [('bar', *f) for f in fals]
         n_units = sum(1.0 if kind == 'bar' else 0.9 for kind, *_ in brows)
 
@@ -1030,7 +1030,7 @@ def fig_extensions(exps, out_dir):
                 extra = f'{v.k:,} of {v.n:,} replays' if key in ('swapped_E', 'decoy_Ep') else None
                 _bar(ax, y, v, COLORS[group], 0.62, show_ci=True, extra=extra)
                 ticks.append(y)
-                labels.append(f'{text}  ({code})')
+                labels.append(text)
                 bold.append(key == 'E')
                 y -= 1.0
             ax.set_ylim(y + 0.45, 0.1)
@@ -1038,9 +1038,9 @@ def fig_extensions(exps, out_dir):
             for t, b in zip(ax.get_yticklabels(), bold):
                 if b:
                     t.set_fontweight('bold')
-            _xaxis(ax, xlim, f'% of replays, rented GPU, {_sub(c["n_complete"])} (whiskers: 95% interval)')
+            _xaxis(ax, xlim, f'% of replays, {_sub(c["n_complete"])} (whiskers: 95% interval)')
             ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(2))
-            return '(b)', 'Which part of an entry is followed, and a false entry'
+            return '(b)', 'Which part of an entry does the work, and a false entry'
         panels.append((0.27 * n_units + 0.12, draw_b))
 
     # (c) the five-call run: reaching the fix, call by call
@@ -1073,8 +1073,8 @@ def fig_extensions(exps, out_dir):
             gap = 8.6 / 72 / (height / ymax)   # one label height in data units
             ly = _spread([v for _, _, v in ends], gap)
             for (arm, color, v), yy in zip(ends, ly):
-                ax.text(5.17, yy, f'{arm.replace("RE", "R$_E$")} {_fmt(v, dec=1)}', ha='left', va='center',
-                        fontsize=8, color=color if arm != 'A' else INK2,
+                ax.text(5.17, yy, f'{K_WORDS[arm]} {_fmt(v, dec=1)}', ha='left', va='center',
+                        fontsize=7.6, color=color if arm != 'A' else INK2,
                         fontweight='bold' if arm == 'E' else 'normal')
                 if abs(yy - v) > 0.4:
                     ax.plot([5.06, 5.15], [v, yy], color=MUTED, lw=0.5)
@@ -1089,9 +1089,9 @@ def fig_extensions(exps, out_dir):
                         color=INK2, linespacing=1.2, zorder=6)
 
             d3, d5 = cv[('R', 'Yline', 3, 'E - H')], k['diffs']['K1']
-            bracket(3.1, 3, f'E minus H {_fmt(d3.val, True, 1)} [{_fmt(d3.lo, dec=1)}, {_fmt(d3.hi, dec=1)}]\n'
+            bracket(3.1, 3, f'addresses minus names {_fmt(d3.val, True, 1)} [{_fmt(d3.lo, dec=1)}, {_fmt(d3.hi, dec=1)}]\n'
                             'exploratory', 74, 'center')
-            bracket(4.9, 5, f'E minus H {_fmt(d5.val, True)} [{_fmt(d5.lo)}, {_fmt(d5.hi)}]\n'
+            bracket(4.9, 5, f'addresses minus names {_fmt(d5.val, True)} [{_fmt(d5.lo)}, {_fmt(d5.hi)}]\n'
                             'registered rule not met', 86, 'right')
             ax.spines[['top', 'right']].set_visible(False)
             ax.set_xticks(calls)
@@ -1110,8 +1110,8 @@ def fig_extensions(exps, out_dir):
                 uv = [cv[('U', 'Yfile', 5, a)] for a, _g in K_BARS]
                 for i, (a, g) in enumerate(K_BARS):
                     _bar(au, -i, cv[('U', 'Yfile', 5, a)], COLORS[g], 0.55, ci_below=True, size=7.6, dec=1)
-                au.set_yticks([-i for i in range(len(K_BARS))], [a.replace('RE', 'R$_E$') for a, _g in K_BARS])
-                au.tick_params(axis='y', labelsize=8)
+                au.set_yticks([-i for i in range(len(K_BARS))], [K_WORDS[a] for a, _g in K_BARS])
+                au.tick_params(axis='y', labelsize=7.4)
                 au.set_ylim(-len(K_BARS) + 0.45, 0.55)
                 _xaxis(au, (0, _room(max(v.hi for v in uv), (ur[1] - ur[0]) * W_IN, 0.62)),
                        f'{k["n_pop"]["U"]} states, {uv[0].n} replays per arm', size=7.6)
@@ -1123,7 +1123,7 @@ def fig_extensions(exps, out_dir):
                          ha='left', va='bottom', fontsize=7.4, color=INK2, linespacing=1.15)
             else:
                 print('  not drawn: Figure 3(c) bars where the fix is elsewhere: no complete state')
-            return '(c)', 'Five model calls later, tools executing'
+            return '(c)', 'Within five model calls, with reads executing'
         panels.append((2.6, draw_c))
 
     if not panels:
