@@ -1,0 +1,78 @@
+# Pre-registration 10: the second-model design on a model of another family
+
+Status: FROZEN on Nov 10, 2026, 2:35 PM EST, by the commit that adds this file, before the model was fetched and
+before any replay with it ran on any platform. It adds to pre-registrations 02 to 09 and changes none of their rules.
+Tags: [Claude Code] wrote it on a proposal of a second session; [team] gave the go for the run and had not read this
+text when it was frozen.
+
+File hashes at freezing (md5): `analysis/modal_g/forks_10_runner.py` `5716f4c2819f4f42218278747d0e4750`,
+`analysis/modal_g/forks_10_modal.py` `3b0279a5a848497de8c06dcf59d61b43`. Used unchanged: `analysis/analyze_d.py`
+`844147a5ab612ee286c861a182d17d0b`, `analysis/rederive_cd.py` `2eaf4603028479bc3f09228ab275973b`,
+`analysis/replay.py` `446b85be41d90e0e8fdb7c32dd5ea2f1`, `analysis/fork_states_d/states.jsonl`
+`d3105df0dc4aa43d7bb0afbdd6123b44`. The runner is a copy of `analysis/modal_w/forks_w_runner.py`
+(`65372125c2e23b48f5ee0e829a5e4167`) whose only change is that the model server's parser settings are read from the
+environment. Code changes that the platform forces after this freeze are recorded at the end of this file as dated
+amendments with the new hashes; the outcome definition and the rule cannot change.
+
+## Why
+
+Every causal result of this project is on Gemma 4 (31B, 26B-A4B, E4B). Blind readers of the draft cap its generality
+there. Public runs of other model families show the same reading pattern, but only observationally (a second
+session's exploratory counts, not yet re-derived in this repository). This run asks whether the registered one-step
+contrast repeats on a model that is not a Gemma.
+
+## Design
+
+Exactly the second-model design of pre-registration 05 (D2), with another model:
+
+- Model: `Qwen/Qwen2.5-Coder-32B-Instruct-AWQ` (the publisher's 4-bit AWQ weights, Apache-2.0), fetched from Hugging
+  Face into the run's volume. Served by the same server version (vLLM 0.19.1) with the tool-call parser `hermes`, no
+  reasoning parser and no chat-template arguments; weight dtype `auto`. Everything else as for 26B-A4B and E4B: one
+  rented A100-80GB, tensor-parallel size 1, the harness wheels of Sep 30 (v28), the starter agent's prompt, tools and
+  configuration, the model reached under the agent's configured model name.
+- States: the 407 states of `analysis/fork_states_d/states.jsonl`, that is, histories of the Gemma-4-31B agent,
+  which this model continues.
+- Arms A (no list), H (bare names, note), E (name, file, lines, definition line, note), RE (rewired list in E's
+  format); seeds 1 to 3; one model call per replay; no tool executes. 4,884 replays.
+
+## Gate before the full run
+
+A smoke test on 8 states. The full run starts only if, in every arm, at least 80% of the smoke replays return a call
+that the frozen interface-failure rule accepts (a call, to a known tool, with well-formed arguments). If the
+tool-call format cannot be made to work through the harness within one hour, the experiment is dropped and reported
+as not run. The smoke test prints counts of rows, errors and calls per arm; its outcomes are not read.
+
+## Rule
+
+Analysis: the frozen `analysis/analyze_d.py d2 <run_dir>` (it prints the contrast under the name M1, the name of
+pre-registration 05's rule) and, independently, `analysis/rederive_cd.py d2 <run_dir>`.
+
+**M2.** E minus H on any unopened true neighbor touched (the outcome of pre-registrations 02 to 05). "The encoding
+effect replicates on a model of another family" if the lower 95% bound is above 0; otherwise "not detected on this
+model". As in pre-registration 05: it applies if at least 200 states are complete (every arm and seeds 1 to 3
+usable), and an arm with more than 20% interface failures is flagged as unreliable. 95% bootstrap intervals clustered
+by state, 2,000 resamples; the interval clustered by task is reported beside it.
+
+Descriptive, no rule: H minus A, E minus A, the rewired entries under RE and under A; of the next calls that are a
+first read of a listed neighbor's file, how many ask for lines past line 1 in the arms without and with line numbers
+(the count of `analysis/explore_first_reads.py`, extended by this run); interface failures by arm and kind.
+
+## Stated limits
+
+- The model continues another model's histories, in a harness built for Gemma 4. A failure here may be a failure of
+  that fit and not of the effect.
+- The agent's thinking settings have no counterpart in this model's server configuration; the model answers without
+  a reasoning channel.
+- 4-bit AWQ weights; one run; one model of one other family. The prompt-size passes of the runner compare token
+  counts of different tokenizers and are not gates here.
+
+## Power, stated as assumptions
+
+The effect on the two smaller Gemma 4 models was 3.5 and 3.1 points with a half-width of about 2. With a similar
+spread a true effect of 3 points or more is detected; a smaller one will usually read as "not detected".
+
+## What is reported regardless of outcome
+
+The rule with its interval, met or not; every arm's rates; interface failures by arm; the raw per-replay records;
+the versions and server settings recorded by the run; and, if the gate fails, that the experiment was not run and
+why.
