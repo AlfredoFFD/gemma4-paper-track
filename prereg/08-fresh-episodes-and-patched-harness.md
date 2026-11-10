@@ -145,3 +145,25 @@ in an error after a usable first response.
 
 Every rule above with its interval, met or not; every arm's rates; the interface failures by arm; the checkout
 fingerprints; the raw per-replay records; and the harness, server, model and sandbox versions recorded by each run.
+
+## Amendment of Nov 10, 2026, 1:46 PM EST: graph tools execute in the part "fresh"; recorded before any full-run replay of the parts "fresh" and "fix"
+
+- What the smoke test showed (3 fresh tasks and 3 states of R, the first two seeds of each; 24 replays, 0 errors):
+  five of the six fresh episodes ended at a `search_similar_code` call after one or two model calls, so the part as
+  frozen would have produced few ranged reads. The smoke test also printed, as plumbing checks, each fresh episode's
+  first prompt size (67 tokens above the size the original run logged, in all six) and, for the part "fix", that the
+  4 mangled reads of arm A returned the file from line 1 and the 4 of arm AF returned the lines the model wrote. No
+  value of N1 and no outcome of G1 to G3 or S1 was computed or read.
+- Change: in the part "fresh" only, the three graph tools (`get_code_neighbors`, `search_similar_code`,
+  `get_code_subgraph`) execute as well, through the harness's own tool functions, on the competition's graph and
+  embedding files staged on the platform. They read precomputed files and change nothing. Every other stopping rule
+  is unchanged. The part "fix" keeps the rule of pre-registration 06: a graph tool ends the replay.
+- N1, its threshold and every other rule are unchanged.
+- The part "one step" was started at 1:40 PM with the frozen files; this amendment does not touch it.
+- Platform record from the two smoke tests: the newest wheels install and run (adk_submission 0.2.13, swegemma
+  0.2.11); sandbox locale C.UTF-8; git is absent from the image, so the baseline commit of the checkout is skipped,
+  as in the amendment of pre-registration 06. With the history rendered as the original runs' harness delivered it,
+  the rebuilt prompt is 67 tokens above the logged size in all six states checked (2 tokens below with the Sep 30
+  wheels): the tool declarations of the newest wheels are longer.
+- New md5: `analysis/modal_g/forks_g_runner.py` `db233368dbc98e1b972f1f93376e58a9`, `analysis/modal_g/forks_g_modal.py`
+  `665d841ff93ddffe73f8b92183782f98`. No other file changed.

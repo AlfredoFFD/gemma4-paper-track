@@ -10,6 +10,7 @@ dated Oct 12) unless --variant v28 is given. Volume `gemma-forks-c`, mounted at 
   /vol/inputs_w     forks_w_runner.py (the one-step runner of pre-registration 07, unchanged)
   /vol/inputs_d     states.jsonl
   /vol/snapshots    <task>.tgz for the 106 traced tasks
+  /vol/comp         graphs/ and embeddings/ of the competition data (read by the graph tools in the part "fresh")
   /vol/out_g        parts "fresh" and "fix": results_g.jsonl, checkouts_g.jsonl, versions_g.json, summary_g.json
   /vol/out_g_onestep  part "one step": results.jsonl, fidelity.jsonl, fidelity_w.jsonl, versions.json, summary.json
 
@@ -43,6 +44,7 @@ SRC = os.environ.get('FORKS_VOLUME_ROOT', '/vol/C:/Program Files/Git')  # where 
 V = '/root/v'  # symlink to SRC: no spaces or colons in the paths handed to pip and vLLM
 G_INPUTS = '/vol/inputs_g'
 G_SNAPSHOTS = '/vol/snapshots'
+G_COMP = '/vol/comp'
 G_OUT = '/vol/out_g'
 S_OUT = '/vol/out_g_onestep'
 S_RUNNER = '/vol/inputs_w/forks_w_runner.py'
@@ -67,7 +69,7 @@ def _link():
 def _env_g(mode, out, variant, parts):
     _link()
     return dict(os.environ, MODE=mode, WHEELHOUSE_DIR=V + '/wheelhouse', INPUTS_DIR=V + '/inputs', INPUTS_G_DIR=G_INPUTS,
-                SNAPSHOTS_DIR=G_SNAPSHOTS, COMP_DIR='/root/comp', MODEL_DIR=SERVED, OUT_DIR=out,
+                SNAPSHOTS_DIR=G_SNAPSHOTS, COMP_DIR=G_COMP, MODEL_DIR=SERVED, OUT_DIR=out,
                 AGENT_DIR='/root/agents/base', TP_SIZE='1', CONCURRENCY='16', ACTIVE_STATES='4',
                 CHECKOUT_DIR='/tmp/checkouts_g', TIME_BUDGET_S=str(8 * 3600), HARNESS_VARIANT=variant, PARTS=parts)
 

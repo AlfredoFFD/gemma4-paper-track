@@ -6,8 +6,11 @@ are chosen by HARNESS_VARIANT (the wrapper passes `latest`: adk_submission 0.2.1
 and analysis/replay_k.py are used unchanged. Two parts share one model server:
 
   fresh  one new episode per task of fork_states_g/fresh_states.jsonl and seed (1 to 3): nothing is seeded, the task
-         prompt the original harness logged for the task is the new message (arm N). Up to 8 model calls; read_file and
-         read-only shell commands execute; the episode stops before the first other call, as in the five-call experiment.
+         prompt the original harness logged for the task is the new message (arm N). Up to 8 model calls; read_file,
+         read-only shell commands and the three graph tools (get_code_neighbors, search_similar_code,
+         get_code_subgraph: they read the competition's precomputed graph and embedding files and change nothing)
+         execute; the episode stops before the first other call. (Amendment of Nov 10: in the first smoke test five
+         of six fresh episodes ended at a search_similar_code call.)
   fix    every state of R (seeds 11 to 15) and U (seeds 11 to 13) of fork_states_k/population.json, up to 5 model
          calls, three arms:
          A   the stock harness, no list (as in the five-call experiment)
@@ -135,6 +138,19 @@ def _arm_messages_g(state, arm, agent_name):
 
 replay.arm_messages = _arm_messages_g  # replay_k.run_k_steps looks it up at call time
 
+GRAPH_TOOLS = ('get_code_neighbors', 'search_similar_code', 'get_code_subgraph')
+EXEC_GRAPH = {'on': False}  # switched on for the part "fresh" only; the part "fix" keeps the five-call experiment's rule
+_orig_classify_call = replay_k.classify_call
+
+
+def _classify_call_g(name, args):
+    if EXEC_GRAPH['on'] and name in GRAPH_TOOLS:
+        return 'exec'
+    return _orig_classify_call(name, args)
+
+
+replay_k.classify_call = _classify_call_g  # the gate and run_k_steps look it up at call time
+
 
 def restore_bounds(args):
     """In place: give a mangled line-bound name its plain name. Returns the plain names restored."""
@@ -228,8 +244,8 @@ def fake_registry(state, arm, seed, k):
     rng = random.Random(f'{state["task"]}|{state["run"]}|{state.get("fork", 0)}|{"A" if arm == "AF" else arm}|{seed}')  # A and AF share a script
     g = gold_of[(state['task'], state['run'], state.get('fork', 0))]
     files = sorted(set(g['gold_files']) | {v['path'] for v in (state.get('neighbor_spans') or {}).values() if v}) or ['README.md']
-    script = []
-    for _ in range(k):
+    script = [[('search_similar_code', {'query': 'main', 'k': 3})]] if arm == 'N' else []  # a graph tool first, as the real agent often does
+    for _ in range(k - len(script)):
         f = rng.choice(files)
         regions = g['gold_files'].get(f) or [[1, 40]]
         a = max(1, rng.choice(regions)[0] + rng.randint(-120, 40))
@@ -345,6 +361,7 @@ async def main():
     ck_path = OUT / ('checkouts_g.jsonl' if MODE == 'full' else 'smoke_checkouts_g.jsonl')
     with open(res_path, 'a') as fout, open(ck_path, 'a') as fck:
         for part in (('FRESH',), ('R', 'U')):  # the fresh part finishes before the fix part starts
+            EXEC_GRAPH['on'] = part == ('FRESH',)
             await asyncio.gather(*(run_state(key, p, seeds, replay_sem, state_sem, fout, fck, tally)
                                    for key, p, seeds in order if p in part))
             log(f'part {part} finished: {dict(tally)}')
