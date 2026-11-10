@@ -1,8 +1,10 @@
 """One-step replays of the saved states with a model of another family (pre-registration 10, DRAFT until frozen).
 
 A copy of analysis/modal_w/forks_w_runner.py with one change: the tool-call parser, the reasoning parser, the chat
-template arguments and the weight dtype of the model server are read from the environment (TOOL_CALL_PARSER,
-REASONING_PARSER, CHAT_TEMPLATE_KWARGS, MODEL_DTYPE). With none of them set the server starts exactly as for Gemma 4.
+template arguments, the weight dtype and the reasoning configuration of the model server are read from the environment
+(TOOL_CALL_PARSER, REASONING_PARSER, CHAT_TEMPLATE_KWARGS, MODEL_DTYPE, REASONING_CONFIG). With none of them set the
+server starts exactly as for Gemma 4. REASONING_CONFIG exists because the agent's configuration sends a thinking-token
+budget with every request and the server refuses that field unless it was started with a reasoning configuration.
 The original docstring follows.
 
 Gemma graph forks, pilot: one-step replays of saved Gemma-4-31B states under five arms.
@@ -93,7 +95,7 @@ versions = {
                  ('swegemma', 'adk-submission', 'adk-eval-core', 'google-adk', 'vllm', 'litellm', 'transformers', 'torch')],
     'wheelhouse_files': sorted(p.name for p in WHEELHOUSE.glob('*.whl')),
     'model_path': MODEL_PATH, 'model_files': sorted(p.name for p in Path(MODEL_PATH).glob('*'))[:40],
-    'model_server': {k: os.environ.get(k) for k in ('TOOL_CALL_PARSER', 'REASONING_PARSER', 'CHAT_TEMPLATE_KWARGS', 'MODEL_DTYPE')},
+    'model_server': {k: os.environ.get(k) for k in ('TOOL_CALL_PARSER', 'REASONING_PARSER', 'CHAT_TEMPLATE_KWARGS', 'MODEL_DTYPE', 'REASONING_CONFIG')},
     'platform': 'modal', 'python': sys.version, 'tensor_parallel_size': int(os.environ.get('TP_SIZE', '1')), 'seeds': SEEDS, 'arms': ARMS, 'experiment': EXPERIMENT, 'concurrency': CONCURRENCY,
     'thoughts_in_history': False,  # see replay.history_events: the original prompts carried no earlier thoughts
     'wrapped_arms': "arms ending in 'w': history tool results delivered as {'result': '<logged JSON string>'}",
@@ -112,9 +114,12 @@ _reasoning = os.environ.get('REASONING_PARSER', 'gemma4')
 _reasoning = None if _reasoning.lower() in ('', 'none') else _reasoning
 _template_kwargs = os.environ.get('CHAT_TEMPLATE_KWARGS', '{"enable_thinking": true}')
 _template_kwargs = json.loads(_template_kwargs) if _template_kwargs.strip() else None
-log('model server settings:', {'tool_call_parser': _tool_parser, 'reasoning_parser': _reasoning,
+_reasoning_config = os.environ.get('REASONING_CONFIG', '')
+_reasoning_config = json.loads(_reasoning_config) if _reasoning_config.strip() else None  # None: the harness's default
+log('model server settings:', {'tool_call_parser': _tool_parser, 'reasoning_parser': _reasoning, 'reasoning_config': _reasoning_config,
                                'default_chat_template_kwargs': _template_kwargs, 'dtype': os.environ.get('MODEL_DTYPE', 'bfloat16')})
 vllm_cfg = VllmConfig(model=MODEL_PATH, port=8000, host='127.0.0.1', tool_call_parser=_tool_parser, reasoning_parser=_reasoning,
+                      reasoning_config=_reasoning_config,
                       default_chat_template_kwargs=_template_kwargs, max_model_len=32768, dtype=os.environ.get('MODEL_DTYPE', 'bfloat16'),
                       gpu_memory_utilization=0.90, enable_auto_tool_choice=True, tensor_parallel_size=int(os.environ.get('TP_SIZE', '1')),
                       startup_timeout=60 * 25)

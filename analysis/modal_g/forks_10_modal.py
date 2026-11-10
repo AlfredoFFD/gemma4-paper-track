@@ -39,6 +39,10 @@ V = '/root/v'  # symlink to SRC: no spaces or colons in the paths handed to pip 
 RUNNER = '/vol/inputs_g/forks_10_runner.py'
 STATES = '/vol/inputs_d/states.jsonl'
 ARMS = 'A,H,E,RE'  # the second-model arms of pre-registration 05
+# The agent's configuration sends a thinking-token budget with every request, and the server refuses that field unless
+# it was started with a reasoning configuration. These delimiters are ones the model is not trained to write; with no
+# reasoning parser set, nothing is removed from its answer.
+REASONING_CONFIG = '{"reasoning_start_str": "<think>", "reasoning_end_str": "</think>"}'
 
 
 def _env(out, model_dir, parser, reasoning, template_kwargs, dtype, **extra):
@@ -49,7 +53,8 @@ def _env(out, model_dir, parser, reasoning, template_kwargs, dtype, **extra):
     e = dict(os.environ, WHEELHOUSE_DIR=V + '/wheelhouse', INPUTS_DIR=V + '/inputs', COMP_DIR='/root/comp',
              MODEL_DIR=f'/vol/{model_dir}', OUT_DIR=out, AGENT_DIR='/root/agents/base', TP_SIZE='1', FIDELITY_N='24',
              CONCURRENCY='8', TIME_BUDGET_S=str(8 * 3600), HARNESS_VARIANT='v28', ARMS=ARMS, STATES_FILE=STATES,
-             TOOL_CALL_PARSER=parser, REASONING_PARSER=reasoning, CHAT_TEMPLATE_KWARGS=template_kwargs, MODEL_DTYPE=dtype)
+             TOOL_CALL_PARSER=parser, REASONING_PARSER=reasoning, CHAT_TEMPLATE_KWARGS=template_kwargs, MODEL_DTYPE=dtype,
+             REASONING_CONFIG=REASONING_CONFIG)
     e.update(extra)
     return e
 
@@ -104,7 +109,7 @@ def full(model_dir: str, out: str = 'out_10', parser: str = 'hermes', reasoning:
     os.makedirs(out, exist_ok=True)
     json.dump({'platform': 'modal', 'gpu': _gpu(), 'python': sys.version, 'model_dir': model_dir,
                'model_server': {'tool_call_parser': parser, 'reasoning_parser': reasoning,
-                                'chat_template_kwargs': template_kwargs, 'dtype': dtype},
+                                'chat_template_kwargs': template_kwargs, 'dtype': dtype, 'reasoning_config': REASONING_CONFIG},
                'started_utc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}, open(out + '/platform_actual.json', 'w'))
 
     def committer():  # rows reach the volume as they are written
