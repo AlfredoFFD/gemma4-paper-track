@@ -269,6 +269,8 @@ def graphloc_part(gold):
     print(f'   of {len(failed)} runs that did not resolve: shown a changed line {pct(sum(x["t"] < INF for x in failed), len(failed))}; '
           f'FINAL PATCH TOUCHES A GOLD FILE {pct(sum(x["patch_file"] for x in failed), len(failed))}; '
           f'OVERLAPS A CHANGED REGION {pct(sum(x["patch_region"] for x in failed), len(failed))}')
+    print(f'   of those {len(failed)}: shown a changed line and FINAL PATCH overlapping no CHANGED REGION '
+          f'{pct(sum(1 for x in failed if x["t"] < INF and not x["patch_region"]), len(failed))}')
     print(f'   the other {len(miss)}: ' + '; '.join(f'{k} {v} (resolved {sum(x["resolved"] for x in miss if where(x) == k)})' for k, v in kinds.most_common()))
     by = collections.defaultdict(list)
     for x in allr:
