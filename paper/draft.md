@@ -186,4 +186,123 @@ Code, the seven pre-registrations with their commit times, the raw outputs of al
 
 ## Appendix
 
-[[APPENDIX]]
+Supplementary material. Every number here is printed by a script in the repository from the raw replay outputs (`analysis/reproduce.py` lists them).
+
+### A. Pre-registered rules and outcomes (text form of Table 1)
+
+| Pre-registration | Rule, fixed before the run | Estimate [95% interval] | Outcome |
+|---|---|---|---|
+| 02 | Following: P and H pooled minus A, lower bound above 0 | +0.8 [−0.1, 1.7] | not met |
+| 02 | Discrimination: swapped-out true entry minus decoy, tested only if following holds | | not tested |
+| 02 | Channel: P minus H | +0.25 [−0.7, 1.2] | no difference |
+| 03 | B1, force: D minus H, lower bound above 0 | +1.55 [0.60, 2.66] | met; not under a wider scoring of recursive searches (+0.77 [−0.52, 2.06]) |
+| 03 | B2, false entry under the instruction: informative only if the true entry is touched in 5% of D replays | 0.34% | underpowered |
+| 03 | B3, encoding: E minus H, interval excludes 0 | +5.50 [3.44, 7.65] | met |
+| 03 | B4, structure: true list minus rewired list at least 3 points with the interval excluding 0, in one format | +3.78 [2.15, 5.67] (D); +7.22 [4.64, 9.97] (E) | met; on matched entries +1.46 [0.00, 3.01] |
+| 04 | Gate G1: replayed prompt size within 2% of the logged size (median) | 1.66% | passed |
+| 04 | Gate G2: E minus H in the same run, lower bound above 0 | +5.58 [3.67, 7.58] | passed |
+| 04 | C1, false entry: true entry under E minus decoy under E′; "checks the edge" if the lower bound is above 0 and the decoy rate is under half the true entry's | 23 against 1 of 1,200 replays; +1.83 [0.83, 3.17] | met: checks the edge |
+| 04 | C2, parts: a part raises following if its arm minus H has a lower bound above 0; it is sufficient if the 90% interval of E minus that arm lies within 2 points | EL − H +4.75 [3.00, 6.58]; ES − H +0.08 [−0.75, 0.92]; E − EL +0.83, 90% [−0.17, 1.83] | location carries it and is sufficient |
+| 05 | T1: PE minus P, lower bound above 0 | +6.35 [4.34, 8.52] | met |
+| 05 | T2: "no channel difference" only if the 90% interval of PE minus E lies within 2 points | +1.59, 90% [0.00, 3.17] | not shown |
+| 05 | M1, Gemma 4 26B-A4B: E minus H, lower bound above 0 | +3.53 [1.51, 5.54] | met |
+| 05 | M1, Gemma 4 E4B: the same | +3.06 [1.09, 5.03] | met |
+| 06 | Gate: at least 95% of re-executed file reads identical to the logged ones | 44 of 44 | passed |
+| 06 | K1: E minus H on being shown a changed line within five calls, where the list reaches the fix; lower bound above 0, robust only if also by task | +3.86 [−1.05, 8.77]; by task [−0.80, 9.63] | not met |
+| 06 | K2, harm: E minus A on opening a changed file, where the fix is elsewhere; harm if the upper bound is below 0 | +8.48 [3.22, 14.04] | no harm |
+| 07 | F1: prompt size under the original rendering within 0.5% of the logged size (median) | 0.03% (2 tokens in 24 of 24 states) | met |
+| 07 | F2: first-call reads with a mangled line-bound name, A minus Aw, lower bound above 0 | +18.17 [14.75, 21.75] | met |
+| 07 | F3: Ew minus Hw, lower bound above 0 | +5.17 [3.33, 7.17] | met |
+
+Aw, Hw and Ew are arms A, H and E on a history whose earlier tool results are delivered as the original runs' harness delivered them.
+
+### B. Runs
+
+| Run | Arms | Replays | Model and platform | Complete states | Interface failures |
+|---|---|---|---|---|---|
+| Hosted 1 | A, P, P′, H, H′ | 6,105 | Gemma-4-31B (QAT, 4-bit), four L4, 4.1 h | 388 across the three hosted runs | 34 across the three (24 malformed, 10 no call) |
+| Hosted 2 | D, D′, E | 3,663 | same, 3.0 h | | |
+| Hosted 3 | R_D, R_E | 2,442 | same, 2.3 h | | |
+| Parts and false entry | E′, EL, ES, E, H | 6,105 | 31B, one A100-80GB, 3.6 h in two containers | 400 | 12 |
+| Tool channel | P, PE, E | 3,663 | 31B, one A100-80GB, 1.9 h | 399 | 11 |
+| Second model | A, H, E, R_E | 4,884 | Gemma 4 26B-A4B, one A100-80GB, 1.6 h | 397 | 20 |
+| Second model | A, H, E, R_E | 4,884 | Gemma 4 E4B, one A100-80GB, 2.7 h | 305 | 326, nearly all malformed `edit_file` calls |
+| Five calls | A, H, E, R_E | 2,968 | 31B, one A100-80GB, 4.6 h | 57 of 74 and 114 of 124 | 49 context overflows, 2 malformed |
+| Rendering | A, Aw, Hw, Ew | 4,884 | 31B, one A100-80GB, 2.6 h | 400 | 10 |
+
+39,598 replays in all, seeds 1 to 3 (1 to 5 in the five-call experiment where the list reaches the fix). Every run installed harness v28 (adk_eval_core 0.1.0, adk_submission 0.2.12, swegemma 0.2.7), google-adk 1.36.1 and vLLM 0.19.1; each run's `versions.json` also lists the newer wheels that sit unused in the wheelhouse, and its `pip_freeze.txt` shows what was installed. The rented runs used Modal, Python 3.12.1, tensor-parallel size 1 and torch 2.10.0 (hosted: tensor-parallel size 4, torch 2.10.0+cu128), with the model served under the hosted path so the model name the agent sees is identical. On the 24 fidelity states the rented platform reproduces the hosted prompt sizes token for token. The second models are unquantized and continue the 31B agent's histories.
+
+### C. Robustness of the one-step result
+
+- **Independent recount.** A second script, written without the first, rescored all 46,560 (replay, entry-class) cells of the 388 complete states from the raw replay logs. Under the reading closest to the registered grep rule it differs in 28 cells, all shell searches, and every decision stands (B1 +1.55 [0.43, 2.75], B3 +5.33 [3.35, 7.30], B4 +4.04 and +7.22). Under a wider reading that also credits recursive searches over a directory that contains an entry's file, base rates rise (A 3.5%, E 9.1%), B3 and B4 stand (+4.73 [2.75, 6.70]; +4.47, +7.90) and B1 does not (+0.77 [−0.52, 2.06]).
+- **Clustering and concentration.** Clustered by task instead of state, E − H is +5.50 [2.16, 9.15] and E − R_E +7.22 [2.97, 12.07]. By McNemar's test on states (any of three seeds), E reaches a listed neighbor in 41 states and H in 14 (29 against 2 discordant, p = 5e-7). E − H is positive in each seed, at each cut point, with either repository left out (+3.1, +7.7) and with any single task left out. Without the five tasks with the most E hits it is +2.4 to +2.7, depending on a tie for fifth place (+2.37 [0.85, 4.07] at the low end).
+- **Sessions and platforms.** No hosted arm ran in two sessions. True entries that an arm does not show are touched at the same rate in two of the three sessions (R_D − A +0.17 [−0.86, 1.29]; R_E − A +0.26 [−0.60, 1.12]). On the rented platform arm E gives 8.02% and 8.58% in two runs against 8.25% hosted; paired on the same states and seeds the drift is +0.58 [−0.41, 1.57] for E and +0.25 [−0.33, 0.82] for H.
+- **Matched entries.** 3,292 of the 3,704 scored true entries pass the filter the rewired entries passed. On them E is 2.49% [1.20, 3.87], E − H +2.32 [1.12, 3.69], true minus rewired +1.46 [0.00, 3.01] under E (lower bound −0.09 in an independent bootstrap) and +0.34 [−0.60, 1.29] under D. Five of R_E's 12 hits start at a listed first line. 847 rewired entries in 298 states are same-directory padding, not rewired edges.
+- **Thoughts.** A fresh true neighbor is named in the model's thoughts in 10.8% of H replays, 12.2% of D and 11.0% of E (E − H +0.21 [−1.00, 1.53]): the model notices the names equally.
+- **Toward the fix at one step.** Counting only `read_file` calls on an unopened file that holds a fix location, the next call goes there in 6.0% of A replays, 6.6% of H, 8.8% of D and 8.2% of E (E − A +2.15 [0.60, 3.95]); counting any read, edit or shell view of a file the gold patch changes, 6.9%, 7.2%, 9.4% and 8.5% (E − A +1.63 [−0.26, 3.61]).
+- **Prompt length.** The legible note costs about 620 prompt tokens over the bare one, the location-only note about 400 and the definition-only note about 270.
+
+### D. Interface failures
+
+Malformed calls, calls to unknown tools and responses without a call are excluded from every estimate and counted in table B.
+
+**Mangled line-bound names** (exploratory except the rendering run, which is pre-registration 07). A name is mangled if it is not a plain identifier and reads `start_line` or `end_line` once quotes, backslashes and spaces are removed. The agent framework keeps only arguments that are parameters of the tool (`google/adk/tools/function_tool.py`), so the bound is dropped and the tool returns the file from line 1.
+
+| Setting | Arm | First-call reads with a line bound | With a mangled name |
+|---|---|---|---|
+| Hosted, 31B | A | 589 | 211 (35.8%) |
+| | P | 481 | 83 (17.3%) |
+| | H | 504 | 69 (13.7%) |
+| | D | 571 | 82 (14.4%) |
+| | E | 634 | 31 (4.9%) |
+| | R_D | 522 | 77 (14.8%) |
+| | R_E | 508 | 24 (4.7%) |
+| Tool channel, 31B | P | 460 | 77 (16.7%) |
+| | PE | 585 | 36 (6.2%) |
+| | E | 636 | 28 (4.4%) |
+| Rendering run, 31B | A, current rendering | 610 | 220 (36.1%) |
+| | Aw, original rendering | 595 | 2 (0.3%) |
+| | Hw | 501 | 7 (1.4%) |
+| | Ew | 631 | 1 (0.2%) |
+| Gemma 4 26B-A4B | four arms | 2,572 | 0 |
+| Gemma 4 E4B | four arms | 1,466 | 0 |
+| Original runs, their own next call at the same states | | 201 | 2 (1.0%) |
+| Original runs, all 318 base traces | | 2,012 | 42 (2.1%), each returned the file from line 1 |
+| Five calls with tools executing, 31B | four arms, every call | 4,655 | 668 (14.4%); 658 returned the file from line 1 |
+
+Under the current rendering the mangled name is `start_line"`; under the original rendering it carries a backslash, as in the original runs. In the five-call experiment the rate is 40.6% at the first call and 25.1% at later calls with no list, 22.2% and 9.4% after the bare note, 6.3% and 9.6% after the legible note, 9.0% and 6.9% after the rewired note. With the mangled bound honored, hosted E goes from 8.25% to 8.33%, every bare-name arm is unchanged, and E − H goes from +5.50 to +5.58; in the tool channel PE − P goes from +6.35 to +6.77. Reads of a listed unopened file under bare names carry a mangled bound in 1 of 577 cases, so opening the file from the top is the model's own choice there.
+
+### E. The five-call experiment
+
+Populations were fixed from facts known before any replay. R: a listed neighbor in an unopened file lies in a file the gold patch modifies (74 states, 20 tasks, seeds 1 to 5). U: not in R, and a file the gold patch modifies is unopened (124 states, 30 tasks, seeds 1 to 3). A state counts if every arm and seed gave a usable replay. Allowed calls are `read_file` and read-only shell commands (cat, head, tail, sed -n, grep, rg, ls, find, wc and pipelines of these); a search never counts as being shown a line. All 198 checkouts were unchanged after their replays. On the platform, 44 of 44 logged file reads re-executed identically; of 67 logged shell results, 36 were identical, 18 had the same lines in another order and 13 differed.
+
+Shown a line the gold patch changes by the end of each call, R, percent of replays:
+
+| By call | No list (A) | Bare names (H) | Legible (E) | Rewired legible (R_E) | E − H |
+|---|---|---|---|---|---|
+| 1 | 24.6 | 25.3 | 33.0 | 25.3 | +7.7 [0.7, 15.8] |
+| 2 | 37.5 | 43.2 | 49.5 | 37.9 | +6.3 [−0.4, 14.0] |
+| 3 | 48.8 | 53.0 | 63.5 | 50.5 | +10.5 [2.1, 19.3] |
+| 4 | 56.1 | 63.9 | 67.7 | 59.3 | +3.9 [−1.4, 9.1] |
+| 5 | 61.1 | 66.0 | 69.8 | 64.6 | +3.9 [−1.1, 8.8], the registered contrast |
+
+Only the last row is a registered rule. In U, within five calls, a file the gold patch changes is opened in 14.0% (A), 17.3% (H), 22.5% (E) and 21.6% (R_E) of replays, and a changed line is shown in 10.2%, 13.2%, 15.2% and 15.8%. About two thirds of replays reach the fifth call; the rest stop at an edit (11% to 13%), a file write (11% to 13%), a shell command that is not read-only (7%), a graph tool (2% to 4%) or a text answer. A sensitivity analysis written before any outcome was read keeps the 49 overflowed replays and scores the calls that executed: K1 becomes +1.92 [−2.47, 6.58] and K2 +7.53 [2.69, 12.90].
+
+### F. Deviations and amendments
+
+1. Pre-registration 03 says the true and the rewired entries pass the same filter; the code filtered only the rewired ones. Found on Nov 9 after the runs; Section 5 and Appendix C report the matched contrast.
+2. The instruction rule (B1) is met under the registered scorer and not under a wider reading of recursive searches (Appendix C).
+3. An earlier hosted run re-sent the agent's past thoughts, failed the fidelity gate (6.1%) and is reported only in the project log.
+4. Pre-registration 05 named Gemma 4 12B as the second model. The pinned server cannot load its architecture, so no replay ran; an amendment made before any second-model replay names 26B-A4B and E4B and requires both to be reported.
+5. Pre-registration 06 was amended before its full run: 16 replays in flight and a 9-hour budget. The run finished in 4.6 hours, so no replay was cut.
+6. The run of pre-registration 04 was preempted by the platform after 2,946 saved replays and resumed by itself in a second container from the same fixed order.
+7. The supplement to the five-call analysis (failures by arm, clustering by task, the sensitivity above) was written while the run was in progress, after its error messages had been read and before any outcome was read. The rendering experiment was designed after the mangled names were noticed in the earlier runs and registered before any replay of its new arms. The commits carry the times.
+8. Every result of pre-registrations 04 to 07 comes from one run per model; none was repeated.
+
+### G. Wording of the notes
+
+- **H:** `Code graph note from the harness. get_code_neighbors(node="...") returned:` followed by the tool's JSON, `{"status": "ok", "node": "...", "neighbors": ["pkg.mod.name", ...]}`.
+- **D:** `Instruction from the harness. Before you edit anything, look at the code graph neighbors of "..." below and read the ones you have not opened yet.` followed by the same JSON.
+- **E:** H's sentence, with each neighbor as `{"name": "pkg.mod.name", "file": "pkg/mod.py", "lines": "272-278", "def": "def name(...) -> ...:"}`. EL drops `def`; ES drops `file` and `lines`.
+- **P and PE:** the same JSON, bare or legible, as the result of an inserted `get_code_neighbors` call.
+
