@@ -1442,20 +1442,18 @@ def fig_design(s, n_states, n_complete, n_arms, seeds, out_dir):
     # 2. the one piece that differs per arm
     x, w = cols[1]
     box(x, top - h, w, h, ec=COLORS['legible'], fc='#f3f7fb')
-    y = lines_at(x + PAD, top - PAD, ['2  One piece added, per arm'], TS, weight='bold') - 1.0
-    arms_txt = [('A', 'nothing added'), ('P', 'the list as a get_code_neighbors result'),
-                ('H', 'the list as a harness note'), ('D', 'the list in an instruction to read them'),
-                ('E', "H's note; each entry with file, lines and first line"),
-                ('R$_D$, R$_E$', None), ('', 'D and E with a degree-preserving rewired list')]
-    cw = 4.2
+    y = lines_at(x + PAD, top - PAD, ['2  One last message, by condition'], TS, weight='bold') - 1.0
+    # each condition: its name on one line, what it adds on the next lines
+    arms_txt = [('no list', 'nothing added'),
+                ('bare names', 'neighbors of a function it just saw, as the tool prints them'),
+                ('addresses', 'the same; each with file, line range and first line'),
+                ('false entry', 'one entry is not a neighbor'),
+                ('rewired', 'neighbors in a rewired graph')]
     for code, t in arms_txt:
-        legible = code == 'E'
-        if t is None:   # a long code on its own line, its description on the next
-            y = lines_at(x + PAD, y, [code], BS, weight='bold')
-            continue
-        lines_at(x + PAD, y, [code], BS, weight='bold', color=COLORS['legible'] if legible else INK)
-        y = lines_at(x + PAD + cw, y, _wrap(t, chars(w - cw, BS, False), indent=''), BS,
-                     color=COLORS['legible'] if legible else INK) - 0.5
+        legible = code == 'addresses'
+        y = lines_at(x + PAD, y, [code], BS, weight='bold', color=COLORS['legible'] if legible else INK)
+        y = lines_at(x + PAD + 1.6, y, _wrap(t, chars(w - 1.6, BS, False), indent=''), BS,
+                     color=COLORS['legible'] if legible else INK2) - 0.3
 
     # 3. the next call
     x, w = cols[2]
@@ -1464,8 +1462,9 @@ def fig_design(s, n_states, n_complete, n_arms, seeds, out_dir):
     cw3 = chars(w, BS, False)
     y = lines_at(x + PAD, y, _wrap('The model makes one call; no tool runs.', cw3, ''), BS) - 1.6
     words = {10: 'ten'}
-    lines_at(x + PAD, y, _wrap(f'{n_states} paused states, {len(seeds)} seeds per arm ({n_complete} complete in '
-                               f'all {words.get(n_arms, n_arms)} arms)', cw3, ''), BS, color=INK2)
+    lines_at(x + PAD, y, _wrap(f'{n_states} paused states, {len(seeds)} seeds per condition ({n_complete} complete '
+                               f'in all {words.get(n_arms, n_arms)} conditions of the first runs)', cw3, ''), BS,
+             color=INK2)
 
     # 4. the score
     x, w = cols[3]
@@ -1473,7 +1472,7 @@ def fig_design(s, n_states, n_complete, n_arms, seeds, out_dir):
     y = lines_at(x + PAD, top - PAD, ['4  Scored'], TS, weight='bold') - 1.0
     y = lines_at(x + PAD, y, _wrap('Does it read or edit the lines of a listed neighbor in a file not yet '
                                    'opened?', cw3, ''), BS) - 1.6
-    lines_at(x + PAD, y, _wrap('Compared with arm A, the no-list base rate.', cw3, ''), BS, color=INK2)
+    lines_at(x + PAD, y, _wrap('Compared with the no-list base rate.', cw3, ''), BS, color=INK2)
 
     ymid = top - h / 2
     for (xa, wa), (xb, _) in zip(cols, cols[1:]):
@@ -1485,12 +1484,12 @@ def fig_design(s, n_states, n_complete, n_arms, seeds, out_dir):
     left, right = (1.0, 43.0), (46.0, 53.0)
     box(left[0], by, left[1], bh, ec=COLORS['bare'])
     box(right[0], by, right[1], bh, ec=COLORS['legible'], lw=1.1)
-    y = lines_at(left[0] + PAD, by + bh - PAD, ['bare names (P, H, D)'], T, weight='bold') - 0.9
+    y = lines_at(left[0] + PAD, by + bh - PAD, ['bare names'], T, weight='bold') - 0.9
     y = lines_at(left[0] + PAD, y, _wrap(bare, chars(left[1], MS, True)), MS, mono=True)
     lines_at(left[0] + PAD, by + PAD + 2 * BS * 1.32 / U,
-             _wrap('P returns this as the tool result; H and D carry the same JSON in a note or an instruction.',
+             _wrap('What get_code_neighbors returns: as its result, as a note, or in an instruction to read them.',
                    chars(left[1], BS, False), ''), BS, color=INK2)
-    y = lines_at(right[0] + PAD, by + bh - PAD, ['names + file + lines + first line (E)'], T, weight='bold',
+    y = lines_at(right[0] + PAD, by + bh - PAD, ['addresses'], T, weight='bold',
                  color=COLORS['legible']) - 0.9
     lines_at(right[0] + PAD, y, _wrap(legible, chars(right[1], MS, True), indent='       '), MS, mono=True)
 
