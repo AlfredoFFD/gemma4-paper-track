@@ -56,6 +56,8 @@ JOBS = [
      ['analysis/rederive_w.py', f'{R}/w/forks', '--no-write'], f'{R}/rederive_w.txt', [f'{R}/w/forks/results.jsonl']),
     ('five calls, call by call', 'exploratory',
      ['analysis/explore_k.py'], f'{R}/k/explore_k.txt', [f'{R}/k/forks/results_k.jsonl']),
+    ('what a mangled read costs', 'exploratory',
+     ['analysis/explore_defect_cost.py'], f'{R}/k/explore_defect_cost.txt', [f'{R}/k/forks/results_k.jsonl']),
     ('mangled argument names: counts', 'exploratory',
      ['analysis/mangled_args.py', f'{R}/v5/forks/results.jsonl', f'{R}/v6/forks/results.jsonl', f'{R}/v8/forks/results.jsonl',
       f'{R}/d1/forks/results.jsonl', f'{R}/d2_26b/forks/results.jsonl', f'{R}/d2_e4b/forks/results.jsonl'],
