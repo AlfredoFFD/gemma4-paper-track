@@ -86,6 +86,8 @@ JOBS = [
     ('12 a file without lines, independent', 'independent',
      ['analysis/rederive_12.py', f'{R}/12/forks', f'{R}/c/forks', '--no-write'], f'{R}/rederive_12.txt',
      [f'{R}/12/forks/results.jsonl', f'{R}/c/forks/results.jsonl', 'data/snapshots']),
+    ('what follows a read whose line bound was dropped, fresh episodes', 'exploratory',
+     ['analysis/explore_defect_fresh.py'], f'{R}/explore_defect_fresh.txt', [f'{R}/09/forks/results_09.jsonl']),
     ('is a line number used more when the line is out of sight', 'exploratory',
      ['analysis/explore_depth.py'], f'{R}/explore_depth.txt', [f'{R}/09/forks/results_09.jsonl', f'{R}/d1/forks/results.jsonl']),
     ('where a first read of a listed file starts', 'exploratory',
