@@ -55,8 +55,8 @@ verified: Kaggle CLI (`kernels list --user zzgtylors`) today: the four notebook 
 [GraphAudit] Author not recorded. Title not recorded ("GraphAudit" is the name the repo's notes use). Kaggle writeup, Gemma 4 Developer Agent Paper Track, 2026; read in full on Oct 27, 2026.
 verified: from the repo's reading notes only, not re-fetched (`docs/lit/2026-10-27-delivery-lit-sprint.md:152-155, 416-421`; `NOTES.md:443`). No URL, author, title or date of publication is recorded anywhere in the repo.
 
-[Competition] Markowitz, Perozzi, Rózemberczki, Cameron, Hemmati, Li, Galkin, Farhadi, Holbrook, Oldacre. The Gemma 4 Developer Agent Paper Track. Kaggle, 2026. https://www.kaggle.com/competitions/gemma-4-developer-agent-paper.
-verified: author surnames from the competition page's citation authors as recorded in `docs/competition.md:46` (read Sep 27-30); the repo records only the surnames, not the full citation text (first names, title wording, year). Today the overview page fetched without sign-in returned only its page title, "Google - The Gemma 4 Developer Agent Paper Track | Kaggle", and no citation section; the Kaggle CLI (`competitions list`) confirms the URL. The title above is from the page title and the year from the track's timeline (Sep 22 to Nov 12, 2026), not from the citation text.
+[Competition] Markowitz, Perozzi, Rózemberczki, Cameron, Hemmati, Li, Galkin, Farhadi, Holbrook, Oldacre. Google - The Gemma 4 Developer Agent Paper Track. Kaggle, 2026. https://www.kaggle.com/competitions/gemma-4-developer-agent-paper.
+verified: the citation text on the competition overview page, read in a signed-in browser on Nov 10, 2026 (ten authors, title, URL, year, "Kaggle"); recorded in docs/competition.md.
 
 ## Problems found
 
