@@ -26,6 +26,8 @@ REGION inside an ENTITY whose TARGET is not a SHOWN ENTITY. Further rules:
                 by a read_file call of the run with status ok.
   CALL GRAPH    the graph without its CONTAINMENT edges; its rewiring is the procedure of
                 analysis/public_runs_missed_regions.rewired applied to it.
+                The rule reads names, not calls: section 7 counts the LINKS in which the two ENTITIES share a
+                last name component, where it cannot tell the direction.
   SEEN SITE, LISTED   as in analysis/public_runs_coedit_sites.py: the TARGET of a CHANGED REGION the run was shown;
                 a region left for the graph is LISTED if its TARGET is a graph neighbor of a SEEN SITE of its run.
 Intervals: 95% bootstrap over tasks, 2,000 resamples, seed 0.
@@ -128,10 +130,11 @@ def main():
     tasks = load_tasks()
     gold = gold_regions()
     rows, runs, entries = [], [], []
+    linkstats = collections.Counter()
     graphs = {}
     n_missed = 0
 
-    def kinds_of(task_id, ent, t, links):
+    def kinds_of(task_id, ent, t, links, stats=None):
         k = collections.Counter()
         for s in links:
             if contains(ent, s, t):
@@ -142,6 +145,15 @@ def main():
             k['callee'] += fwd
             k['caller'] += back
             k['unnamed'] += (not fwd and not back)
+            if stats is not None:
+                same = short(s) == short(t)
+                stats['links'] += 1
+                stats['callee'] += fwd
+                stats['caller'] += back
+                stats['callee, same name'] += fwd and same
+                stats['caller, same name'] += back and same
+                stats['both'] += fwd and back
+                stats['both, same name'] += fwd and back and same
         return k
 
     for r in iter_runs():
@@ -188,7 +200,7 @@ def main():
                 continue
             n_open += 1
             links = sorted(nbr.get(t, set()) & shown)
-            kinds = kinds_of(task_id, ent, t, links)
+            kinds = kinds_of(task_id, ent, t, links, linkstats)
             row = {'task': task_id, 'arm': r['arm'], 'opened': f in reads, 'target': t, 'd1': bool(links),
                    'containment': kinds['containment'] > 0, 'callee': kinds['callee'] > 0, 'caller': kinds['caller'] > 0,
                    'unnamed': kinds['unnamed'] > 0, 'name': short(t) in screen,
@@ -321,6 +333,13 @@ def main():
             lo, hi = M.boot(tasks_of(ks), lambda xs: M.share(xs, 'hit'))
             print(f'   {kind}: entries {len(ks)} ({100 * len(ks) / len(entries):.1f}% of entries); a missed place of the fix '
                   f'{pct(sum(x["hit"] for x in ks), len(ks))} [{100 * lo:.1f}, {100 * hi:.1f}]')
+
+    print()
+    print('7. How far the names can be trusted: LINKS that are not CONTAINMENT, one per region and SHOWN ENTITY')
+    ls = linkstats
+    print(f'   LINKS {ls["links"]}; CALLEE LINKS {ls["callee"]}, of which the two ENTITIES have the same last name component {ls["callee, same name"]}; '
+          f'CALLER LINKS {ls["caller"]}, of which the same {ls["caller, same name"]}; named both ways {ls["both"]}, of which the same {ls["both, same name"]}')
+    print('   (two ENTITIES with the same last name component name each other by their own definition lines, whoever calls whom)')
 
 
 if __name__ == '__main__':
