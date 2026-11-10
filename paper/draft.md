@@ -204,7 +204,7 @@ Supplementary material. Every number here is printed by a script in the reposito
 | 04 | C1, false entry: true entry under E minus decoy under E′; "checks the edge" if the lower bound is above 0 and the decoy rate is under half the true entry's | 23 against 1 of 1,200 replays; +1.83 [0.83, 3.17] | met: checks the edge |
 | 04 | C2, parts: a part raises following if its arm minus H has a lower bound above 0; it is sufficient if the 90% interval of E minus that arm lies within 2 points | EL − H +4.75 [3.00, 6.58]; ES − H +0.08 [−0.75, 0.92]; E − EL +0.83, 90% [−0.17, 1.83] | location carries it and is sufficient |
 | 05 | T1: PE minus P, lower bound above 0 | +6.35 [4.34, 8.52] | met |
-| 05 | T2: "no channel difference" only if the 90% interval of PE minus E lies within 2 points | +1.59, 90% [0.00, 3.17] | not shown |
+| 05 | T2: "no channel difference" only if the 90% interval of PE minus E lies within 2 points | +1.59, 90% [0.00, 3.17] | not met: a channel difference is not ruled out |
 | 05 | M1, Gemma 4 26B-A4B: E minus H, lower bound above 0 | +3.53 [1.51, 5.54] | met |
 | 05 | M1, Gemma 4 E4B: the same | +3.06 [1.09, 5.03] | met |
 | 06 | Gate: at least 95% of re-executed file reads identical to the logged ones | 44 of 44 | passed |
