@@ -100,3 +100,21 @@ detection limit, so "does not replicate" is weak evidence of no effect and is re
 All rates of every arm with intervals, the fidelity gate (D1) and the prompt-size check (D2), the inserted texts and
 tool results, the per-arm interface-failure counts, the raw replay outputs, and the harness, server and model
 versions recorded by each run. Anything not listed here is labeled EXPLORATORY.
+
+## Amendment of Nov 10, 2026, 2:47 AM EST: the second model (frozen before any replay of a second model existed)
+
+The model named for D2, `gemma-4-12b-it`, could not be served. The pinned server (vLLM 0.19.1 with transformers
+5.13.1) fails at engine start on its architecture (`Gemma4UnifiedForConditionalGeneration`): `ValueError: Expected
+hidden_size to be 3840, but found: 256`, in the smoke test started at 2:41 AM EST. No replay ran and no outcome
+exists for it.
+
+D2 is run instead on two models of the first model's architecture class (`Gemma4ForConditionalGeneration`), both
+from Kaggle `google/gemma-4`, Transformers, version 1, unquantized, chosen from their configuration files alone:
+
+- D2a: `gemma-4-26b-a4b-it`
+- D2b: `gemma-4-e4b-it`
+
+Arms (A, H, E, RE), states, seeds, outcomes, limits and rule M1 are unchanged and apply to each model separately.
+Stated in advance: two replications are two chances, so the paper reports both, whichever way each falls, and
+does not present one without the other. If one of them cannot be served either, that is reported and the other
+stands alone.
