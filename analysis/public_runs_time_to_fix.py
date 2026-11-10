@@ -262,6 +262,10 @@ def graphloc_part(gold):
     kinds = collections.Counter(where(x) for x in miss)
     print(f'   of {len(shown)} runs shown a changed line: FINAL PATCH OVERLAPS A CHANGED REGION {pct(sum(x["patch_region"] for x in shown), len(shown))}, '
           f'of which resolved {pct(sum(x["resolved"] for x in shown if x["patch_region"]), sum(x["patch_region"] for x in shown))}')
+    failed = [x for x in allr if not x['resolved']]
+    print(f'   of {len(failed)} runs that did not resolve: shown a changed line {pct(sum(x["t"] < INF for x in failed), len(failed))}; '
+          f'FINAL PATCH TOUCHES A GOLD FILE {pct(sum(x["patch_file"] for x in failed), len(failed))}; '
+          f'OVERLAPS A CHANGED REGION {pct(sum(x["patch_region"] for x in failed), len(failed))}')
     print(f'   the other {len(miss)}: ' + '; '.join(f'{k} {v} (resolved {sum(x["resolved"] for x in miss if where(x) == k)})' for k, v in kinds.most_common()))
     by = collections.defaultdict(list)
     for x in allr:

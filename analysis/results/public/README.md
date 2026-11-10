@@ -13,6 +13,7 @@ other teams' published agent runs did. The data itself is not in this repository
 | `rederive_address.txt` | `analysis/rederive_public_address.py` | the same traces as `address.txt` (not the tables) |
 | `defect_split.txt` | `analysis/public_runs_defect_split.py` | the traces of `defect.txt`, the per-call and failed-read tables of `what-the-agent-saw`, and the per-call tables of `gemma4-agent-traces-graph-audit` |
 | `time_to_fix.txt` | `analysis/public_runs_time_to_fix.py` | both arms of the GraphLoc end-to-end runs with their run records (resolved, final patch), the traces of the two custom agents with their run tables, the per-run and per-read tables of `what-the-agent-saw`, and the gold patches of `data/tasks.jsonl` |
+| `graph_calls.txt` | `analysis/public_runs_graph_calls.py` | both arms of the GraphLoc end-to-end runs: how often the agent called a graph tool, when, and whether the tool returned anything |
 
 Each script prints its report; the stored file is that output with LF line endings. `analysis/reproduce.py` re-runs
 the first, second and fourth when the data is present and reports them as SKIPPED when it is not; the third needs
