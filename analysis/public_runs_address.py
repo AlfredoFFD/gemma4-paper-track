@@ -297,6 +297,10 @@ def main():
                                 skill['reads a listed file'] += 1
                                 skill['first read of that file'] += f2 not in seen
                                 s2, e2 = asked(nxt)
+                                if f2 not in seen:
+                                    sight = 'in sight' if min(listed) <= 150 else 'out of sight'
+                                    skill['first, ' + sight] += 1
+                                    skill['first, ' + sight + ', ranged'] += int(s2 is not None and s2 > 1)
                                 if s2 is not None and s2 > 1:
                                     skill['asks past line 1'] += 1
                                     lo2, hi2 = window(s2, e2)
@@ -423,6 +427,12 @@ def main():
         far = [r for r in sel if r['minline'] > 150]
         if sel:
             print(f'   {label:<46} within the first 150 lines {pct(sum(r["ranged"] for r in near), len(near)):<22} past line 150 {pct(sum(r["ranged"] for r in far), len(far))}')
+
+    print()
+    print('10. The graph skill of section 6 (`<path>:<line> <name>`): first reads of a listed file right after a skill answer,')
+    print('    by where the smallest listed line of that file lies')
+    print(f'   within the first 150 lines {pct(skill["first, in sight, ranged"], skill["first, in sight"]):<22} '
+          f'past line 150 {pct(skill["first, out of sight, ranged"], skill["first, out of sight"])}')
 
 
 if __name__ == '__main__':
