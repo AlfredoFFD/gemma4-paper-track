@@ -13,7 +13,9 @@ Sources (local copies, not redistributed; see analysis/results/public/README.md)
   data/snapshots (through analysis/nodes.py: a node's file and line span, by `ast`)
 
 Rules:
-  CHANGED REGION, GOLD FILE, the runs kept: as in analysis/public_runs_time_to_fix.py.
+  CHANGED REGION, GOLD FILE, the runs kept: as in analysis/public_runs_time_to_fix.py. A CHANGED REGION is the
+                  lines a hunk of the gold patch removes or inserts between, in old-file numbers, without the
+                  hunk's context lines.
   SHOWN LINES     the lines returned by the run's read_file calls with status ok (start_line..end_line). Shell views
                   are not counted.
   MISSED REGION   a CHANGED REGION of the task that no SHOWN LINES of the run overlap.

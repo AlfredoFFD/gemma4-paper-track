@@ -19,7 +19,10 @@ Sources (local copies, not redistributed; see analysis/results/public/README.md)
       returned lines 1 to 150 instead, so the line-level count from these tables is an upper bound.
 
 Rules:
-  CHANGED REGION   the old-file line span of each hunk of the gold patch in a file the patch modifies
+  CHANGED REGION   one per hunk of the gold patch in a file the patch modifies, in old-file line numbers: from the
+                   first to the last line the hunk removes; a block of added lines that does not directly follow a
+                   removed line adds the two old lines around the place it is inserted, so a hunk that only
+                   inserts spans those two lines. The hunk's context lines are not part of the region
                    (analysis/make_population_k.parse_patch; files the patch creates are left out).
   GOLD FILE        a file with at least one CHANGED REGION. Runs of tasks with no GOLD FILE are left out.
   CALL INDEX       the position of a tool call in the run, from 1, counting every tool call.

@@ -9,6 +9,13 @@ Nothing here was pre-registered and no model is run. Two public sets of agent tr
      A READ is a call of the editor tool `str_replace_editor` with command `view` on a file (a view of a directory,
      whose result begins "Here's the files and directories", is not a read). Its range is `view_range` = [start, end].
      The file is `path` without a leading `/testbed/`.
+  C. nebius/SWE-rebench-openhands-trajectories, split `train` (CC-BY-4.0): OpenHands 0.54 with function calling,
+     Qwen3-Coder-480B-A35B-Instruct. Same tool as source A (`str_replace_editor` with `view` and `view_range`);
+     the shell tool is `execute_bash`; the file is `path` without its leading `/workspace/<checkout>/`. This
+     source is read through the dataset viewer only.
+  D. SWE-Gym/OpenHands-Sampled-Trajectories, split `train.raw` (no license stated on its card): OpenHands with
+     function calling; the model is the part of `run_id` before `_maxiter` (GPT-4o in the rows read). Parsed as
+     source C. Read through the dataset viewer only.
   B. nebius/SWE-agent-trajectories, split `train` (CC-BY-4.0): classic SWE-agent, Llama-based models.
      The command of a step is the first line of the last fenced block of an `ai` item; the next `user` item is its
      result. A READ is `open <path>` or `open <path> <line>`; an open with a line shows about 100 lines around it.
@@ -49,6 +56,7 @@ FENCE = re.compile(r'```(?:\w*)\n(.*?)```', re.S)
 
 def rel(path):
     p = str(path or '').strip().strip('"\'')
+    p = re.sub(r'^/workspace/[^/]+/', '', p)
     for pre in ('/testbed/', './'):
         while p.startswith(pre):
             p = p[len(pre):]
@@ -75,9 +83,9 @@ def classify(f, cmd, text, search_file=False):
     return 'OTHER', set()
 
 
-def source_a(rows):
+def source_a(rows, key='messages', shell=('bash',)):
     for row in rows:
-        msgs = json.loads(row['messages']) if isinstance(row['messages'], str) else row['messages']
+        msgs = json.loads(row[key]) if isinstance(row[key], str) else row[key]
         seen = set()
         prev_cmd, prev_text = '', ''
         i = 0
@@ -113,7 +121,7 @@ def source_a(rows):
                            'minline': min(lines) if lines else None}
                     seen.add(f)
                     prev_cmd = 'str_replace_editor view ' + str(args.get('path'))
-                elif fn.get('name') == 'bash':
+                elif fn.get('name') in shell:
                     prev_cmd = str(args.get('command') or '')
                     seen.update(rel(t) for t in viewed_files(prev_cmd))
                 else:
@@ -162,12 +170,12 @@ def dci(t):
     return 'n/a' if t[0] is None else f'{100 * t[0]:+.1f} points [{100 * t[1]:+.1f}, {100 * t[2]:+.1f}]'
 
 
-def report(title, rows, extract, window, note):
+def report(title, rows, extract, window, note, model=None):
     rows = list(rows)
     recs = list(extract(rows))
     issues = {r.get('instance_id') for r in rows}
     repos = {re.sub(r'-\d+$', '', str(i)).split('.')[0] for i in issues}
-    models = collections.Counter(r.get('model') or r.get('model_name') for r in rows)
+    models = collections.Counter(r.get('model') or r.get('model_name') or model for r in rows)
     print(title)
     print(f'   trajectories {len(rows)}, issues {len(issues)}, repositories {len(repos)}; models: '
           + ', '.join(f'{k} x{n}' for k, n in models.most_common()))
@@ -217,6 +225,22 @@ def main():
             print()
             continue
         report(title, rows, extract, window, note)
+    if args.viewer:
+        report('C. OpenHands with function calling, Qwen3-Coder-480B (nebius/SWE-rebench-openhands-trajectories, split train)',
+               rows_of('nebius/SWE-rebench-openhands-trajectories', 'train', ROWS),
+               lambda rows: source_a(rows, key='trajectory', shell=('execute_bash',)), 150,
+               'a view without a range shows the whole file here; 150 is the cap of the competition harness',
+               model='Qwen3-Coder-480B-A35B-Instruct')
+        gym = []
+        for row in rows_of('SWE-Gym/OpenHands-Sampled-Trajectories', 'train.raw', ROWS):
+            row['model'] = str(row.get('run_id') or '').split('_maxiter')[0]
+            gym.append(row)
+        report('D. OpenHands with function calling, models by run id (SWE-Gym/OpenHands-Sampled-Trajectories, split train.raw)',
+               gym, lambda rows: source_a(rows, key='messages', shell=('execute_bash',)), 150,
+               'a view without a range shows the whole file here; 150 is the cap of the competition harness')
+    else:
+        print('C. OpenHands with function calling, Qwen3-Coder-480B: read through the dataset viewer only (pass --viewer)')
+        print('D. OpenHands with function calling, SWE-Gym sampled trajectories: read through the dataset viewer only (pass --viewer)')
 
 
 if __name__ == '__main__':

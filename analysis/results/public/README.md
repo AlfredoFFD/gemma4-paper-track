@@ -9,7 +9,7 @@ other teams' published agent runs did. The data itself is not in this repository
 |---|---|---|
 | `address.txt` | `analysis/public_runs_address.py` | traces and tables under `data/graphloc/` and `data/public_traces/` |
 | `defect.txt` | `analysis/public_runs_defect.py` | the same |
-| `outside.txt` | `analysis/public_runs_outside.py` | rows 0 to 799 of two Hugging Face datasets (its first lines say whether the rows came from local copies or from the dataset viewer) |
+| `outside.txt` | `analysis/public_runs_outside.py` | rows 0 to 799 of four Hugging Face datasets (its first lines say whether the rows came from local copies or from the dataset viewer; sources C and D are read through the viewer only) |
 | `rederive_address.txt` | `analysis/rederive_public_address.py` | the same traces as `address.txt` (not the tables) |
 | `defect_split.txt` | `analysis/public_runs_defect_split.py` | the traces of `defect.txt`, the per-call and failed-read tables of `what-the-agent-saw`, and the per-call tables of `gemma4-agent-traces-graph-audit` |
 | `time_to_fix.txt` | `analysis/public_runs_time_to_fix.py` | both arms of the GraphLoc end-to-end runs with their run records (resolved, final patch), the traces of the two custom agents with their run tables, the per-run and per-read tables of `what-the-agent-saw`, and the gold patches of `data/tasks.jsonl` |
@@ -40,6 +40,7 @@ against 144 of 426 and 98 of 373).
 | `data/public_traces/petermugoya__what-the-agent-saw/` | Kaggle dataset `petermugoya/what-the-agent-saw`, "What the Agent Saw: Data and Code", Oct 2 to 5, 2026: per-run, per-call and per-read tables of 1,329 runs of the starter agent, Gemma-4-31B, with code, a pre-registration and the writeup | the same | Apache-2.0 (its `LICENSE` file and README; the license field of the dataset page says "unknown"); it releases no competition data |
 | `data/public_traces/kmussa77__gemma4-agent-traces-graph-audit/` | Kaggle dataset `kmussa77/gemma4-agent-traces-graph-audit`, "Gemma 4 agent traces and graph audit", Oct 13, 2026: per-call tables of three runs of a two-agent bundle, Gemma-4-31B (argument texts are replaced by hashes), with the agent bundles and scripts | the same | code Apache-2.0 (its README); the license field of the dataset page says "unknown" |
 | `data/public_traces/outside/` | rows 0 to 799 of `SWE-bench/SWE-smith-trajectories` (split `tool`) and of `nebius/SWE-agent-trajectories` (split `train`) on Hugging Face | `analysis/fetch_outside_rows.py` (dataset viewer) | MIT; CC BY 4.0 |
+| (no local copy) | rows 0 to 799 of `nebius/SWE-rebench-openhands-trajectories` (split `train`; OpenHands 0.54 with Qwen3-Coder-480B-A35B-Instruct) and of `SWE-Gym/OpenHands-Sampled-Trajectories` (split `train.raw`; OpenHands with GPT-4o) on Hugging Face | read in memory through the dataset viewer by `analysis/public_runs_outside.py --viewer`; nothing is saved | CC BY 4.0; none stated on the card |
 
 Harness versions as far as the sources state them: the tables of `what-the-agent-saw` name swegemma 0.2.7,
 google-adk 1.36.1 and vLLM 0.19.1; the GraphLoc runs predate the harness change of Sep 30, 2026; the README of
