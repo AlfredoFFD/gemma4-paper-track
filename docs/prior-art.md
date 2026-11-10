@@ -86,7 +86,7 @@ Read by Claude Code in a signed-in browser; searched in the main competition's d
 `tool call parser`, `silently`, `read_file` and `get_code_neighbors`. Thread numbers are the ids in the URL
 `kaggle.com/competitions/gemma-4-developer-agent/discussion/<id>`.
 
-- **744272, "Tool results reach the model double-JSON-encoded" (about Oct 1).** The swegemma tools returned a JSON
+- **744272, "Tool results reach the model double-JSON-encoded" (late September; our Sep 30 read of the forum already recorded it).** The swegemma tools returned a JSON
   string, the agent framework wrapped it as `{"result": <string>}`, the client library serialized that again, and the
   chat template put the string verbatim into the tool response. The post proposed returning a dictionary. Kaggle
   staff answered that the fix is in the Sep 30 wheelhouse: tool results now reach the model as one level of JSON, and
@@ -101,7 +101,7 @@ Read by Claude Code in a signed-in browser; searched in the main competition's d
     one observation re-encoded, the next call sampled. Cite it. (3) It reports failed edits and one kind of lost
     argument under one level of JSON. It does not report mangled line-bound names in `read_file`, their silent
     removal by the agent framework, or rates on reads.
-- **745731, "Notes on the graph tools from auditing all 127 graphs" (about Oct 9).** `get_code_neighbors` matches
+- **745731, "Notes on the graph tools from auditing all 127 graphs" (early October).** `get_code_neighbors` matches
   exact ids only; the neighbor list does not say which way an edge goes, is sorted alphabetically and cut at 50;
   edges are stored in both directions and classes are linked to their members; no graph has an async def and calls
   through `self` are missing; the released graphs hold 14% to 21% of recorded call pairs in three repositories; the
