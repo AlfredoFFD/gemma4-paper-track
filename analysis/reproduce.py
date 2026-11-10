@@ -88,6 +88,8 @@ JOBS = [
      PUBLIC + ['data/public_traces/kmussa77__gemma4-agent-traces-graph-audit']),
     ('public runs, whole runs: when the agent is first shown a line the fix changes', 'exploratory',
      ['analysis/public_runs_time_to_fix.py'], f'{R}/public/time_to_fix.txt', PUBLIC + ['data/tasks.jsonl']),
+    ('public runs, whole runs, independent', 'independent',
+     ['analysis/rederive_public_time_to_fix.py'], f'{R}/public/rederive_time_to_fix.txt', PUBLIC + ['data/tasks.jsonl']),
 ]
 
 
