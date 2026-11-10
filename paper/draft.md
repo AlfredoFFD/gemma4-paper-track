@@ -1,180 +1,189 @@
-# Names get Gemma to the file, line ranges get it to the code: paused-run replays of the code graph with true, false and rewired edges
+# Names get Gemma to the file, line ranges get it to the code
 
-DRAFT, Nov 9 night, built around experiment B (the earlier null-result draft is in git history). Budget 3,000 words.
-Pre-registered numbers come from the frozen `analysis/analyze_b.py` on the pooled runs v5 + v6 + v8; the
-independent recount is `analysis/recount_b_outcomes.py`; everything in Section 5 comes from
-`analysis/results/explore_b.txt` and is EXPLORATORY. Trace numbers: `analysis/trace_stats.py`. Sections 4 and 5 were re-derived blind by `analysis/rederive_s5.py` (comparison: `analysis/results/rederive_s5_vs_draft.md`). Harness packages
-as installed (run logs of v5 and v8, variant v28): adk_eval_core 0.1.0, adk_submission 0.2.12, swegemma 0.2.7.
+**Subtitle:** Pre-registered replays of paused agent runs show why the code graph goes unused, and what makes it used
+
+<!-- DRAFT of Nov 10. Main text: Abstract to Reproducibility, at most 3,000 words (paper/wordcount.py). The host has
+said that references do not count and that an appendix is supplementary. Remove this comment before submission. -->
 
 ## Abstract
 
-A graph-based localization skill barely changes what the competition's Gemma-4-31B agent resolves. We ask why, from inside the
-agent. We pause 205 real runs (77 tasks) at 407 points right after the agent opens a file, show the model the graph's neighbor list for a function in that file, and replay one step through the official harness in ten versions (12,210 replays, decision rules fixed in advance). With nothing added, the next call reaches a listed neighbor
-in an unopened file in 2.2% of replays. Bare names, as the tool prints them, give 2.8% in a harness note (3.0% as a tool result). An instruction to
-read the neighbors gives 4.3%. The same neighbors printed with file, line range and first line of definition give
-8.3% (+5.5 points over bare names, 95% interval 3.4 to 7.7). A degree-preserving rewired list in the last two forms is followed 0.5% and 1.0% of the time, but on matched entries the true list leads by at most 1.5 points, with intervals reaching zero. Exploratory analysis locates the gain: bare names
-already send the agent to the listed files, but it opens them from the top and misses the entity; with line
-ranges, 70% of opened files are read at the listed code, against 37% to 49%. The graph's content is used once it
-is addressable. A planted false neighbor was almost never followed, but following was too rare under bare names
-to say the agent checks edges.
+A graph-localization skill barely changes what the competition's Gemma-4-31B agent resolves. We ask why, from inside the agent. We pause 205 real runs at 407 points right after the agent opens a file, show the model the code graph's neighbors of a function in that file, and replay its next step through the official harness: seven pre-registered experiments, about 40,000 replays. Bare names, as `get_code_neighbors` prints them, barely change the next call: 2.8% of replays reach a listed neighbor in an unopened file, against 2.2% with no list. The same neighbors with file and line range are followed three times as often (8.3%; +5.5 points, 95% interval 3.4 to 7.7). The gain holds inside the tool's own result (+6.4), on two other Gemma 4 models (+3.5, +3.1) and under the original harness's rendering (+5.2). The location carries all of it; the definition line adds nothing. A false neighbor written the same way is followed in 1 of 1,200 replays, the true one in 23. Five calls later the lead is +3.9 points [−1.1, 8.8]: the legible list gets the agent to the fix's lines sooner, not detectably more often. We also find that a harness change makes the 31B model mangle an argument name in a third of its ranged reads, which then silently return the top of the file. Both problems are cheap to fix.
 
 ## 1. The question
 
-The competition ships a precomputed code graph of each repository and three tools to query it. The closest
-public entry, GraphLoc, found that adding a graph-localization skill to the baseline agent moves the resolve rate from 28.9% to 29.9% (interval −4.1 to +6.3 points). An end-to-end score cannot say why. The agent may never ask the graph, ignore the answer, be unable to act on it as printed, or follow it to the wrong place.
+The competition [1] ships a precomputed code graph of each repository and three tools to query it. The closest public entry, GraphLoc [2], found that a graph-localization skill moves the baseline agent's resolve rate from 28.9% to 29.9% (interval −4.1 to +6.3 points). An end-to-end score cannot say why. The agent may never ask the graph, ignore the answer, be unable to act on it as printed, or follow it to the wrong place.
 
-We separate these at one step, scoring the agent's next call against the rate at which it would have gone to the same code anyway (Figure 1). On the same paused states we vary the channel (tool result or harness note), the force (information or instruction) and the encoding (bare names, or with file, line range and first line). Two controls test the edges themselves: one true neighbor swapped for a plausible false one, and a list from a degree-preserving rewiring of the graph.
+We separate these at one step: we pause real runs, show the model the graph's neighbor list in one of several forms, and score its next call against the rate at which it would have gone to the same code anyway (Figure 1). We vary the channel (tool result or harness note), the force (information or instruction) and the encoding (bare names, or names with file, line range and first line). Two controls test the edges: one true neighbor swapped for a plausible false one, and a list from a degree-preserving rewiring of the graph. We then test the main effect inside the tool's own result, on two other Gemma 4 models, under the original harness's rendering of tool results, and over five calls with tools executing.
 
 ## 2. What the public traces already show
 
-In the 318 base-agent traces GraphLoc published (3 runs of 106 tasks, competition harness and model), by our count, the agent calls a graph tool in 109 runs and gets a non-empty answer in 26; `get_code_neighbors` is called 8 times, `get_code_subgraph` never. After a non-empty answer the next read or edit lands on a returned node 27% of the time, against 23% for random nodes from the same files: traces cannot tell steering from the agent's own direction, forks can. The graph holds every function or class the fix edits in 84% of tasks, but one hop from a function the issue names reaches fix code the issue does not already name in 10% (15% to 19% at two hops).
+In the 318 base-agent traces GraphLoc published (3 runs of 106 tasks), by our count, the agent calls a graph tool in 109 runs and gets a non-empty answer in 26; `get_code_neighbors` is called 8 times, `get_code_subgraph` never. After a non-empty answer the next read or edit lands on a returned node 27% of the time, against 23% for random nodes from the same files: traces cannot tell steering from the agent's own direction, forks can. The graph holds every function or class the fix edits in 84% of tasks, but one hop from a function the issue names reaches fix code the issue does not already name in 10% (15% to 19% at two hops).
 
 ## 3. Method
 
 ### 3.1 States
 
-A state is the message history of one real run, cut right after the first, second or third tool result that shows
-file content, before any edit and before compaction (which fires in 68% of the public runs), with a logged prompt of at most 12,500 tokens. The queried
-node is a function or class the agent has already seen, with 2 to 50 graph neighbors. The rules were fixed in `analysis/fork_states.py` before any replay and give the 407 states (two repositories supply all but one).
+A state is the message history of one real run, cut right after the first, second or third tool result that shows file content, before any edit and before compaction, with a logged prompt of at most 12,500 tokens. The queried node is a function or class the agent has already seen, with 2 to 50 graph neighbors. The rules were fixed in code before any replay and give 407 states from 205 runs of 77 tasks.
 
 ### 3.2 Arms
 
-Every arm seeds the same history; only the last piece differs (Figure 1). A adds nothing. P inserts a `get_code_neighbors(node)` call and its JSON result. H gives the same list as a user-role note opening "Code graph note from the harness. get_code_neighbors(node=...) returned:". D gives "Instruction from the harness. Before you edit anything, look at the code graph neighbors of ... below and read the ones you have not opened yet." then the list. E is H with each neighbor as name, file, line range and first line of its definition. P′, H′ and D′ swap one true neighbor for a decoy; R_D and R_E carry D's and E's text with a rewired list.
+Every arm seeds the same history; only the last piece differs (Figure 1).
+
+- **A** adds nothing.
+- **P** inserts a `get_code_neighbors(node)` call and its result as the tool prints it: bare names.
+- **H** gives the same list as a user-role note from the harness.
+- **D** adds an instruction to read the neighbors not yet opened.
+- **E** is H with each neighbor as name, file, line range and first line of its definition. **EL** keeps name, file and lines; **ES** keeps name and first line. **PE** puts E's entries inside P's tool result.
+- **Controls.** P′, H′, D′ and E′ swap one true neighbor for a decoy: a real function from the same directory that is not a neighbor, a fix location or a test. R_D and R_E carry D's and E's text with a list from a degree-preserving rewiring of the graph.
 
 ![](figures/fig_design.png)
 
 **Figure 1.** The method, and the two list formats from one real state.
 
-The swapped-out neighbor and the decoy are both in unopened files, with names not yet in the prompt; the decoy is a real non-neighbor function from the same directory, neither a fix location nor a test. The rewired list comes from seeded double-edge swaps (ten per edge), which keep every node's degree. Its entries are in unopened files, with unseen names, outside fix-location files (true entries need only an unopened file; Section 5). Where the rewired neighborhood is short, the list is padded from the node's directory: 847 entries in 298 states are this same-directory padding, not rewired edges.
-
 ### 3.3 Replay
 
-The history is loaded into the harness's own compiled agent as a session, event by event, and the arm's last
-piece is delivered as the new message. The agent makes one model call and stops; no tool executes. Each (state,
-arm) runs with seeds 1 to 3. Fidelity: on 24 states, arm A's prompt size differs from the size logged at the same step of the original run by 1.7% (median; mean 3.0%; two states at 9.5% and 25%). Experiments A and B ran on four L4 GPUs[; C and D on one A100, compared only within run].
+The history is loaded into the harness's own compiled agent as a session, and the arm's last piece is delivered as the new message. The agent makes one model call and stops; no tool executes. Each (state, arm) runs with seeds 1 to 3. In the five-call experiment, `read_file` and read-only shell commands execute through the harness's own tool functions on a checkout of the task snapshot, until any other call or the fifth model call.
 
-### 3.4 Outcomes and pre-registered rules
+**Fidelity.** Replays use harness v28, which hands tool results to the model as dictionaries; the original runs' harness handed them over as JSON strings [3]. Rebuilt the original way, the prompt is exactly 2 tokens below the logged size in 24 of 24 states, and the next call names the same tool as the real run in 83% of replays. Rebuilt as v28 renders it, the prompt is 1.7% smaller (median) and agreement is 76%. Every experiment uses v28's form unless stated.
 
-The outcome is the model's first function call. A listed node is touched when that call reads its file over a
-line range that overlaps the node (within the harness's caps of 150 lines and 10,000 characters per read), edits
-the file, or views it with a shell command that shows those lines or names the node. Only entries in unopened
-files are scored. Malformed calls are interface failures and never count. Intervals are 95% bootstrap intervals
-clustered by state.
+### 3.4 Outcomes and rules
 
-Experiment A (`prereg/02`): following, P and H against A; discrimination, the swapped-out entry against the
-decoy; channel, P against H. Experiment B (`prereg/03`, frozen before its runs):
+The outcome is the model's first function call. A listed node is touched when that call reads its file over a line range that overlaps the node (within the harness's caps of 150 lines and 10,000 characters per read), edits the file, or views it with a shell command that shows those lines or names the node. Only entries in unopened files are scored. Malformed calls are counted apart as interface failures. In the five-call experiment the outcome is whether the agent is shown a line the gold patch changes. Intervals are 95% bootstrap intervals clustered by state.
 
-- B1, force: D − H, lower bound above zero.
-- B2, discrimination under force: swapped-out under D minus decoy under D′; informative only if the swapped-out
-  entry is touched in at least 5% of D replays.
-- B3, encoding: E − H, two-sided.
-- B4, structure: in at least one format, the true list beats the rewired list by 3 points or more with an
-  interval excluding zero.
+Seven pre-registrations (`prereg/02` to `07`) fixed every decision rule by a commit before its run; Table 1 lists each rule with its outcome, met or not. Every registered number was re-derived by a second script written without the first. Runs used hosted L4 GPUs or rented A100s; no contrast mixes runs.
 
 ## 4. Results
 
-The three sessions produced 12,210 replays: A, P, P′, H, H′ in 4.1 hours; D, D′, E in 3.0; R_D, R_E in 2.3. The 34 interface failures (24 malformed calls, 10 with no call; 0 to 7 per arm) are counted apart. 388
-states are complete in all ten arms, 1,164 replays per arm. An earlier run re-sent the agent's past thoughts,
-failed the fidelity gate (6.1%) and is reported only in the log.
+### 4.1 One step
 
-**Experiment A.** The list moved following (P and H pooled, against A) by +0.8 points [−0.1, 1.7], so the following hypothesis failed and discrimination was not tested (decoy followed 0 times in 2,442 replays over all states, swapped-out true entry 6 times in 2,358 over complete states). Channel made no difference (P − H +0.25 [−0.7, 1.2]), though the tool result made the next call a graph call in 3.2% of replays, against 0.3% in A.
+Ten arms, 12,210 replays; 388 states are complete in all arms (Figure 2a).
 
-**Experiment B.** Share of replays whose next call touches a listed entry:
+**Bare names barely move the next call.** With nothing added, 2.15% of replays reach a listed neighbor. The bare list gives 3.01% as a tool result and 2.75% as a note: +0.8 points pooled [−0.1, 1.7], so the registered following test was not met and discrimination could not be tested. The channel makes no difference (P − H +0.25 [−0.7, 1.2]).
 
-| Arm | any true neighbor | any rewired entry |
-|---|---|---|
-| A, nothing | 2.15% [0.86, 3.61] | 0 |
-| P, tool result | 3.01% [1.55, 4.64] | |
-| H, note, names | 2.75% [1.37, 4.30] | |
-| D, instruction, names | 4.30% [2.58, 6.10] | |
-| E, note, names + file + lines + first line | 8.25% [5.76, 10.91] | |
-| R_D, instruction, rewired | 2.32% [1.03, 3.78] | 0.52% [0.00, 1.29] |
-| R_E, note with locations, rewired | 2.41% [1.12, 3.87] | 1.03% [0.34, 1.89] |
+**An instruction helps a little.** D − H is +1.55 [0.60, 2.66], and not under a wider scoring of recursive searches (+0.77 [−0.52, 2.06]).
 
-- B1: D − H = +1.55 [0.60, 2.66]. Confirmed.
-- B2: the swapped-out entry and the decoy were each touched in 4 of 1,164 replays (D and D′; 0.34%, under the 5% floor). Underpowered, as pre-registered.
-- B3: E − H = +5.50 [3.44, 7.65]. Confirmed.
-- B4: D − R_D = +3.78 [2.15, 5.67]; E − R_E = +7.22 [4.64, 9.97]. "Structure matters" by the registered rule;
-  Section 5 qualifies it.
+**A legible list is followed three times as often.** E reaches a listed neighbor in 8.25% of replays: E − H = +5.50 [3.44, 7.65]. E reaches one in 41 states and H in 14 (McNemar p = 5e-7). It holds in each seed, at each cut point, with either repository left out, clustered by task ([2.16, 9.15]) and under an independent recount. Hits are concentrated: without the five tasks with the most E hits it is +2.4 to +2.7.
+
+**A rewired list is not followed.** Its entries are touched in 0.52% (R_D) and 1.03% (R_E) of replays. The registered structure rule is met (E − R_E +7.22 [4.64, 9.97]), with a qualification in Section 5.
 
 ![](figures/fig_results.png)
 
-**Figure 2.** (a) Registered outcome by arm, 95% intervals. (b) Opening a listed neighbor's file versus reading its lines (A, H, D, E).
+**Figure 2.** (a) Share of replays whose next call reaches a listed neighbor, by arm. (b) Opening a listed neighbor's file against reading its lines.
 
-**Independent recount.** A second script, written without the first, rescored all 46,560 (replay, entry-class) cells of the 388 complete states from the raw replay logs. Under the reading closest to the registered grep rule it differs in 28 cells, all shell searches, and every decision stands (B1 +1.55 [0.43, 2.75], B3 +5.33 [3.35, 7.30], B4 +4.04
-and +7.22). Under a wider reading that also credits recursive searches over a directory that contains an entry's file, base rates rise (A 3.5%,
-E 9.1%), B3 and B4 stand (+4.73 [2.75, 6.70]; +4.47, +7.90) and B1 does not (+0.77 [−0.52, 2.06]). We therefore
-rest the paper on B3 and B4 and call B1 scorer-dependent.
+### 4.2 The same effect in other settings
 
-**Clustering and concentration.** Clustered by task instead of state, E − H is +5.50 [2.16, 9.15] and E − R_E
-+7.22 [2.97, 12.07]. By McNemar's test on states (any of three seeds), E reaches a listed neighbor in 41 states
-and H in 14 (29 against 2 discordant, p = 5e-7). E − H is positive in each seed, at each cut
-point, with either repository left out (+3.1, +7.7) and with any single task left out. Hits are concentrated: without the five tasks with the most E hits, E − H is +2.4 to +2.7, depending on a tie for fifth place (+2.37 [0.85, 4.07] at the low end).
+**Inside the tool's own result.** With E's entries as the result of the `get_code_neighbors` call itself, the next call reaches a listed neighbor in 9.61% of replays against 3.26% for the bare result: PE − P = +6.35 [4.34, 8.52] (Figure 3a). Note and tool result do not differ detectably (PE − E +1.59 [−0.33, 3.43]).
 
-<!-- experiment C, D1, D2 results go here -->
+**Other models.** Two other Gemma 4 models continued the same histories. 26B-A4B follows the legible note in 6.88% of replays against 3.36% for bare names (+3.53 [1.51, 5.54]); E4B in 8.20% against 5.14% (+3.06 [1.09, 5.03]).
 
-## 5. What the encoding changes (exploratory, not pre-registered)
+**Another platform, another rendering.** On a rented GPU the hosted contrast repeats (+5.58 [3.67, 7.58]). With every earlier tool result rendered as the original runs' harness did, it is +5.17 [3.33, 7.17].
 
-**Bare names already move the agent to the files.** Count a listed entry as followed by any means: its file
-opened or viewed at any lines, or its name or path used in a shell command or graph call. Then A is 5.2%, H 9.9%,
-D 12.9% and E 12.4%; H − A is +4.64 [2.66, 6.79], and E − D is −0.52 [−2.58, 1.46].
+![](figures/fig_extensions.png)
 
-**The encoding changes where in the file the read lands.** Given that the agent opens a listed entry's file, the
-read covers the entity 37% to 49% of the time in every arm except E, where it is 70% [56, 82]. In A, H and D
-all but three of 107 hits are a `read_file` from the top of the file, so an entity is reached only if it sits in the first 150
-lines. In E, 34 of 96 hits read exactly a listed line range and 13 more start at a listed first line.
+**Figure 3.** (a) The legible list against bare names in six settings. (b) Parts of an entry, and a false entry. (c) Reaching the lines the fix changes, call by call.
 
-**The model notices the names equally.** A fresh true neighbor is named in the model's thoughts in 10.8% of H
-replays, 12.2% of D and 11.0% of E (E − H +0.21 [−1.00, 1.53]; the same pattern under a whole-word match).
+### 4.3 Which part of an entry, and a false entry
 
-**List position matters.** Per entry, E minus A is +4.1 points at rank 1, +1.7 at ranks 2 to 3, +1.0 at ranks 4 to 7 and +0.4 at rank 8 or later; A, with no list shown, also falls with rank. The tool sorts alphabetically.
+**Location carries the effect.** In one run, the list with name, file and lines (EL) is followed in 7.75% of replays and the list with name and first definition line (ES) in 3.08%, against 3.00% for bare names and 8.58% for the full entry. EL − H is +4.75 [3.00, 6.58]; ES − H is +0.08 [−0.75, 0.92]. By the registered rule, location alone is sufficient for the full effect (E − EL +0.83, 90% interval [−0.17, 1.83]).
 
-**The structure effect is smaller on matched entries.** The rewired entries were filtered to unseen names outside fix-location files; the scored true entries were not (the pre-registration says both sets were; the code filtered only the rewired ones). With the true entries filtered the same way (3,292 of 3,704), E falls to 2.49% [1.20, 3.87] and E − H is still +2.32 [1.12, 3.69], but true minus rewired is +1.46 [0.00, 3.01] under E (lower bound −0.09 in an independent bootstrap) and +0.34 [−0.60, 1.29] under D. Most of the B4 gap comes from true neighbors in fix-location files or already named in view, which the agent has its own reasons to visit. A preference for a legible true edge over a legible rewired one is not established, and the agent does read rewired locations when given lines (5 of R_E's 12 hits start at a listed first line).
+**A false entry is not followed.** In E′ a decoy takes the place of one true neighbor, written with its own file, lines and definition line. The true entry is followed in 23 of 1,200 replays and the decoy in 1 (+1.83 points [0.83, 3.17]). By the registered rule, the agent checks the edge.
 
-**Toward the fix.** Counting only `read_file` calls on an unopened file that holds a fix location, the next call goes there in 6.0% of A replays, 6.6% of H, 8.8% of D and 8.2% of E (E − A +2.15 [0.60, 3.95]); counting any read, edit or shell view of a file the gold patch changes, 6.9%, 7.2%, 9.4% and 8.5% (E − A +1.63 [−0.26, 3.61]). The direction is toward the fix, the size depends on the definition, and neither reading
-separates E from the rewired list (+1.55 [−0.09, 3.35]; +1.03 [−0.69, 2.92]).
+### 4.4 Five calls later
 
-**Checks on the cross-session contrasts.** No arm ran in two sessions. True entries that an arm does not show are touched at the same rate in two of the three sessions (R_D − A +0.17 [−0.86, 1.29]; R_E − A +0.26 [−0.60, 1.12]); the session of D, D′ and E has none. E's prompt is about 630 tokens longer than H's.
+2,968 replays continued for up to five model calls with reads executing. Where a listed neighbor lies in a file the fix changes (57 complete states), the agent is shown a line the gold patch changes in 69.8% of replays with the legible list, 66.0% with bare names and 61.1% with no list. The registered contrast, E − H, is +3.86 [−1.05, 8.77]: no detectable gain at five calls. Exploratory: the legible list gets there sooner (63.5% against 53.0% by the third call, +10.5 [2.1, 19.3]) and bare names catch up (Figure 3c).
+
+Where the fix is elsewhere (114 states), the list does no harm: the fix's file is opened in 22.5% of replays with it and 14.0% without. A rewired list does the same (21.6%), so this gain is not the graph's content (Section 5).
+
+![](figures/table_rules.png)
+
+**Table 1.** Every pre-registered rule and its outcome.
+
+## 5. What the encoding changes (exploratory)
+
+**Bare names already move the agent to the files.** Count a listed entry as followed by any means (its file opened at any lines, or its name or path used in a command): A is 5.2%, H 9.9%, D 12.9% and E 12.4% (H − A +4.64 [2.66, 6.79]; E − D −0.52 [−2.58, 1.46]).
+
+**The encoding changes where in the file the read lands.** Given that the agent opens a listed entry's file, the read covers the entity 37% to 49% of the time in every arm except E, where it is 70% [56, 82]. In A, H and D all but three of 107 hits are a `read_file` from the top of the file, so an entity is reached only if it sits in the first 150 lines. In E, 47 of 96 hits start at a listed line. The pattern repeats in the tool channel (44% for P, 68% for PE) and on 26B-A4B (49% and 72%); it is weaker on E4B (47% and 55%).
+
+**List position matters.** Per entry, E minus A is +4.1 points at rank 1, +1.7 at ranks 2 to 3, +1.0 at ranks 4 to 7 and +0.4 after that. The tool sorts alphabetically [4].
+
+**The structure effect is smaller on matched entries.** The rewired entries were filtered to unseen names outside fix-location files; the scored true entries were not. With the true entries filtered the same way, E − H is still +2.32 [1.12, 3.69], but true minus rewired is +1.46 [0.00, 3.01]: most of the registered gap comes from true neighbors the agent has its own reasons to visit. Models differ in what they do with a rewired list: 26B-A4B touches its entries in 0.34% of replays with or without it, E4B in 2.84% against 0.66% (+2.19 [0.87, 3.83]).
+
+**An interface defect.** In the replays the 31B model often writes a line bound under a mangled name, `start_line"`. The agent framework drops an argument name it does not know, so the read silently returns lines 1 to 150. A pre-registered test traces this to the harness change of Sep 30 that turned tool results from JSON strings into dictionaries [3]: with no list, 36.1% of first-call reads that carry a line bound are mangled under the current rendering and 0.3% under the old one (18.3% against 0.2% of replays, +18.2 [14.8, 21.8]); the original runs had 1.0%. With tools executing, 14.4% of 4,655 ranged reads were mangled and 658 returned the file from line 1. The no-list arm is hit hardest (25% to 41% of its ranged reads, against 6% to 10% after a legible note), a likely reason any note helped in Section 4.4. The other two models never do it. Our registered outcomes do not depend on it (E − H +5.50 becomes +5.58 with the bound honored).
 
 ## 6. What it means
 
-For this agent, at the step where it decides where to look, the graph's failure is not a failure to attend. The tool prints names; a name gets the agent to a file, which it then reads from line 1 under a 150-line cap. Printing the file, line range and first line with each neighbor triples the rate at which the next call reaches graph-adjacent code, at about 630 prompt tokens. An instruction without locations buys less than a third of that and depends on how shell searches are scored. Whether the agent checks edges is open: under bare names the decoy and the swapped-out true entry were each touched in 4 of 1,164 replays.
+Where these agents decide where to look, the graph's failure is not a failure to attend or to tell a true edge from a false one. The tool prints names. A name gets the agent to a file, which it reads from line 1 under a 150-line cap. A file and a line range get it to the code: three times as often at the next call, ten points more often by the third, and no more often by the fifth. What a legible graph buys this agent is calls.
 
-For the organizers this is a cheap change to `get_code_neighbors`: return locations, and consider an order better than the alphabet (Section 5). One caution comes with it: more legible output also makes the graph's errors more actionable. The agent reads rewired locations at a low rate, and our audit of the graph against the gold patches (Section 2) finds only 1 of the 56 async functions that the fixes edit.
+Three changes follow; none needs training:
+
+1. `get_code_neighbors` should return each neighbor's file and line range. The definition line can be left out.
+2. The harness should reject an unknown argument name instead of dropping it, or render tool results as it did before Sep 30. As it stands, a third of the 31B model's ranged reads after a file read return the wrong lines.
+3. The list is alphabetical and following falls with rank. An order by relevance is untested.
+
+Legible output did not make wrong edges actionable for the two larger models; the smallest one does follow a rewired list.
 
 ## 7. Related work
 
-How a graph is written as text changes what a language model does with it on static graph tasks (*Talk like a
-Graph*, ICLR 2024; KG-LLM-Bench, 2504.07087); we ask that question inside an agent's loop. The nearest study
-measures how small coding agents use code graphs and embeddings in a localization harness; its graph tool
-already prints signatures and qualified paths, it varies the tool set rather than the encoding, and it reports
-that forcing the graph call does not help and that agents expand once and stop (2610.33958). Our instruction
-arms agree from a different design. LocAgent compares six text formats of its graph tool's output over whole
-localization runs (37 tasks) and finds that adding entity attributes to a row format lowers module-level
-accuracy (2503.09089, App. A.1.2). RepoNav attributes localization gains to how retrieved snippets are organized
-(2609.08355); other work compares which repository views are exposed (2611.07286) and tool architectures
-(2608.11386); a same-track entry finds that a signature map beats snippet retrieval and that adding call edges
-to it does not help (Zenodo 10.5281/zenodo.23927441). That tool output format changes agent behavior is
-therefore known. On channel and trust: pushed corrupted search results are adopted more than tool-returned ones
-on this model (2609.05587); a harness-inserted tool result is trusted like a real call (2605.09822); small Qwen
-agents copy a GNN tool's often wrong labels (2606.14476); fork designs exist for tool results in scientific QA
-(2610.26836) and after compaction (2609.36526, 2610.31710). GraphLoc asks whether this graph helps localization
-and repair, GraphAudit (a writeup in this track) whether it helps retrieval; the rewiring control is GraphAudit's. In what we searched
-(queries and dates in `docs/lit/`), no work fixes one set of graph edges, varies only its encoding or rewires
-it, and scores the agent's next action against a no-list base rate.
+How a graph is written as text changes what a language model does with it on static graph tasks [5, 6]; we ask that question inside an agent's loop. The nearest study is a pre-registered, placebo-controlled scale study of how much code-graph and embedding tools help small agents localize code [7]. Its graph tool already prints signatures and paths, and its arms vary the tool set, not the encoding; its placebo replaces every returned entity with a random one for whole episodes, scored by final localization. Its first version reports that forcing the graph call does not help and that agents expand once and stop [8]. LocAgent compares six text formats of its graph tool's output [9]; LARGER appends callers and callees to grep output and never varies the encoding [10]; RepoNav attributes localization gains to how retrieved snippets are organized [11]; others compare repository views [12] and tool architectures [13]; a same-track entry finds that adding call edges to a signature map does not help [14]. That output format changes agent behavior is therefore known.
+
+On trust: pushed corrupted search results are adopted more than tool-returned ones on this model [15]; a harness-inserted tool result is trusted like a real call [16]; small agents copy a graph-learning tool's often wrong labels [17]. Fork designs exist for tool results in scientific question answering [18] and after compaction [19, 20].
+
+Within the competition, GraphLoc asks whether this graph helps localization and repair [2] and GraphAudit whether it helps retrieval, with the rewiring control we borrow [21]. Forum posts audit the graph tools [4] and compare three encodings of a file read on 30 fixed edit contexts [3], a small precedent for our method.
+
+In what we searched (`docs/lit/`), no work fixes one function's graph neighbors at a paused agent state, varies only their encoding or rewires them with degree preserved, and scores the next action against a no-list base rate.
 
 ## 8. Limitations
 
-One step per replay: we do not show that reaching a neighbor resolves more tasks, and one hop reaches new fix
-code in a tenth of tasks. One model, one agent configuration, one harness version (v28: adk_submission 0.2.12, swegemma 0.2.7), two repositories. E is not
-information-matched to H: it adds a file path, lines and a first definition line at once, and we cannot say which carries
-the effect (the registered follow-up splits them). E, D and the rewired arms ran in different sessions from H
-and A; the drift checks are clean but indirect and cover two of the three sessions. B1 depends on the scoring of
-recursive searches. The registered structure contrast compares unequal entry sets; the matched contrast is
-small and its interval touches zero. Hits are concentrated in a minority of states and tasks. The decoy is
-plausible, not adversarial. Fidelity compares prompt sizes, not their token-by-token content.
+We measure where the agent looks, not whether it fixes the task. No run here is scored by tests, and by the fifth call the legible list's lead is not detectable. The five-call replays are read-only and end at the first edit; 49 of them overflowed the context, which the real agent avoids by compaction. States come from the 31B agent's runs on two repositories, and the other models continue its histories, not their own. One harness version, in two renderings of tool results. The hosted arms ran in three sessions; arm E was rerun twice on another platform (8.0% and 8.6% against 8.25%). The instruction effect depends on how recursive searches are scored. The decoy is plausible, not adversarial. The interface defect is measured in replays of earlier histories under the current harness, not in fresh runs.
 
 ## Reproducibility
 
-Released under Apache 2.0 at [repository URL]: the state exporter, replay runner, Kaggle script, frozen analysis, independent recount, exploratory script and its blind re-derivation, the pre-registrations with their timestamps, the raw per-replay outputs, and the harness, vLLM and model versions each run recorded. The competition data is not
-redistributed; the state bundle is rebuilt from it by the exporter.
+Code, the seven pre-registrations with their commit times, the raw outputs of all nine runs, the independent re-derivations and the figure code are released under Apache 2.0 at [repository URL]. `analysis/reproduce.py` re-runs every analysis from the raw outputs and compares it with the stored result. The competition data is not redistributed; the state bundle is rebuilt from it by the exporter. The appendix lists the rules as text, the runs, robustness checks and every deviation.
+
+## References
+
+[1] Markowitz, Perozzi, Rózemberczki, Cameron, Hemmati, Li, Galkin, Farhadi, Holbrook, Oldacre. Google - The Gemma 4 Developer Agent Paper Track. Kaggle, 2026. https://www.kaggle.com/competitions/gemma-4-developer-agent-paper
+
+[2] GraphLoc: Where Does the Graph Help? A Localization Audit of the Gemma 4 Developer Agent Code Graphs. Kaggle writeup and notebooks (user zzgtylors), same track, Sep 2026. https://www.kaggle.com/code/zzgtylors/graphloc-auditing-gemma-4-agent-code-graphs
+
+[3] Tool results reach the model double-JSON-encoded. Discussion 744272 with replies, Gemma 4 Developer Agent Competition, Kaggle, Sep 2026. https://www.kaggle.com/competitions/gemma-4-developer-agent/discussion/744272
+
+[4] Notes on the graph tools from auditing all 127 graphs. Discussion 745731, Gemma 4 Developer Agent Competition, Kaggle, Oct 2026. https://www.kaggle.com/competitions/gemma-4-developer-agent/discussion/745731
+
+[5] Fatemi, Halcrow, Perozzi. Talk like a Graph: Encoding Graphs for Large Language Models. ICLR, 2024. arXiv:2310.04560
+
+[6] Markowitz et al. KG-LLM-Bench: A Scalable Benchmark for Evaluating LLM Reasoning on Textualized Knowledge Graphs. arXiv:2504.07087, 2025
+
+[7] Bellam. How Much Do Structural Tools Help Small Coding Agents? A Pre-Registered Scale Study of Code Localization. arXiv:2610.33958v2, 2026
+
+[8] Bellam. How Do Small Coding Agents Use Code Graphs and Embeddings? arXiv:2610.33958v1, 2026
+
+[9] Chen et al. LocAgent: Graph-Guided LLM Agents for Code Localization. ACL, 2025. arXiv:2503.09089 (Appendix A.1.2)
+
+[10] Hu, Su, Zhao, Zhu, Haque. LARGER: Lexically Anchored Repository Graph Exploration and Retrieval. arXiv:2605.16352, 2026
+
+[11] Chai et al. RepoNav: From Snippet Retrieval to File-Centered Repository Navigation for Code Agents. arXiv:2609.08355, 2026
+
+[12] Sepidband et al. How Should Agents See Code? Rethinking Code Representations for Agentic Software Engineering. arXiv:2611.07286, 2026
+
+[13] Xu et al. The Devil Is in the Interface: Evaluating How Tool Architecture Shapes Coding Agent Behavior. arXiv:2608.11386, 2026
+
+[14] Muhammad. AST-Compressed Code Graphs for Gemma 4 Agents: What a Small Local Model Gains from a Budgeted Repository Map. Zenodo, 2026. doi:10.5281/zenodo.23927441
+
+[15] Yang et al. Agents' Overreliance on Unreliable Tools. arXiv:2609.05587, 2026
+
+[16] Kereopa-Yorke et al. Oracle Poisoning: Corrupting Knowledge Graphs to Weaponise AI Agent Reasoning. arXiv:2605.09822, 2026
+
+[17] Wang, Vemuri. When the Tool Decides: LLM Agents Defer Blindly to Graph Neural Network Tools, and Stronger Backbones Defer More. arXiv:2606.14476, 2026
+
+[18] Zhang et al. Same Simulation, Different Evidence: Where Retrieved Tool Output Costs LLM Agents Accuracy. arXiv:2610.26836, 2026
+
+[19] Min et al. Adapting Context Compression for Long-Horizon Agents with Counterfactual Continuations. arXiv:2609.36526, 2026
+
+[20] Sun et al. Compact-Bench: Measuring What Context Compaction Costs Long-Horizon Coding Agents. arXiv:2610.31710, 2026
+
+[21] GraphAudit. Kaggle writeup in the same track, read in full on Oct 27, 2026 (hidden since submission; author and URL not recorded).
+
+## Appendix
+
+[[APPENDIX]]
