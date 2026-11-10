@@ -35,6 +35,7 @@ RUNS = (
     ('Gemma-4-31B', 'newest wheels', 'g_onestep', 'fork_states_d', ('H', 'E')),
     ('Gemma 4 26B-A4B', 'second model', 'd2_26b', 'fork_states_d', ('A', 'H', 'E')),
     ('Gemma 4 E4B', 'second model', 'd2_e4b', 'fork_states_d', ('A', 'H', 'E')),
+    ('Qwen2.5-Coder-32B', 'another family', 'qwen', 'fork_states_d', ('A', 'H', 'E')),
 )
 SEEDS = (1, 2, 3)
 
