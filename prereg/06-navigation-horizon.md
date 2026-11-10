@@ -120,3 +120,17 @@ points (an assumption from the same per-state spread), so only a sizeable delay 
 All rates of every arm in R and U with intervals, every contrast listed above, stop-reason shares, the checkout
 fingerprints, the local and on-platform fidelity counts, the raw per-replay records,
 and the harness, server, model and sandbox versions recorded by the run.
+
+## Amendment of Nov 10, 2026, 3:04 AM EST: run settings, before the full run started
+
+Recorded after the platform checks and before any full-run replay. No outcome of the smoke test was read: it
+printed stop reasons and call counts only (32 replays, 0 errors).
+
+- Gate: on the platform, 44 of 44 re-executed `read_file` calls returned exactly the logged result (passed). Shell
+  commands: 36 exact, 18 same lines in another order, 13 different, of 67. Sandbox locale C.UTF-8; git is absent
+  from the image, so the baseline commit of the checkout is skipped (the snapshot's own `.git` directory is present).
+- Throughput and cost: the smoke test ran at about 0.06 replays per second, which would put the full run near 14
+  hours. The wrapper now keeps 16 replays in flight (was 8) and 4 states with a checkout at once (was 3), and the
+  time budget is 9 hours (was 19). If the budget ends the run early, the partial-run rule above applies.
+- New md5 of `analysis/modal_k/forks_k_modal.py`: `1aff7f58aa7466f12b8c5fc10fedcf08`. No other file changed. No rule, outcome, population
+  or seed changes.

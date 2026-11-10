@@ -59,8 +59,8 @@ def _env(mode, out, model, served, **extra):
         assert os.path.getsize(f'{served}/model.safetensors') == SIZES[model], 'model file incomplete'
     e = dict(os.environ, MODE=mode, WHEELHOUSE_DIR=V + '/wheelhouse', INPUTS_DIR=V + '/inputs', INPUTS_K_DIR=K_INPUTS,
              SNAPSHOTS_DIR=K_SNAPSHOTS, COMP_DIR='/root/comp', MODEL_DIR=served, OUT_DIR=out,
-             AGENT_DIR='/root/agents/base', TP_SIZE='1', CONCURRENCY='8', ACTIVE_STATES='3',
-             CHECKOUT_DIR='/tmp/checkouts_k', TIME_BUDGET_S=str(19 * 3600))
+             AGENT_DIR='/root/agents/base', TP_SIZE='1', CONCURRENCY='16', ACTIVE_STATES='4',
+             CHECKOUT_DIR='/tmp/checkouts_k', TIME_BUDGET_S=str(9 * 3600))
     e.update(extra)
     return e
 
