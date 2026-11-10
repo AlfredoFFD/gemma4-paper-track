@@ -82,3 +82,12 @@ analysis.
 Every count above, each rule with its verdict or "too few reads to test", and the arm-N-alone version of R1.
 
 ## Amendments
+
+- Nov 10, 2026, 3:50 PM EST, before any row of the full run was fetched for analysis: the analysis script is
+  written, md5 of `analysis/analyze_11.py` `9545a6db7ed9699412fcb3aebf46ae94`. The smoke-test rows of
+  pre-registration 09 were not kept (that test wrote inside its container), so the script was tested instead on the
+  tracked rows of the five-call run of pre-registration 06, which have the same format
+  (`analyze_11.py analysis/results/k/forks --rows results_k.jsonl --arms A,H,E,RE`). Those replays start from paused
+  runs, so their "first reads" are first only within the replay and the test says nothing about the rule; its
+  output was seen (after an ADDRESS 597 of 620 ask past line 1, after a PATH ONLY 36 of 604). No threshold was
+  changed.
