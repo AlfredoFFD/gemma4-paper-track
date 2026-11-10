@@ -122,8 +122,8 @@ per-episode records; and the versions recorded by the run.
 
 - Nov 10, 2026, 2:14 PM EST, before the full run: the smoke test ran (3 tasks, two seeds, three arms: 18 episodes, 0
   errors) with the files as frozen. It printed stop reasons and call counts, each episode's first prompt size (67
-  tokens above the logged size in all 18), the number of graph-tool calls that executed (5 , 14
-  , all with status ok), the number of answers that got addresses (8 in NA, 6 in NAF), one
+  tokens above the logged size in all 18), the number of graph-tool calls that executed (5 `get_code_neighbors`, 14
+  `search_similar_code`, all with status ok), the number of answers that got addresses (8 in NA, 6 in NAF), one
   addressed answer cut to 300 characters, and, for mangled reads, that the one each in N and NA returned the file
   from line 1 and the three in NAF returned the lines the model wrote. No outcome of N1, A1 or A2 was computed or
   read. Nothing changed.
