@@ -127,7 +127,7 @@ def main():
     seeds = list(range(1, args.seeds + 1))
     tasks = load_tasks()
     gold = gold_regions()
-    rows, runs = [], []
+    rows, runs, entries = [], [], []
     graphs = {}
     n_missed = 0
 
@@ -209,6 +209,22 @@ def main():
             rows.append(row)
         if n_open:
             runs.append({'task': task_id, 'arm': r['arm'], 'list': len(M.reach(nbr, shown)[0]), 'list_cg': len(one_cg)})
+        if n_open and sites:
+            # every entry a neighbor list of the run's SEEN SITES would hold, by kind of LINK, and whether it is a missed place
+            open_targets = {x['target'] for x in rows[-n_open:]}
+            cand = set()
+            for s in sites:
+                cand |= nbr.get(s, set())
+            for n in sorted(cand - shown):
+                if n not in ent:
+                    kind = 'not an ENTITY'
+                else:
+                    k = kinds_of(task_id, ent, n, sorted(nbr.get(n, set()) & sites))
+                    call = k['callee'] or k['caller'] or k['unnamed']
+                    kind = ('CONTAINMENT only' if k['containment'] and not call else
+                            'CALLER LINK and CALLEE LINK' if k['caller'] and k['callee'] else
+                            'CALLER LINK only' if k['caller'] else 'CALLEE LINK only' if k['callee'] else 'neither named')
+                entries.append({'task': task_id, 'kind': kind, 'hit': n in open_targets})
 
     def tasks_of(sel):
         by = collections.defaultdict(list)
@@ -296,6 +312,15 @@ def main():
           f'CALLER LINK (the missed place names the SEEN SITE) {sum(x["s_caller"] for x in lst)}; '
           f'CALLER LINK and no CALLEE LINK {sum(x["s_caller"] and not x["s_callee"] for x in lst)}; both {sum(x["s_caller"] and x["s_callee"] for x in lst)}')
     line('LISTED in the CALL GRAPH', sel, 'cg_listed')
+    print()
+    print('6. What the neighbor lists of the SEEN SITES hold, entry by entry (entries not yet shown to the run; one per run and node)')
+    print(f'   entries {len(entries)} in {len(tasks_of(entries))} tasks; a missed place of the fix: {pct(sum(x["hit"] for x in entries), len(entries))}')
+    for kind in ('CALLER LINK only', 'CALLEE LINK only', 'CALLER LINK and CALLEE LINK', 'CONTAINMENT only', 'neither named', 'not an ENTITY'):
+        ks = [x for x in entries if x['kind'] == kind]
+        if ks:
+            lo, hi = M.boot(tasks_of(ks), lambda xs: M.share(xs, 'hit'))
+            print(f'   {kind}: entries {len(ks)} ({100 * len(ks) / len(entries):.1f}% of entries); a missed place of the fix '
+                  f'{pct(sum(x["hit"] for x in ks), len(ks))} [{100 * lo:.1f}, {100 * hi:.1f}]')
 
 
 if __name__ == '__main__':
