@@ -177,6 +177,9 @@ def main():
             for d in DIRS:
                 for v in VARIANTS:
                     row[f'{d}_{v}'] = 0
+            if t is not None:       # section 5: how many nodes of the task's graph carry the TARGET's SHORT NAME
+                row['k'] = counts[L.short(t)]
+                row['tdunder'] = X.is_dunder(L.short(t))
             if row['open']:
                 row['edge'] = int(t in front)
                 tname = L.short(t)
@@ -342,6 +345,90 @@ def main():
           + ', '.join(f'{dd(f"eith_{v}"):+.1f}' for v in VARIANTS)
           + ' points. The intervals are printed above; a difference whose interval holds zero is not told apart '
           'from the stand-in here.')
+
+    # 5. Missed places behind an ambiguous short name
+    def q(vals):
+        s = sorted(vals)
+        return f'median {s[len(s) // 2]}, quartiles {s[len(s) // 4]} and {s[(3 * len(s)) // 4]}, range {s[0]} to {s[-1]}'
+
+    def cnt_line(label, sel, k):
+        n = sum(x[k] for x in sel)
+        lo, hi = M.boot(by_task(sel), lambda xs: M.share(xs, k))
+        return f'{label} {n} of {len(sel)} ({100 * n / len(sel):.1f}% [{100 * lo:.1f}, {100 * hi:.1f}])'
+
+    def edge_minus(sel, k):
+        d = M.share(sel, 'edge') - M.share(sel, k)
+        lo, hi = M.boot(by_task(sel), lambda xs: M.share(xs, 'edge') - M.share(xs, k))
+        return f'EDGE minus EITHER {100 * d:+.1f} points [{100 * lo:+.1f}, {100 * hi:+.1f}]'
+
+    def sf_line2(label, sel, k):
+        n = len(sel)
+        sv = [sum(x[f'sf_{k}_seeds'][i] for x in sel) / n for i in range(len(SF_SEEDS))]
+        t_, s_ = round(sum(x[k] for x in sel), 4), round(sum(x[f'sf_{k}'] for x in sel), 4)
+        d = M.share(sel, k) - M.share(sel, f'sf_{k}')
+        lo, hi = M.boot(by_task(sel), lambda xs: M.share(xs, k) - M.share(xs, f'sf_{k}'))
+        return (f'{label}: true {t_:g} of {n} ({100 * t_ / n:.1f}%); stand-in {s_:g} ({100 * s_ / n:.1f}%, seeds '
+                f'{100 * min(sv):.1f} to {100 * max(sv):.1f}); true minus stand-in {100 * d:+.1f} points '
+                f'[{100 * lo:+.1f}, {100 * hi:+.1f}]')
+
+    with_t = [x for x in rows if x['has_target']]
+    print()
+    print('5. Missed places behind an ambiguous short name')
+    print('   AMBIGUOUS: the TARGET\'s SHORT NAME is shared by at least one other node id of the task\'s graph; UNIQUE: it')
+    print('   is not. This is the notion of the UNIQUE variant of analysis/public_runs_lexical_reach.py (the count of the')
+    print('   SHORT NAME over all node ids of the graph, ENTITY or not, equal to 1). k = the number of node ids that carry')
+    print('   the name, the TARGET included.')
+    print('   (a) slices')
+    for base_label, base in (('PAIRS with a TARGET', with_t), ('OPEN PAIRS', [x for x in with_t if x['open']])):
+        for dl, sub in (('every name', base), ('names without two leading and trailing underscores',
+                                                [x for x in base if not x['tdunder']])):
+            amb = [x for x in sub if x['k'] > 1]
+            uni = [x for x in sub if x['k'] == 1]
+            print(f'      {base_label}, {dl}: {len(sub)} in {len(by_task(sub))} tasks; AMBIGUOUS {len(amb)} in '
+                  f'{len(by_task(amb))} tasks (k: {q([x["k"] for x in amb]) if amb else "none"}); UNIQUE {len(uni)} in '
+                  f'{len(by_task(uni))} tasks')
+    open_ = [x for x in rows if x['open']]
+    slices = (('AMBIGUOUS', [x for x in open_ if x['k'] > 1]), ('UNIQUE', [x for x in open_ if x['k'] == 1]),
+              ('AMBIGUOUS, no double-underscore names', [x for x in open_ if x['k'] > 1 and not x['tdunder']]))
+    print('   (b) reach on the OPEN PAIRS of each slice')
+    for name, sel in slices:
+        print(f'      {name} ({len(sel)} OPEN PAIRS in {len(by_task(sel))} tasks):')
+        print('         ' + cnt_line('EDGE', sel, 'edge'))
+        for v in ('use', 'all'):
+            print(f'         {VNAME[v]}: ' + '; '.join(cnt_line(DNAME[d], sel, f'{d}_{v}') for d in DIRS)
+                  + '; ' + edge_minus(sel, f'eith_{v}'))
+    amb = slices[0][1]
+    fr = [x for x in amb if x['fwd_all']]
+    exp_id = sum(1 / x['k'] for x in fr)
+    print('   (c) AMBIGUOUS OPEN PAIRS: which definition a search by name points to')
+    print(f'      FORWARD (ALL) reaches {len(fr)} of {len(amb)}; picking one of the k same-named nodes at random would '
+          f'identify the TARGET in {exp_id:.1f} of them on average (mean of 1/k over those pairs '
+          f'{exp_id / len(fr) if fr else 0:.3f}; k among them: {q([x["k"] for x in fr]) if fr else "none"})')
+    print(f'      EDGE reaches {sum(x["edge"] for x in amb)} of the {len(amb)} (an edge names the node itself); of the '
+          f'{len(fr)} FORWARD reaches, the EDGE also reaches {sum(x["edge"] for x in fr)}')
+    amb_sf = [x for x in amb if x['has_same_file']]
+    print(f'   (d) SAME-FILE STAND-IN of section 4 on the AMBIGUOUS OPEN PAIRS whose file holds another ENTITY not shown '
+          f'({len(amb_sf)} of {len(amb)}):')
+    print('      ' + sf_line2('EDGE', amb_sf, 'edge'))
+    print('      ' + sf_line2('EITHER (USE, NO DUNDER)', amb_sf, 'eith_use'))
+    uni_o = slices[1][1]
+    amb_nd = slices[2][1]
+
+    def s(sel, k):
+        return f'{sum(x[k] for x in sel)} of {len(sel)}'
+    print()
+    print('In plain words (section 5):')
+    print(f'   Of the {len(with_t)} missed places with a TARGET, {sum(x["k"] > 1 for x in with_t)} have a short name that '
+          f'another node of the graph shares; of the {len(open_)} open pairs, {len(amb)} '
+          f'({len(amb_nd)} without double-underscore names). On the ambiguous open pairs the edge reaches '
+          f'{s(amb, "edge")}, the forward search (every name) {s(amb, "fwd_all")} and either direction with names in a '
+          f'use position {s(amb, "eith_use")}; on the unique open pairs the edge reaches {s(uni_o, "edge")} and either '
+          f'direction (use, no dunder) {s(uni_o, "eith_use")}. Of the {len(fr)} ambiguous pairs the forward search '
+          f'reaches, a random pick among the same-named nodes would land on the right one in {exp_id:.1f} on average, '
+          f'and the edge reaches {sum(x["edge"] for x in fr)} of those {len(fr)}. Against the same-file stand-in on the '
+          f'{len(amb_sf)} ambiguous pairs that have one, the edge reaches {sum(x["edge"] for x in amb_sf)} against '
+          f'{sum(x["sf_edge"] for x in amb_sf):.1f}, and either direction (use, no dunder) '
+          f'{sum(x["eith_use"] for x in amb_sf)} against {sum(x["sf_eith_use"] for x in amb_sf):.1f}.')
     print(f'(run time {time.time() - t0:.0f} s; not part of the comparison of two runs)', file=sys.stderr)
 
 
