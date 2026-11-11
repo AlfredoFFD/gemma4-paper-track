@@ -131,3 +131,20 @@ steps from one of them. TOLDX on half of the steps.
 
 ## Notes added after the freeze
 
+
+- Nov 11, 2026, 5:08 AM EST, after the sessions of the full run ended and before any of its rows was pulled, stored or
+  read: three things a second reading of the design found. None changes a rule or a test.
+  (1) What ASKED means on another model. In pre-registration 20 the search in the history is Gemma-4-31B's own: the
+  recorded run made it at that step. A hosted model that continues the history did not make that search. On the
+  seven models W2 therefore compares the same hits as the result of a search call that stands in the history with
+  the hits in a note: how the hits arrive, with the asker held fixed at "not this model". The sentence fixed under
+  "Reading across models" is, if its condition is met, to be worded "a line in a note is used, and less often than
+  the same line in a search result", and not as a statement about who asked.
+  (2) A cut that brings asking back, printed without a rule: per model, the difference of W2 on the steps where the
+  model's own next call under NONE is a search in at least two of the three seeds, and on the other steps.
+  (3) A strict twin of the outcome, printed without a rule for every model beside USES THE LINE: the next call is a
+  first read of a noted file whose window covers a hit line of the note, give or take ten lines. Several of these
+  models ask past line 1 without having been given a number (pre-registration 19, the second design), so their rates
+  under NONE and TOLD can carry lines of their own.
+  Both cuts are exploratory. Also to be said wherever the result is given: the seven models share one sample of 53
+  steps from 26 tasks, so they are not seven independent tests.
