@@ -101,3 +101,10 @@ that run is made. The steps come from two repositories, 43 of the 53 from one of
 steps, and for 11 of them its hits come from another run of the task. ASKED differs from TOLD by one call of history
 (the search call itself), which is the point of the comparison and also its limit: TOLD has no command in the
 history that the hits would answer.
+
+## Notes added after the freeze
+
+- Nov 11, 2026, 3:26 AM EST, after the run: the Design above says "the current harness". That is wrong. The run, like
+  that of pre-registration 15 whose settings it takes, used the harness wheels of Sep 30 (v28), as the frozen launcher
+  states and as the stored `versions.json` records. The run was as frozen; the sentence was not.
+- Nov 11, 2026, 3:26 AM EST: all 555 replays ran and were usable (53 steps, three seeds; TOLDX on 26 steps).

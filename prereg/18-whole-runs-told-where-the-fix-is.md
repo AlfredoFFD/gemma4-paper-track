@@ -138,3 +138,7 @@ what any tool that prints the fix's places could do, not a tool.
   every call paired with its result, OA is shown every changed region in 32 of 40 runs, not 25 (N 8 and ON 27 are
   unchanged); U3 keeps both verdicts (OA against N +60.0 [45.0, 75.0]; OA against ON +12.5 [-2.5, 25.0]). The
   registered output is left as the script printed it; the paper gives the corrected count and says so.
+- Nov 11, 2026, 3:26 AM EST: a correction to the note above. The 2, 10 and 48 are tool results of any kind that the
+  registered script does not read (the results after the first in a step that holds several calls). Of them, results
+  of `read_file` are 1 in N, 4 in ON and 39 in OA (`analysis/results/explore_read_starts.txt`, part 1). The counts of
+  runs shown every changed region stand as given: 8, 27 and 32 with every call paired.
