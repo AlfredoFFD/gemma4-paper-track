@@ -330,6 +330,9 @@ JOBS = [
     ('public runs, whole runs: missed regions within reach of shown code by a call edge and by a search for a name', 'exploratory',
      ['analysis/public_runs_lexical_reach.py'], f'{R}/public/lexical_reach.txt',
      PUBLIC + ['data/tasks.jsonl', 'data/graphs', 'data/snapshots']),
+    ('public runs, whole runs: missed regions within reach of shown code, recounted by a second script (two edge definitions)', 'exploratory',
+     ['analysis/rederive_public_reach.py'], f'{R}/public/rederive_reach.txt',
+     PUBLIC + ['data/tasks.jsonl', 'data/graphs', 'data/snapshots']),
     ('public runs, whole runs: the kind of graph edge between a missed fix site and code the run saw', 'exploratory',
      ['analysis/public_runs_missed_links.py'], f'{R}/public/missed_links.txt',
      PUBLIC + ['data/tasks.jsonl', 'data/graphs', 'data/snapshots']),
@@ -351,6 +354,7 @@ SNAP_INDEX = 'data/cache/snapshot_files'   # built by analysis/snapshot_index.py
 ORACLE_18 = 'data/cache/oracle_18'         # built by analysis/make_oracle_18.py from the competition data
 STATES_W = 'analysis/fork_states_w/first_call_states.jsonl'
 DATA = {
+    'public runs, whole runs: missed regions within reach of shown code, recounted by a second script (two edge definitions)': [SNAP_INDEX],
     'public runs, whole runs: missed regions within reach of shown code by a call edge and by a search for a name': [SNAP_INDEX],
     '24 asked or told on seven hosted models: W1, W2, W3': [SNAP],
     '24 asked or told on seven hosted models, independent': [SNAP],
