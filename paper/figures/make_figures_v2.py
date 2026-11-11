@@ -49,6 +49,7 @@ are compared with the numbers parsed from the reports, and a difference stops th
 At the end the script prints every parsed number with its file and line.
 """
 import argparse
+import os
 import re
 import functools
 import textwrap
@@ -2100,6 +2101,11 @@ TABLE_ROWS = (   # (reason, first column, the estimates, the outcome: a string, 
     (2, 'True against rewired list (03)', est_03_b4, 'not met'),
     (2, 'Search with against without line numbers (15); on eight other models (17, 19)', est_15_and_eight,
      'met; met on each'),
+    # pre-registration 23: drawn only when analysis/results/23/analyze_23.txt exists (est_23 gives None otherwise)
+    (2, 'Graph neighbors pushed after each read, with addresses against as names: first reads of a listed file that '
+        'start past line 1 (23)', lambda: est_23('A1'), None),
+    (2, 'The same: lines read per run (23)', lambda: est_23('A2'), None),
+    (2, 'The same: resolved (23)', lambda: est_23('A3'), None),
     # reason 5: knowing where is not enough
     (5, 'Oracle, lines against control, resolved (18)', lambda: est_18((('U1', 'OA', 'N'),)), None),
     (5, 'Oracle, names against control; lines against names (18)',
@@ -2158,6 +2164,95 @@ def compare_markdown(rows):
                     break
         out.append(f'{label}: drawn {mine} | paper {paper} | {verdict}')
     return out
+
+
+# ---------------------------------------------------------------- pre-registration 23 (three rows, drawn only when its
+# registered report exists). REPORT_23 (environment) points the parser at another file, for testing; a stand-in report
+# (its first line says STAND-IN) is refused when the output directory is paper/figures.
+R23 = RES / '23' / 'analyze_23.txt'
+OUT_DIR = [FIG]          # set by main()
+V23 = {'A1': {'an address moves the read': 'met', 'not detected': 'not met'},
+       'A2': {'an address saves reading': 'met', 'not detected': 'not met'},
+       'A3': {'more': 'met (more)', 'fewer': 'met (fewer)', 'no detectable difference': 'no detectable difference'}}
+EST = r'(?:n/a|([+-][\d.]+) {unit} \[([+-][\d.]+), ([+-][\d.]+)\])'
+
+
+def _verdict_23(rule, v, line):
+    """The table's words for a verdict of 23 as the report prints it (analysis/analyze_23.py, verdict_of)."""
+    if v in V23[rule]:
+        return V23[rule][v], True
+    if v.startswith('no verdict'):
+        return v, False
+    if v == 'not read (gate G0 not met)':
+        return 'no verdict (gate G0 not met)', False
+    if v == 'no pairs: no estimate':
+        return 'no verdict (no pairs: no estimate)', False
+    stop(f'analyze_23.txt, line {line}: {rule} verdict "{v}" is none of the words the script prints')
+
+
+@functools.lru_cache(maxsize=None)
+def parse_23():
+    """G0 (the two shares and the gate), A1, A2 and A3 of the registered report of 23; None when it does not exist."""
+    path = Path(os.environ['REPORT_23']) if os.environ.get('REPORT_23') else R23
+    if not path.exists():
+        return None
+    s = Source(path)
+    if not s.lines or not s.lines[0].startswith('EXPERIMENT 23: '):
+        stop(f'{rel(path)}: the first line is not the report of experiment 23')
+    if 'STAND-IN' in s.lines[0] and Path(OUT_DIR[0]).resolve() == FIG.resolve():
+        stop(f'{rel(path)} is a stand-in report: its numbers are never drawn into {rel(FIG)}')
+    g0, g1 = s.block(r'^2\. G0, gate', 'section 2 (G0) of analyze_23.txt', end=r'^\d\. ')
+    shares = {}
+    for arm in ('PH', 'PE'):
+        m, ln = s.find(rf'^   {arm}: (?:(\d+) of (\d+) \(([\d.]+)%\)|(not run in this launch))', f'G0, {arm}', g0, g1)
+        shares[arm] = None if m.group(4) else (int(m.group(1)), int(m.group(2)), m.group(3))
+        s.record('table_rules_v2', f'23 G0, {arm}: entered runs with a pushed list',
+                 'not run' if m.group(4) else f'{m.group(1)} of {m.group(2)} ({m.group(3)}%)', ln)
+    m, gl = s.find(r'^   gate: (MET|NOT MET)$', 'G0, the gate', g0, g1)
+    gate = m.group(1) == 'MET'
+    reached = all(x is not None and x[1] and 5 * x[0] >= 4 * x[1] for x in shares.values())    # at least 80%
+    if gate != reached:
+        stop(f'analyze_23.txt, line {gl}: gate {m.group(1)}, the shares {shares}')
+    s.record('table_rules_v2', '23 G0, the gate (at least 80% in each push arm)', m.group(1), gl)
+    r0, r1 = s.block(r'^3\. Rules', 'section 3 (rules) of analyze_23.txt', end=r'^\d\. ')
+    out = dict(gate=gate)
+    m, ln = s.find(r'^   A1 first READ of a pushed file past line 1, per task PE minus PH: ' + EST.format(unit='points') +
+                   r' on (\d+) tasks with an A1 READ in both runs \(of (\d+) tasks where both entered\)', 'rule A1',
+                   r0, r1)
+    est = 'no estimate' if m.group(1) is None else f'{_pts(m.groups()[:3])} on {m.group(4)} tasks'
+    out['A1'] = dict(est=[est], line=ln)
+    s.record('table_rules_v2', '23 A1, first reads past line 1, PE - PH (points; tasks with an A1 read in both; of '
+             'tasks both entered)', f'{est} (of {m.group(5)})', ln)
+    m, ln = s.find(r'^   A2 LINES READ per run, PE minus PH: ' + EST.format(unit='lines') + r'; .*; (\d+) tasks$',
+                   'rule A2', r0, r1)
+    est = 'no estimate' if m.group(1) is None else f'{_pts(m.groups()[:3])} lines'
+    out['A2'] = dict(est=[est], line=ln)
+    s.record('table_rules_v2', '23 A2, lines read per run, PE - PH (tasks)', f'{est} ({m.group(4)} tasks)', ln)
+    m, ln = s.find(r'^   A3 resolved, PE against PH: ' + EST.format(unit='points') + r'; PE (\d+) of (\d+)(?: \([\d.]+%\))?, '
+                   r'PH (\d+) of (\d+)(?: \([\d.]+%\))?; (\d+) tasks;', 'rule A3', r0, r1)
+    if not m.group(5) == m.group(7) == m.group(8):
+        stop(f'analyze_23.txt, line {ln}: A3 counts of {m.group(5)}, {m.group(7)} and {m.group(8)} tasks')
+    counts = f'{int(m.group(4)):,} against {int(m.group(6)):,} of {int(m.group(8)):,}'
+    est = 'no estimate' if m.group(1) is None else _pts(m.groups()[:3])
+    out['A3'] = dict(est=[counts, est], line=ln)
+    s.record('table_rules_v2', '23 A3, resolved, PE against PH of the tasks both entered; PE - PH (points)',
+             f'{counts}; {est}', ln)
+    for rule in ('A1', 'A2', 'A3'):
+        v, vl = s.find(r'^      verdict: (.+)$', f'the verdict of {rule}', out[rule]['line'], out[rule]['line'] + 1)
+        words, real = _verdict_23(rule, v.group(1).strip(), vl)
+        if real and not gate:
+            stop(f'analyze_23.txt, line {vl}: {rule} prints the verdict "{v.group(1)}" with the gate G0 not met')
+        if real and out[rule]['est'][-1] == 'no estimate':
+            stop(f'analyze_23.txt, line {vl}: {rule} prints a verdict without an estimate')
+        out[rule]['outcome'] = words
+        s.record('table_rules_v2', f'23 {rule} verdict (as the table words it: {words})', v.group(1).strip(), vl)
+    return out
+
+
+def est_23(rule):
+    """A row of 23: (estimates, outcome), or None (the row is not drawn) while the report does not exist."""
+    d = parse_23()
+    return None if d is None else (d[rule]['est'], d[rule]['outcome'])
 
 
 def table_rules(out, r22):
@@ -2384,6 +2479,7 @@ def main():
     args = ap.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    OUT_DIR[0] = out
     fig_models(out)
     fig_asked_told(out)
     fig_graph(out)
