@@ -31,6 +31,7 @@ summed length of the lists of the runs to which the source applies, divided by t
 Intervals: 95% bootstrap over tasks, 2,000 resamples, seed 0.
 """
 import argparse
+import ast
 import collections
 import hashlib
 import posixpath
@@ -43,6 +44,7 @@ import numpy as np
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import nodes as N  # noqa: E402
 import public_runs_missed_links as L  # noqa: E402
 import public_runs_missed_regions as M  # noqa: E402
 from fork_states import DATA, MAX_NEIGHBORS, graph_for, load_tasks  # noqa: E402
@@ -53,6 +55,26 @@ from public_runs_time_to_fix import gold_regions, overlap  # noqa: E402
 
 KS = (5, 10, 20, 50)
 _emb = {}
+_defs = {}
+
+
+def definitions(task_id, path):
+    """(spans of every `async def`, spans of every def or class) in a file of the task's snapshot, decorators included."""
+    key = (task_id, path)
+    if key not in _defs:
+        asyncs, every = [], []
+        try:
+            tree = ast.parse(N.file_text(task_id, path) or '')
+        except SyntaxError:
+            tree = None
+        for node in (ast.walk(tree) if tree is not None else ()):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                span = (min([node.lineno] + [d.lineno for d in node.decorator_list]), node.end_lineno)
+                every.append(span)
+                if isinstance(node, ast.AsyncFunctionDef):
+                    asyncs.append(span)
+        _defs[key] = (asyncs, every)
+    return _defs[key]
 
 
 def embeddings(g):
@@ -89,6 +111,7 @@ def main():
     names = ['OPENED FILE', 'SAME DIRECTORY', 'OPENED FILE or SAME DIRECTORY', 'ONE CALL', 'TWO CALLS', 'PRINTED'] + \
             [f'EMBEDDING {k}' for k in KS] + [f'PRINTED OR EMBEDDING {k}' for k in (10, 50)]
     rows, runs, every = [], [], []
+    async_nodes = {}
     for r in iter_runs():
         if r['arm'] not in ('base', 'skill') or not gold.get(r['task']):
             continue
@@ -111,6 +134,7 @@ def main():
             for f in {m[0] for m in missed}:
                 named[f] |= classify(f, prev)[2]
         g = graph_for(tasks[task_id])
+        async_nodes[g['key']] = (sum(1 for x in g['text1'].values() if x.startswith('async def')), len(g['ids']))
         ent = L.entities(task_id, g)
         shown = set()
         for f, spans in reads.items():
@@ -162,6 +186,10 @@ def main():
                    'ONE CALL': open_t and t in one, 'TWO CALLS': open_t and (t in one or t in two),
                    'PRINTED': open_t and t in printed}
             row['OPENED FILE or SAME DIRECTORY'] = row['OPENED FILE'] or row['SAME DIRECTORY']
+            asyncs, defs = definitions(task_id, f)
+            row['no_target'] = t is None
+            row['async'] = bool(overlap(a, b, asyncs))
+            row['in_def'] = bool(overlap(a, b, defs))
             for k in KS:
                 row[f'EMBEDDING {k}'] = open_t and t in emb[k]
                 row[f'null {k}'] = statistics.mean(int(open_t and t in x) for x in emb_null[k])
@@ -233,6 +261,21 @@ def main():
         v3 = [[x['every'] for x in v if x['arm'] == arm] for v in bt.values()]
         v3 = [v for v in v3 if len(v) == 3]
         print(f'   {arm} arm alone: tasks whose three runs agree {pct(sum(1 for v in v3 if len(set(v)) == 1), len(v3))}')
+    print()
+    print('5. MISSED REGIONS that no graph node covers (no TARGET)')
+    nt = [x for x in rows if x['no_target']]
+    print(f'   graphs of these tasks: {len(async_nodes)}; nodes whose source starts with `async def`: '
+          f'{sum(a for a, _n in async_nodes.values())} of {sum(n for _a, n in async_nodes.values())}')
+    print(f'   no TARGET: {pct(len(nt), n)}; of those, inside an `async def` {pct(sum(x["async"] for x in nt), len(nt))}; inside another function or class '
+          f'{pct(sum(x["in_def"] and not x["async"] for x in nt), len(nt))}; outside any definition {pct(sum(not x["in_def"] for x in nt), len(nt))}')
+    wt = [x for x in rows if not x['no_target']]
+    print(f'   with a TARGET, yet inside an `async def` (the TARGET is an ENTITY around or beside it): {pct(sum(x["async"] for x in wt), len(wt))}')
+    print(f'   all MISSED REGIONS inside an `async def`: {pct(sum(x["async"] for x in rows), n)}')
+    for nm in ('OPENED FILE', 'SAME DIRECTORY', 'OPENED FILE or SAME DIRECTORY'):
+        print(f'   the regions with no TARGET covered by {nm}: {pct(sum(x[nm] for x in nt), len(nt))}; '
+              f'the regions with a TARGET: {pct(sum(x[nm] for x in wt), len(wt))}')
+    for nm in ('ONE CALL', 'EMBEDDING 5', 'EMBEDDING 50'):
+        print(f'   {nm}, of the regions with a TARGET only: {pct(sum(x[nm] for x in wt), len(wt))}')
 
 
 if __name__ == '__main__':
