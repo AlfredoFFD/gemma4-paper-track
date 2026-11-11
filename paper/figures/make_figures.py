@@ -1,14 +1,19 @@
-"""Regenerate the paper's figures and Table 1 from the raw replay logs.
+"""Regenerate Figures 2 to 4, the appendix figure and Tables 1 and 2 from the raw replay logs and the stored reports.
 
 Usage (from the repo root):
-    .venv/Scripts/python.exe -I -X utf8 paper/figures/make_figures.py
+    .venv/Scripts/python.exe -I -X utf8 paper/figures/make_figures.py [--out <dir>]
     .venv/Scripts/python.exe -I -X utf8 paper/figures/make_figures.py --run C <run_dir> --run E <run_dir>
 
-Writes, next to this script:
-  fig_design.png/.svg      Figure 1, the method (one real state of experiment B)
-  fig_results.png/.svg     Figure 2, experiment B: registered outcome by arm; file opened versus lines read
-  fig_extensions.png/.svg  Figure 3, replications and extensions (experiments C, D1, D2a, D2b, E, F)
-  table_rules.png/.svg     Table 1, one row per pre-registered rule, rendered from rules_table.json
+Writes, next to this script (or into --out):
+  fig_design.png/.svg      Figure 2, the method: one paused step, the one message that differs, the outcome
+  fig_results.png/.svg     Figure 3, opens a neighbor's file against reads a neighbor's code, by condition: the first
+                           experiment and the parts of the address (pre-registrations 02 to 04, 12 and, once it has
+                           run, 13)
+  fig_extensions.png/.svg  Figure 4, addresses against bare names in every setting registered (a forest)
+  fig_appendix.png/.svg    appendix: the parts of an entry and a false entry; five-call replays
+  table_rules.png/.svg     Table 1, the registered rules, rendered from rules_table.json
+  table_samples.png/.svg   Table 2, the samples, rendered from samples_table.json
+(Figures 1 and 5 are make_fig_law.py and make_fig_runs.py.)
 
 Every plotted number is computed here from the raw per-replay rows with the registered code path of its experiment:
   B    the definitions of analysis/rederive_s5.py (hit, opens_file, invalid_kind; it imports the registered scorer),
@@ -18,7 +23,10 @@ Every plotted number is computed here from the raw per-replay rows with the regi
   E    analysis/analyze_k.py (score, first_call_failure, imported; its usable-replay and complete-state rules);
   F    analysis/analyze_w.py (its arms, seeds and complete-state rule; any_true and failure from gates_c).
   S    analysis/analyze_g.py, part "one step" (arms H and E on the newest harness wheels; pre-registration 08);
-  D2q  analysis/analyze_d.py as for D2a and D2b, on the run with a model of another family (pre-registration 10).
+  D2q  analysis/analyze_d.py as for D2a and D2b, on the run with a model of another family (pre-registration 10);
+  P    analysis/analyze_12.py (a file without lines, pre-registration 12; its functions imported, its main() repeated
+       without the printing), with the reference arms of the run of pre-registration 04 (the directory of C);
+  X    analysis/analyze_13.py in the same way (the address written as a search hit, pre-registration 13).
 Rates use the frozen bootstrap analyze_forks.boot_ci fed per-state lists in the order the registered script feeds it
 (which fixes the interval); differences use analyze_forks.diff_ci. Before anything is saved, every plotted value of a
 run whose registered output file exists is checked against the numbers printed there, and any mismatch stops the
@@ -26,13 +34,24 @@ script. Runs whose directory does not exist yet are skipped with a printed note 
 be rerun as the runs arrive. A run that exists but has no registered output yet is drawn and reported as UNCHECKED.
 The default run directories are in RUN_DIRS; --run TAG RUN_DIR overrides one (the checks still read the registered
 output file of that tag).
+The intervals clustered by task in Figure 4 are computed here with the same frozen bootstrap and checked against
+analysis/results/explore_supplement.txt where that report prints them.
+
+The two tables are data files. Table 1 (rules_table.json): one row per question, one item per registered rule; an
+item's estimate is typed there and verified here, against the values this script computes ("check") or against a
+line of a stored report ("report": file, pattern, and the text the pattern's groups must give in the estimate); a
+mismatch stops the script, and numbers that nothing verifies are listed. The tally of outcomes in the note is counted
+from the items. Table 2 (samples_table.json): every number is a named value that is read from a stored report
+("file" and "pattern") or added up from other values, or is typed with a "source"; the typed ones are listed.
 """
 import argparse
 import ast
 import collections
 import contextlib
+import functools
 import io
 import json
+import operator
 import re
 import statistics
 import sys
@@ -44,6 +63,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.font_manager import FontProperties  # noqa: E402
+from matplotlib.legend_handler import HandlerTuple  # noqa: E402
 from matplotlib.patches import FancyBboxPatch, Patch  # noqa: E402
 from matplotlib.textpath import text_to_path  # noqa: E402
 from matplotlib.transforms import blended_transform_factory  # noqa: E402
@@ -60,15 +80,20 @@ B_RUNS = [RES / v for v in ('v5', 'v6', 'v8')]
 C_STATES = ANALYSIS / 'fork_states_c' / 'states.jsonl'
 D_STATES = ANALYSIS / 'fork_states_d' / 'states.jsonl'
 K_POP = ANALYSIS / 'fork_states_k' / 'population.json'
+H_STATES = ANALYSIS / 'fork_states_h' / 'states.jsonl'      # optional: the search-hit condition (pre-registration 13)
 TABLE_JSON = FIG / 'rules_table.json'
+SAMPLES_JSON = FIG / 'samples_table.json'
+SUPPLEMENT_TXT = RES / 'explore_supplement.txt'             # the intervals clustered by task
 
 # Later runs: default run directory (the directory the registered script is given), the raw rows file inside it,
 # and the registered output files the plotted numbers are checked against.
 RUN_DIRS = {'C': RES / 'c' / 'forks', 'D1': RES / 'd1' / 'forks', 'D2a': RES / 'd2_26b' / 'forks',
             'D2b': RES / 'd2_e4b' / 'forks', 'E': RES / 'k' / 'forks', 'F': RES / 'w' / 'forks',
-            'S': RES / 'g_onestep' / 'forks', 'D2q': RES / 'qwen' / 'forks'}
+            'S': RES / 'g_onestep' / 'forks', 'D2q': RES / 'qwen' / 'forks', 'P': RES / '12' / 'forks',
+            'X': RES / '13' / 'forks'}
 ROWS_FILE = {'C': 'results.jsonl', 'D1': 'results.jsonl', 'D2a': 'results.jsonl', 'D2b': 'results.jsonl',
-             'E': 'results_k.jsonl', 'F': 'results.jsonl', 'S': 'results.jsonl', 'D2q': 'results.jsonl'}
+             'E': 'results_k.jsonl', 'F': 'results.jsonl', 'S': 'results.jsonl', 'D2q': 'results.jsonl',
+             'P': 'results.jsonl', 'X': 'results.jsonl'}
 OUTPUTS = {'C': [RES / 'c' / 'analyze_c.txt', RES / 'c' / 'gates_c.txt'],
            'D1': [RES / 'd1' / 'analyze_d1.txt'],
            'D2a': [RES / 'd2_26b' / 'analyze_d2_26b.txt'],
@@ -76,7 +101,10 @@ OUTPUTS = {'C': [RES / 'c' / 'analyze_c.txt', RES / 'c' / 'gates_c.txt'],
            'E': [RES / 'k' / 'analyze_k.txt', RES / 'k' / 'analyze_k_extra.txt', RES / 'k' / 'explore_k.txt'],
            'F': [RES / 'w' / 'analyze_w.txt'],
            'S': [RES / 'g' / 'analyze_g.txt'],
-           'D2q': [RES / 'qwen' / 'analyze_d2_qwen.txt']}
+           'D2q': [RES / 'qwen' / 'analyze_d2_qwen.txt'],
+           'P': [RES / '12' / 'analyze_12.txt'],
+           'X': [RES / '13' / 'analyze_13.txt']}
+REFERENCE = {'P': 'C', 'X': 'C'}     # runs whose reference conditions come from another run's directory
 
 # Registered experiment B values (percent of replays), checked before any figure is saved.
 REGISTERED = {('A', 's1'): 2.15, ('P', 's1'): 3.01, ('H', 's1'): 2.75, ('D', 's1'): 4.30, ('E', 's1'): 8.25,
@@ -93,35 +121,18 @@ REGISTERED_DIFF = {'B1': (1.55, 0.60, 2.66), 'B3': (5.50, 3.44, 7.65), 'B4_D': (
 INK, INK2, MUTED = '#222222', '#555555', '#8a8a8a'
 RULE_LIGHT = '#e1e1e1'
 COLORS = {
-    'none': '#c6c6c6',      # nothing added
-    'bare': '#8e8e8e',      # bare-name arms (P, H, D)
-    'legible': '#1f6fb4',   # the legible arm E (the one accent)
-    'partial': '#8fb5dc',   # partial-legible variants (EL, ES), a tint of the accent
-    'rewired': '#c47a3d',   # rewired controls (R_D, R_E) and the decoy
+    'none': '#c6c6c6',      # no list
+    'bare': '#8e8e8e',      # lists without line numbers
+    'legible': '#1f6fb4',   # lists with line numbers (the one accent)
+    'rewired': '#c47a3d',   # the rewired list and the false entry
 }
-TINT = {k: v for k, v in {'none': '#e6e6e6', 'bare': '#d2d2d2', 'legible': '#a9c8e6',
-                          'partial': '#cfe0f0', 'rewired': '#e6c3a5'}.items()}
+TINT = {'none': '#e6e6e6', 'bare': '#d2d2d2', 'legible': '#a9c8e6', 'rewired': '#e6c3a5'}
 
-# Figure 2, experiment B only. field: 's1' any unopened true neighbor touched; 'rew' any rewired entry touched.
-# section: bars are grouped by section, with a gap and a small header between sections. mech: also in panel (b).
-ARM_SPECS = [
-    dict(arm='A', src='B', field='s1', group='none', section='true', mech=True, label='no list'),
-    dict(arm='P', src='B', field='s1', group='bare', section='true', label='bare names, as a tool result'),
-    dict(arm='H', src='B', field='s1', group='bare', section='true', mech=True, label='bare names, as a note'),
-    dict(arm='D', src='B', field='s1', group='bare', section='true', mech=True,
-         label='bare names, with an instruction'),
-    dict(arm='E', src='B', field='s1', group='legible', section='true', mech=True,
-         label='addresses: file, lines, first line'),
-    dict(arm='RD', src='B', field='rew', group='rewired', section='rewired',
-         label='rewired, bare names, instruction', code='R$_D$'),
-    dict(arm='RE', src='B', field='rew', group='rewired', section='rewired', label='rewired, with addresses',
-         code='R$_E$'),
-]
-SECTION_HEADERS = {
-    'true': 'the true list: the next call reads a listed neighbor',
-    'rewired': 'a rewired list: the next call reads a listed entry',
-}
-SECTION_ORDER = ['true', 'rewired']
+# The conditions of the first experiment whose rates are computed, with the outcome that is registered for each:
+# 's1' any unopened true neighbor touched; 'rew' any rewired entry touched.
+ARM_SPECS = [dict(arm='A', field='s1'), dict(arm='P', field='s1'), dict(arm='H', field='s1'),
+             dict(arm='D', field='s1'), dict(arm='E', field='s1'), dict(arm='RD', field='rew'),
+             dict(arm='RE', field='rew')]
 
 plt.rcParams.update({
     'font.family': 'sans-serif', 'font.sans-serif': ['Arial', 'Helvetica', 'DejaVu Sans'],
@@ -164,6 +175,8 @@ R = load_rederive_defs()
 if str(ANALYSIS) not in sys.path:
     sys.path.insert(0, str(ANALYSIS))
 # The registered scripts of the later runs (their main() is not run; only functions and constants are used).
+import analyze_12 as A12  # noqa: E402
+import analyze_13 as A13  # noqa: E402
 import analyze_c as AC  # noqa: E402
 import analyze_d as AD  # noqa: E402
 import analyze_g as AG  # noqa: E402
@@ -176,6 +189,14 @@ from fork_states import touches  # noqa: E402  frozen scorer
 
 Rate = collections.namedtuple('Rate', 'val lo hi n k raw')   # percent; raw = (p, lo, hi) as fractions
 Diff = collections.namedtuple('Diff', 'val lo hi raw')
+
+
+def by_task(table):
+    """{state: [0/1, ...]} regrouped by task (the first field of a state key), for the task-clustered interval."""
+    out = collections.defaultdict(list)
+    for key, vals in table.items():
+        out[key[0]] += vals
+    return out
 
 
 def r_pct(by_state):
@@ -274,6 +295,7 @@ def exp_b():
              'B4_D': d_pct(t[('D', 's1')], t[('RD', 'rew')]), 'B4_E': d_pct(t[('E', 's1')], t[('RE', 'rew')])}
     info = (len(states), len(complete), len(R['ARMS']), seeds)
     return dict(values=values, diffs=diffs, n_complete=len(complete), info=info,
+                by_task={'B3': d_pct(by_task(t[('E', 's1')]), by_task(t[('H', 's1')]))},
                 rates={'E': values[('E', 's1')], 'H': values[('H', 's1')]})
 
 
@@ -326,8 +348,9 @@ def exp_c(run_dir):
                                                      or not r.get('logged_prompt_tokens'))]
         rel = [abs(r['replayed_prompt_tokens'] - r['logged_prompt_tokens']) / r['logged_prompt_tokens'] for r in good]
         points['G1'] = statistics.median(rel) if rel else None
-    return dict(n_rows=len(rows), n_complete=len(complete), rates=rates, diffs=diffs, arms=arms, seeds=seeds,
-                points=points)
+    return dict(n_rows=len(rows), n_complete=len(complete), n_states=len(states), rates=rates, diffs=diffs, arms=arms,
+                seeds=seeds, points=points,
+                by_task={'G2': d_pct(by_task(T['E']), by_task(T['H']))} if {'E', 'H'} <= set(arms) else {})
 
 
 def exp_d(run_dir, mode):
@@ -341,9 +364,12 @@ def exp_d(run_dir, mode):
     rates = {a: r_pct(T[a]) for a in arms}
     if mode == 'd1':
         diffs = {'T1': d_pct(T['PE'], T['P']), 'T2': d_pct(T['PE'], T['E']), 'T2_90': d_pct(T['PE'], T['E'], 0.90)}
+        tasks = {'T1': d_pct(by_task(T['PE']), by_task(T['P']))}
     else:
         diffs = {'M1': d_pct(T['E'], T['H'])}
-    return dict(n_rows=len(rows), n_complete=len(complete), n_states=len(states), rates=rates, diffs=diffs)
+        tasks = {'M1': d_pct(by_task(T['E']), by_task(T['H']))}
+    return dict(n_rows=len(rows), n_complete=len(complete), n_states=len(states), rates=rates, diffs=diffs,
+                by_task=tasks)
 
 
 def exp_s(run_dir):
@@ -361,7 +387,7 @@ def exp_s(run_dir):
     T = {a: {k: [GC.any_true(states[k], usable[k][(a, s)]['next_call']) for s in AG.ONE_SEEDS] for k in complete}
          for a in AG.ONE_ARMS}
     return dict(n_rows=len(rows), n_complete=len(complete), n_states=len(states), rates={a: r_pct(T[a]) for a in AG.ONE_ARMS},
-                diffs={'S1': d_pct(T['E'], T['H'])})
+                diffs={'S1': d_pct(T['E'], T['H'])}, by_task={'S1': d_pct(by_task(T['E']), by_task(T['H']))})
 
 
 def exp_e(run_dir):
@@ -429,7 +455,7 @@ def exp_f(run_dir):
             for s in AW.SEEDS:
                 hit[a][k].append(GC.any_true(states[k], usable[k][(a, s)]['next_call']))
     rates = {a: r_pct(hit[a]) for a in AW.ARMS}
-    # F2 as analyze_w.py scores it: the first call is a read_file with a mangled line-bound name
+    # F2 as analyze_w.py scores it: the first call is a read_file with a misspelled line-bound name (its `mangled`)
     mang = {a: collections.defaultdict(list) for a in AW.ARMS}
     for k in complete:
         for a in AW.ARMS:
@@ -439,12 +465,69 @@ def exp_f(run_dir):
     # F1: analyze_w.fidelity on the original-rendering fidelity file (its report line is swallowed)
     with contextlib.redirect_stdout(io.StringIO()):
         f1 = AW.fidelity(Path(run_dir) / 'fidelity_w.jsonl', 'Aw')
-    return dict(n_rows=len(rows), n_complete=len(complete), rates=rates, points={'F1': f1},
-                diffs={'F3': d_pct(hit['Ew'], hit['Hw']), 'F2': d_pct(mang['A'], mang['Aw'])})
+    return dict(n_rows=len(rows), n_complete=len(complete), n_states=len(states), rates=rates, points={'F1': f1},
+                diffs={'F3': d_pct(hit['Ew'], hit['Hw']), 'F2': d_pct(mang['A'], mang['Aw'])},
+                by_task={'F3': d_pct(by_task(hit['Ew']), by_task(hit['Hw']))})
+
+
+def _one_condition(mod, run_dir, ref_dir, new, complete_arms, arms):
+    """What analyze_12.py and analyze_13.py share, as their main() does it and minus the printing: the usable rows of
+    the new condition (its run) and of the reference conditions (the run of pre-registration 04), the complete
+    states in sorted order, and per state the two outcomes and the first reads of a listed neighbor's file."""
+    states = mod.load_states(D_STATES)
+    fresh, n_new, _f = mod.usable_rows(Path(run_dir) / 'results.jsonl', (new,))
+    ref, _n, _f = mod.usable_rows(Path(ref_dir) / 'results.jsonl', mod.REF)
+
+    def rows_of(key, arm):
+        src = fresh if arm == new else ref
+        return [src[key][(arm, s)] for s in mod.SEEDS] if all((arm, s) in src.get(key, {}) for s in mod.SEEDS) else None
+
+    complete = sorted(k for k in states if all(rows_of(k, a) is not None for a in complete_arms))
+    reads = {a: {} for a in arms}       # the next call reads a listed neighbor (the registered outcome of 02 to 05)
+    opens = {a: {} for a in arms}       # the next call opens a listed neighbor's file
+    ranged = {a: {} for a in arms}      # among those opens, the read asks past line 1 (per state: 0/1 per read)
+    first = {a: collections.Counter() for a in arms}
+    for k in complete:
+        st = states[k]
+        for a in arms:
+            rs = rows_of(k, a)
+            if rs is None:
+                continue
+            reads[a][k] = [int(bool(mod.any_true(st, r['next_call']))) for r in rs]
+            opens[a][k] = [int(bool(mod.opens_listed_file(st, r['next_call']))) for r in rs]
+            for r in rs:
+                call = r['next_call']
+                if call.get('function_name') == 'read_file' and mod.opens_listed_file(st, call):
+                    is_ranged, _covers, _on_first = mod.read_stats(st, call)
+                    first[a]['reads'] += 1
+                    first[a]['ranged'] += int(is_ranged)
+                    ranged[a].setdefault(k, []).append(int(is_ranged))
+    rates = {(a, f): r_pct(t[a]) for a in arms for f, t in (('reads', reads), ('opens', opens))}
+    return dict(n_rows=n_new[new], n_complete=len(complete), n_states=len(states), rates=rates, first=first,
+                n_arm={a: len(reads[a]) for a in arms}), reads, opens, ranged
+
+
+def exp_12(run_dir, ref_dir):
+    """analyze_12.py: a file without lines (condition EPATH) beside bare names (H), file and lines (EL) and the full
+    address (E, on the complete states where it is usable). Rules P1 and P2; the counts of P3."""
+    new = A12.NEW
+    e, reads, opens, _ranged = _one_condition(A12, run_dir, ref_dir, new, A12.RULE_ARMS, ['H', new, 'EL', 'E'])
+    e['diffs'] = {'P1': d_pct(reads['EL'], reads[new]), 'P2': d_pct(opens[new], opens['H'])}
+    return e
+
+
+def exp_13(run_dir, ref_dir, new='EG'):
+    """analyze_13.py: the address written as a search hit (condition EG) beside the full address as JSON (E); H and EL
+    on the complete states where they are usable. Rules X1 and X2."""
+    e, reads, _opens, ranged = _one_condition(A13, run_dir, ref_dir, new, ('E', new), ['H', 'EL', 'E', new])
+    e['diffs'] = {'X1': d_pct(reads[new], reads['E']), 'X2': d_pct(ranged[new], ranged['E'])}
+    e['new'] = new
+    return e
 
 
 LOADERS = {'C': exp_c, 'D1': lambda d: exp_d(d, 'd1'), 'D2a': lambda d: exp_d(d, 'd2'),
-           'D2b': lambda d: exp_d(d, 'd2'), 'E': exp_e, 'F': exp_f, 'S': exp_s, 'D2q': lambda d: exp_d(d, 'd2')}
+           'D2b': lambda d: exp_d(d, 'd2'), 'E': exp_e, 'F': exp_f, 'S': exp_s, 'D2q': lambda d: exp_d(d, 'd2'),
+           'P': exp_12, 'X': exp_13}        # P and X also take the directory of their reference run
 MIN_COMPLETE = 200   # every pre-registration: below this, everything is EXPLORATORY
 
 
@@ -693,7 +776,7 @@ def check_f(e, path, ck):
         ck.same(f'F {a} hits', e['rates'][a].k, rates[a][3], 1, None)
         ck.same(f'F {a} n', e['rates'][a].n, rates[a][4], 1, None)
     ck.triple('F F3', e['diffs']['F3'].raw, f3) if f3 else ck.missing('F F3')
-    # F2 (mangled line-bound names in the first call) and F1 (prompt size, original rendering)
+    # F2 (misspelled line-bound names in the first call) and F1 (prompt size, original rendering)
     mrates, f2, f1 = {}, None, None
     for blk, line in _blocks(path, {'F2': 'F2. First call is a read_file', None: 'F3. Any unopened'}):
         if blk == 'F2' and (m := re.match(r'^  (\w+)\s*: ([\d.]+) \[([\d.]+), ([\d.]+)\] \| (\d+)/(\d+);', line)):
@@ -733,6 +816,73 @@ def check_s(e, path, ck):
     ck.triple('S S1', e['diffs']['S1'].raw, m.groups()) if m else ck.missing('S S1')
 
 
+def check_parts(tag, e, path, ck):
+    """Pre-registrations 12 (tag P) and 13 (tag X): the stored output of analyze_12.py or analyze_13.py."""
+    txt = path.read_text(encoding='utf-8')
+    m = re.search(r'complete states \(.*?\): (\d+) of (\d+)', txt)
+    if m:
+        ck.same(f'{tag} complete states', e['n_complete'], m.group(1), 1, None)
+        ck.same(f'{tag} states', e['n_states'], m.group(2), 1, None)
+    else:
+        ck.missing(f'{tag} complete states')
+    rate_pat = re.compile(r"^  arm (\w+)\s+reads a listed neighbor: ([\d.]+) \[([\d.]+), ([\d.]+)\] \| (\d+)/(\d+); "
+                          r"opens a listed neighbor's file: ([\d.]+) \[([\d.]+), ([\d.]+)\] \| (\d+)/(\d+)", re.M)
+    printed = {m.group(1): m.groups()[1:] for m in rate_pat.finditer(txt)}
+    for (arm, field), v in e['rates'].items():
+        if v is None:
+            continue
+        p = printed.get(arm)
+        if p is None:
+            ck.missing(f'{tag} {arm}')
+            continue
+        off = 0 if field == 'reads' else 5
+        ck.triple(f'{tag} {arm} {field}', v.raw, p[off:off + 3])
+        ck.same(f'{tag} {arm} {field} hits', v.k, p[off + 3], 1, None)
+        ck.same(f'{tag} {arm} {field} n', v.n, p[off + 4], 1, None)
+    num = r'([+-][\d.]+) \[([+-][\d.]+), ([+-][\d.]+)\]'
+    rules = {'P1': r'^  P1, .*?: ' + num, 'P2': r'^  P2, .*?: ' + num, 'X1': r'^  X1, .*?: ' + num,
+             'X2': r'^  X2, .*; \w+ - E ' + num}
+    for k, d in e['diffs'].items():
+        m = re.search(rules[k], txt, re.M)
+        if d is None and m is None:
+            continue
+        ck.triple(f'{tag} {k}', d.raw, m.groups()) if (d is not None and m) else ck.missing(f'{tag} {k}')
+    for arm, c in e['first'].items():      # first reads of a listed neighbor's file, and how many ask past line 1
+        m = re.search(rf"^  arm {arm}\s+first reads of a listed neighbor's file: (\d+); ask past line 1 (\d+)", txt,
+                      re.M)
+        if m is None:
+            ck.missing(f'{tag} {arm} first reads')
+            continue
+        ck.same(f'{tag} {arm} first reads', c['reads'], m.group(1), 1, None)
+        ck.same(f'{tag} {arm} first reads past line 1', c['ranged'], m.group(2), 1, None)
+
+
+def check_by_task(exps, ck):
+    """The task-clustered intervals of Figure 4 against explore_supplement.txt, where that report prints them."""
+    ck.lines.append('  intervals clustered by task (explore_supplement.txt):')
+    if not SUPPLEMENT_TXT.exists():
+        ck.lines.append(f'    no {SUPPLEMENT_TXT.relative_to(ROOT).as_posix()}: UNCHECKED')
+        return
+    txt = SUPPLEMENT_TXT.read_text(encoding='utf-8')
+    num = r'\n\s+95% by state:.*\n\s+95% by task:\s+([+-][\d.]+) \[([+-][\d.]+), ([+-][\d.]+)\]'
+    where = {('B', 'B3'): ('', 'B3 encoding: E minus H'), ('C', 'G2'): ('', 'Gate G2: E minus H'),
+             ('D1', 'T1'): ('', 'T1: PE minus P'), ('F', 'F3'): ('', 'F3: Ew minus Hw'),
+             ('D2a', 'M1'): ('second model Gemma 4 26B-A4B', 'M1: E minus H'),
+             ('D2b', 'M1'): ('second model Gemma 4 E4B', 'M1: E minus H')}
+    for tag, key, _a, _b, label in FOREST:
+        d = (exps.get(tag) or {}).get('by_task', {}).get(key)
+        if d is None:
+            continue
+        section, head = where.get((tag, key), (None, None))
+        part = txt.split(section, 1)[1] if section and section in txt else txt
+        m = re.search(re.escape(head) + num, part) if head else None
+        if m:
+            ck.triple(f'{label}, by task', d.raw, m.groups())
+        else:
+            ck.lines.append(f'    {label}, by task: computed {_fmt(d.val, True)} [{_fmt(d.lo)}, {_fmt(d.hi)}]; the '
+                            'report does not print it: UNCHECKED')
+
+
 def check_later(tag, e, ck):
     paths = OUTPUTS[tag]
     ck.lines.append(f'  experiment {tag}:')
@@ -748,30 +898,30 @@ def check_later(tag, e, ck):
     if tag == 'S':
         check_s(e, paths[0], ck)
         return
+    if tag in ('P', 'X'):
+        check_parts(tag, e, paths[0], ck)
+        return
     (check_f if tag == 'F' else lambda e_, p_, c_: check_d(tag, e_, p_, c_))(e, paths[0], ck)
 
 
 # ---------------------------------------------------------------- drawing helpers
-def _label(spec):
-    return spec['label']   # conditions are named in words; the arm letters stay in the appendix
-
-
 def _fmt(v, sign=False, dec=2):
     s = f'{v:+.{dec}f}' if sign else f'{v:.{dec}f}'
     return s.replace('-', MINUS)
 
 
-def _bar(ax, y, v, color, h, show_ci=False, ci_below=False, size=8.5, dec=2, extra=None):
+def _bar(ax, y, v, color, h, show_ci=False, ci_below=False, size=8.5, dec=2, extra=None, unit='%'):
+    """A rate as a bar with its 95% interval; the value is printed with its unit so that it reads as a rate."""
     val, lo, hi = v[:3]
     ax.barh(y, val, height=h, color=color, edgecolor='none', zorder=2)
     ax.errorbar(val, y, xerr=[[val - lo], [hi - val]], fmt='none', ecolor=INK, elinewidth=0.8,
                 capsize=2.2, capthick=0.8, zorder=3)
     if ci_below:   # value on top, interval under it (narrow panels)
-        ax.text(hi, y, f' {_fmt(val, dec=dec)}', va='bottom', ha='left', fontsize=size, color=INK, zorder=4)
+        ax.text(hi, y, f' {_fmt(val, dec=dec)}{unit}', va='bottom', ha='left', fontsize=size, color=INK, zorder=4)
         ax.text(hi, y, f'  [{_fmt(lo, dec=dec)}, {_fmt(hi, dec=dec)}]', va='top', ha='left', fontsize=size - 1.5,
                 color=MUTED, zorder=4)
         return
-    t = ax.text(hi, y, f' {_fmt(val, dec=dec)}', va='center', ha='left', fontsize=size, color=INK, zorder=4)
+    t = ax.text(hi, y, f' {_fmt(val, dec=dec)}{unit}', va='center', ha='left', fontsize=size, color=INK, zorder=4)
     if show_ci:   # the interval, small and grey, right after the value
         t = ax.annotate(f' [{_fmt(lo, dec=dec)}, {_fmt(hi, dec=dec)}]', xy=(1, 0.5), xycoords=t, va='center',
                         ha='left', fontsize=size - 1.5, color=MUTED, zorder=4)
@@ -797,122 +947,162 @@ def _nice(x, step):
     return (int(x / step) + 1) * step
 
 
-# ---------------------------------------------------------------- figure 2: results (experiment B)
-def fig_results(values, out_dir):
-    specs = ARM_SPECS
-    rows = []  # (kind, payload)
-    for sec in SECTION_ORDER:
-        sec_specs = [s for s in specs if s['section'] == sec]
-        if not sec_specs:
-            continue
-        rows.append(('header', SECTION_HEADERS[sec]))
-        rows += [('bar', s) for s in sec_specs]
-    mech = [s for s in specs if s.get('mech')]
-    n_a = len(rows) - 0.4
-    n_b = len(mech) * 1.0 + 0.6
-    fig, (ax_a, ax_b) = plt.subplots(2, 1, figsize=(7.0, 0.30 * (n_a + n_b) + 1.55),
-                                     gridspec_kw=dict(height_ratios=[n_a, n_b], hspace=0.32))
-    xmax = max(v[2] for v in values.values())
-    xlim = (0, (int(xmax / 2) + 1) * 2 + 0.6)
+# ---------------------------------------------------------------- figure 3: file opened against code read
+# (condition, label, the list gives line numbers). First block: the first experiment (pre-registrations 02 and 03).
+FIRST_ROWS = [('A', 'no list', False), ('P', 'bare names, as the tool\'s own result', False),
+              ('H', 'bare names, as a note', False), ('D', 'names with an instruction', False),
+              ('E', 'addresses', True)]
+# Second block: the parts of the address (pre-registrations 04 and 12), every list a note.
+PART_ROWS = [('H', 'bare names', False), ('EPATH', 'file only', False), ('EL', 'file and lines', True),
+             ('E', 'full address', True)]
 
-    # panel (a)
-    ticks, ticklabels = [], []
+
+def result_blocks(exps):
+    """[(block title, [(label, opens-file rate, reads-code rate, has line numbers[, a remark under the label])])] for
+    Figure 3."""
+    b = exps['B']
+    blocks = [(f'First experiment, {b["n_complete"]:,} paused steps',
+               [(label, b['values'][(arm, 'opened')], b['values'][(arm, 's1')], lines)
+                for arm, label, lines in FIRST_ROWS])]
+    p = exps.get('P')
+    if p is None:
+        print('  not drawn: Figure 3, the block of the parts of the address: no run of pre-registration 12 yet')
+        return blocks
+    rows = []
+    for arm, label, lines in PART_ROWS:
+        if p['n_arm'][arm] != p['n_complete']:     # a condition that is usable on fewer of the block's steps
+            label += f' ({p["n_arm"][arm]:,} steps)'
+        rows.append((label, p['rates'][(arm, 'opens')], p['rates'][(arm, 'reads')], lines))
+    x = exps.get('X')
+    if x is not None:       # the same addresses written as search hits, on the steps complete in its own run
+        new, label = x['new'], 'search hits'
+        if x['n_arm'][new] != p['n_complete']:
+            label += f' ({x["n_arm"][new]:,} steps)'
+        # its registered comparison is with the full address on the same steps, which are not the row above's
+        paired = f'full address on these steps: {_fmt(x["rates"][("E", "reads")].val)}%'
+        rows.append((label, x['rates'][(new, 'opens')], x['rates'][(new, 'reads')], True, paired))
+    blocks.append((f'Parts of the address, {p["n_complete"]:,} paused steps', rows))
+    return blocks
+
+
+def fig_results(exps, out_dir):
+    """One axis, two blocks. For each way of writing the neighbor list: how often the agent's next call opens a
+    listed neighbor's file (tint) and how often it reads the neighbor's code (full color, the registered outcome).
+    Blue marks the lists that give line numbers."""
+    blocks = result_blocks(exps)
+    n_rows = sum(len(rows) for _t, rows in blocks)
+    head, pitch = 0.62, 1.0
+    height = n_rows * pitch + head * len(blocks)
+    fig_h = 0.375 * height + 1.22
+    fig, ax = plt.subplots(figsize=(7.0, fig_h))
+    left = 0.345
+    tr = blended_transform_factory(fig.transFigure, ax.transData)
+    xmax, ticks, labels, bold, remarks = 0.0, [], [], [], []
     y = 0.0
-    for kind, payload in rows:
-        if kind == 'header':
-            y -= 0.2 if y == 0 else 0.45
-            ax_a.text(0, y, payload, ha='left', va='center', fontsize=8, color=INK2, style='italic',
-                      transform=ax_a.get_yaxis_transform())
-            y -= 0.8
-            continue
-        s = payload
-        _bar(ax_a, y, values[(s['arm'], s['field'])], COLORS[s['group']], 0.62, show_ci=True)
-        ticks.append(y)
-        ticklabels.append(_label(s))
-        y -= 1.0
-    ax_a.set_ylim(y + 0.45, 0.1)
-    ax_a.set_yticks(ticks, ticklabels)
-    for t, s in zip(ax_a.get_yticklabels(), [p for k, p in rows if k == 'bar']):
-        if s['group'] == 'legible':
+    for title, rows in blocks:
+        y -= head
+        ax.text(0.012, y + 0.36, title, transform=tr, ha='left', va='center', fontsize=8.6, color=INK,
+                fontweight='bold')
+        for label, opened, read, lines, *remark in rows:
+            yc = y - pitch / 2
+            g = 'legible' if lines else 'bare'
+            _bar(ax, yc + 0.19, opened, TINT[g], 0.36, show_ci=True, size=7.8)
+            _bar(ax, yc - 0.19, read, COLORS[g], 0.36, show_ci=True, size=7.8)
+            xmax = max(xmax, opened.hi, read.hi)
+            ticks.append(yc)
+            labels.append(label)
+            bold.append(lines)
+            remarks.append(remark[0] if remark else None)
+            y -= pitch
+    ax.set_yticks(ticks, labels, fontsize=8.6)
+    for t, b in zip(ax.get_yticklabels(), bold):
+        if b:
             t.set_fontweight('bold')
-
-    # panel (b): two bars per arm, file opened (tint) and the neighbor's own lines read (full color)
-    ticks_b = []
-    for i, s in enumerate(mech):
-        yc = -i * 1.0
-        g = s['group'] if s['group'] in ('legible', 'partial') else 'bare'
-        _bar(ax_b, yc + 0.19, values[(s['arm'], 'opened')], TINT[g], 0.36)
-        _bar(ax_b, yc - 0.19, values[(s['arm'], 's1')], COLORS[g], 0.36)
-        ticks_b.append(yc)
-    ax_b.set_yticks(ticks_b, [_label(s) for s in mech])
-    for t, s in zip(ax_b.get_yticklabels(), mech):
-        if s['group'] == 'legible':
-            t.set_fontweight('bold')
-    ax_b.legend(handles=[Patch(facecolor=TINT['bare'], label="opens a listed neighbor's file"),
-                         Patch(facecolor=COLORS['bare'], label="reads the neighbor's own lines")],
-                loc='upper left', bbox_to_anchor=(-0.01, 1.0), ncol=2, frameon=False, fontsize=8,
-                handlelength=1.1, handletextpad=0.5, columnspacing=1.4, borderaxespad=0.0)
-
-    for ax, tag in ((ax_a, '(a)'), (ax_b, '(b)')):
-        ax.set_xlim(*xlim)
-        ax.spines[['top', 'right', 'left']].set_visible(False)
-        ax.tick_params(axis='x', labelsize=8.5, length=3)
-        ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f'{v:.0f}%'))
-        ax.text(-0.40 / 0.57 + 0.01, 1.0, tag, transform=ax.transAxes, ha='left', va='top', fontsize=10,
-                fontweight='bold', color=INK)
-    ax_a.set_xlabel('% of replays', fontsize=8.5)
-    ax_b.set_xlabel('% of replays (whiskers: 95% interval, clustered by state)', fontsize=8.5)
-    ax_b.set_ylim(-(len(mech) - 1) - 0.55, 1.25)
-    fig.subplots_adjust(left=0.40, right=0.97, top=0.98, bottom=0.07)
+    ax.set_ylim(y - 0.05, 0.0)
+    ax.set_xlim(0, _room(xmax, (0.975 - left) * 7.0, 1.2))
+    ax.spines[['top', 'right', 'left']].set_visible(False)
+    ax.tick_params(axis='x', labelsize=8.2, length=3)
+    ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(2))
+    ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f'{v:.0f}%'))
+    ax.set_xlabel('% of replays: the agent\'s next call (whiskers: 95% interval, clustered by paused step)',
+                  fontsize=8.2)
+    fig.suptitle('Names get the agent to the file. Addresses get it to the code.', x=0.012, y=1 - 0.05 / fig_h,
+                 ha='left', va='top', fontsize=10.5, color=INK)
+    pair = lambda shade: (Patch(facecolor=shade['bare']), Patch(facecolor=shade['legible']))   # noqa: E731
+    fig.legend([pair(TINT), pair(COLORS)], ['opens a neighbor\'s file (at any line)', 'reads a neighbor\'s code'],
+               handler_map={tuple: HandlerTuple(ndivide=None, pad=0.25)}, loc='upper left',
+               bbox_to_anchor=(0.008, 1 - 0.36 / fig_h), ncol=2, frameon=False, fontsize=7.9, handlelength=2.0,
+               handletextpad=0.5, columnspacing=1.5, borderaxespad=0.0)
+    fig.text(0.975, 1 - 0.405 / fig_h, 'blue: the list gives line numbers', ha='right', va='top', fontsize=7.9,
+             color=COLORS['legible'])
+    fig.subplots_adjust(left=left, right=0.975, top=1 - 0.66 / fig_h, bottom=0.50 / fig_h)
+    if any(remarks):        # a label with a remark moves up and the remark goes under it, small and grey
+        fig.canvas.draw()   # to measure where the tick labels end
+        for t, yc, remark in zip(ax.get_yticklabels(), ticks, remarks):
+            if not remark:
+                continue
+            gap = (ax.get_window_extent().x0 - t.get_window_extent().x1) * 72 / fig.dpi
+            at = dict(xy=(0, yc), xycoords=ax.get_yaxis_transform(), textcoords='offset points', ha='right',
+                      va='baseline')
+            ax.annotate(t.get_text(), xytext=(-gap, 1.4), fontsize=t.get_fontsize(), fontweight=t.get_fontweight(),
+                        color=t.get_color(), **at)
+            ax.annotate(remark, xytext=(-gap, -7.6), fontsize=6.7, color=INK2, **at)
+            t.set_visible(False)
     for ext in ('png', 'svg'):
         fig.savefig(out_dir / f'fig_results.{ext}', dpi=300)
     plt.close(fig)
 
 
-# ---------------------------------------------------------------- figure 3: replications and extensions
+# ---------------------------------------------------------------- figure 4 (the forest) and the appendix figure
 EXP_NAME = {'B': 'experiment B', 'C': 'experiment C', 'D1': 'experiment D1', 'D2a': 'experiment D2a',
             'D2b': 'experiment D2b', 'E': 'experiment E', 'F': 'experiment F', 'S': 'experiment S (newest wheels)',
-            'D2q': 'experiment D2q (another model family)'}
+            'D2q': 'experiment D2q (another model family)', 'P': 'pre-registration 12 (a file without lines)',
+            'X': 'pre-registration 13 (the address as a search hit)'}
 # Figure text names runs in words, never by experiment letter
 RUN_NAME = {'B': 'hosted run', 'C': 'rented GPU', 'D1': 'tool-channel run', 'D2a': 'second-model run',
             'D2b': 'second-model run', 'E': 'five-call run', 'F': 'rendering run', 'S': 'newest-wheels run',
             'D2q': 'other-family run'}
-# Panel (a): (source, contrast key, legible arm, bare arm, label, code)
+# Figure 4: (source, contrast key, condition with addresses, condition with bare names, label)
 FOREST = [
-    ('B', 'B3', 'E', 'H', 'Gemma-4-31B, list as a note', 'E − H'),
-    ('C', 'G2', 'E', 'H', 'the same, second platform', 'E − H'),
-    ('D1', 'T1', 'PE', 'P', 'list as the tool\'s own result', 'PE − P'),
-    ('F', 'F3', 'Ew', 'Hw', 'tool results rendered as in the recorded runs', 'Ew − Hw'),
-    ('S', 'S1', 'E', 'H', 'harness wheels of Oct 12', 'E − H'),
-    ('D2a', 'M1', 'E', 'H', 'Gemma 4 26B-A4B', 'E − H'),
-    ('D2b', 'M1', 'E', 'H', 'Gemma 4 E4B', 'E − H'),
-    ('D2q', 'M1', 'E', 'H', 'Qwen2.5-Coder-32B', 'E − H'),
+    ('B', 'B3', 'E', 'H', 'the first experiment'),
+    ('C', 'G2', 'E', 'H', 'a second GPU platform'),
+    ('D1', 'T1', 'PE', 'P', 'the list as the tool\'s own result'),
+    ('F', 'F3', 'Ew', 'Hw', 'tool results rendered as before Sep 30'),
+    ('S', 'S1', 'E', 'H', 'the current harness (release of Oct 12)'),
+    ('D2a', 'M1', 'E', 'H', 'a smaller model, Gemma 4 26B-A4B'),
+    ('D2b', 'M1', 'E', 'H', 'a smaller model, Gemma 4 E4B'),
+    ('D2q', 'M1', 'E', 'H', 'another model family, Qwen2.5-Coder-32B'),
 ]
-# Panel (b), the rented-GPU run: (rate key, color group, label, code)
-PARTS = [('H', 'bare', 'name', 'H'), ('ES', 'partial', 'name + first line of the definition', 'ES'),
-         ('EL', 'partial', 'name + file + line range', 'EL'), ('E', 'legible', 'name + file + line range + first line', 'E')]
-FALSE_ENTRY = [('swapped_E', 'legible', 'a true neighbor, with its address', 'E'),
-               ('decoy_Ep', 'rewired', 'a false one, written the same way', 'E′')]
-# Panel (c), the five-call run: (arm, line color, marker, line style, label)
+# Appendix, first panel, the run on the second GPU platform: (rate key, the list gives line numbers, label)
+PARTS = [('H', False, 'bare names'), ('ES', False, 'names with the first definition line'),
+         ('EL', True, 'file and lines'), ('E', True, 'full address')]
+FALSE_ENTRY = [('swapped_E', 'legible', 'a true neighbor, with its address'),
+               ('decoy_Ep', 'rewired', 'a false entry, written the same way')]
+# Appendix, second panel, the five-call replays: (condition, line color, marker, line style, label)
 K_LINES = [('A', '#a3a3a3', 'o', (0, (4, 2)), 'no list'),
            ('H', '#5f5f5f', 's', '-', 'bare names'),
            ('RE', COLORS['rewired'], 'D', '-', 'rewired list, with addresses'),
            ('E', COLORS['legible'], 'o', '-', 'addresses')]
 K_BARS = [('A', 'none'), ('H', 'bare'), ('E', 'legible'), ('RE', 'rewired')]
-K_WORDS = {'A': 'no list', 'H': 'bare names', 'E': 'addresses', 'RE': 'rewired'}
+K_WORDS = {'A': 'no list', 'H': 'bare names', 'E': 'addresses', 'RE': 'rewired list'}
 
 W_IN = 7.0
-LEFT = 0.40          # label column, as in Figure 2
+LEFT = 0.40          # label column
 TITLE_H, AXIS_H, GAP_H = 0.30, 0.46, 0.20
 
 
 def _panel_title(fig, y_top, tag, title):
+    if not tag:   # a figure with one panel: the title alone
+        fig.text(0.012, y_top, title, ha='left', va='top', fontsize=10, color=INK)
+        return
     fig.text(0.012, y_top, tag, ha='left', va='top', fontsize=10, fontweight='bold', color=INK)
     fig.text(0.058, y_top - 0.004, title, ha='left', va='top', fontsize=9.2, color=INK)
 
 
-def _sub(n_complete):
-    return f'{n_complete:,} complete states' + (' (exploratory: fewer than 200)' if n_complete < MIN_COMPLETE else '')
+def _sub(n_complete, n_states=None):
+    """The steps a result stands on: those where every condition and seed of its run gave a well-formed call."""
+    s = f'{n_complete:,} of {n_states:,} paused steps' if n_states else f'{n_complete:,} paused steps'
+    return s + (' (exploratory: fewer than 200)' if n_complete < MIN_COMPLETE else '')
 
 
 def _spread(ys, gap):
@@ -934,101 +1124,124 @@ def _spread(ys, gap):
     return out
 
 
-def fig_extensions(exps, out_dir):
-    panels = []   # (height in inches of the plot area, draw function)
+def fig_extensions(exps, out_dir, which=('a', 'b', 'c'), name='fig_extensions'):
+    """Panels: a, addresses against bare names in every setting (Figure 4); b, the parts of an entry and a false
+    entry; c, the five-call replays. The main text uses panel a alone; the appendix figure holds b and c."""
+    panels = []   # (key, height in inches of the plot area, draw function)
+    n_all = exps['B']['info'][0]      # the paused steps every run starts from
 
     # (a) forest plot
     rows = []
-    for src, key, a, b, label, code in FOREST:
+    for src, key, a, b, label in FOREST:
         e = exps.get(src)
         if e is None:
-            print(f'  not drawn: Figure 3(a) row "{label} ({code}), {RUN_NAME[src]}": no {EXP_NAME[src]} run yet')
+            if 'a' in which:
+                print(f'  not drawn: Figure 4 row "{label}" ({RUN_NAME[src]}): no {EXP_NAME[src]} run yet')
             continue
         d = e['diffs'].get(key)
         if d is None:
-            print(f'  not drawn: Figure 3(a) row "{label}": {key} not estimable in the {EXP_NAME[src]} run')
+            print(f'  not drawn: Figure 4 row "{label}": {key} not estimable in the {EXP_NAME[src]} run')
             continue
-        rows.append(dict(label=label, sub=_sub(e['n_complete']), d=d, ra=e['rates'][a], rb=e['rates'][b], a=a, b=b))
+        if e.get('n_states', n_all) != n_all:
+            raise SystemExit(f'{EXP_NAME[src]} starts from {e["n_states"]} paused steps, not {n_all}')
+        rows.append(dict(label=label, sub=_sub(e['n_complete'], n_all), d=d, dt=e.get('by_task', {}).get(key),
+                         ra=e['rates'][a], rb=e['rates'][b]))
     if rows:
         def draw_a(fig, bottom, height):
             fh = fig.get_figheight()
             left, right = LEFT, 0.665
             ax = fig.add_axes([left, bottom + AXIS_H / fh, right - left, height / fh])
             tr = blended_transform_factory(fig.transFigure, ax.transData)
-            lo_min = min(min(r['d'].lo for r in rows), 0)
-            hi_max = max(r['d'].hi for r in rows)
-            ax.set_xlim(min(-1.0, lo_min - 0.8), _nice(hi_max, 2) + 0.4)
+            lows = [r['d'].lo for r in rows] + [r['dt'].lo for r in rows if r['dt']]
+            highs = [r['d'].hi for r in rows] + [r['dt'].hi for r in rows if r['dt']]
+            ax.set_xlim(min(-1.0, min(lows) - 0.8), _nice(max(highs), 2) + 0.4)
             ax.axvline(0, color=MUTED, lw=0.8, zorder=1)
+            up, down = 0.17, -0.21      # the two lines of a row: clustered by paused step, and by task under it
             for i, r in enumerate(rows):
                 y = -i
-                d = r['d']
-                ax.plot([d.lo, d.hi], [y, y], color=INK, lw=1.1, solid_capstyle='butt', zorder=2)
+                d, dt = r['d'], r['dt']
+                ax.plot([d.lo, d.hi], [y + up, y + up], color=INK, lw=1.2, solid_capstyle='butt', zorder=2)
                 for xx in (d.lo, d.hi):
-                    ax.plot([xx, xx], [y - 0.09, y + 0.09], color=INK, lw=0.9, zorder=2)
-                ax.plot(d.val, y, marker='s', ms=5.2, color=COLORS['legible'], mec='white', mew=0.5, zorder=3)
-                ax.text(left - 0.012, y + 0.08, r['label'], transform=tr, ha='right', va='bottom', fontsize=8.7,
+                    ax.plot([xx, xx], [y + up - 0.09, y + up + 0.09], color=INK, lw=0.9, zorder=2)
+                ax.plot(d.val, y + up, marker='s', ms=5.2, color=COLORS['legible'], mec='white', mew=0.5, zorder=3)
+                ax.text(left - 0.012, y + up, r['label'], transform=tr, ha='right', va='center', fontsize=8.7,
                         color=INK)
-                ax.text(left - 0.012, y + 0.02, r['sub'], transform=tr, ha='right', va='top', fontsize=7.2,
+                ax.text(left - 0.012, y + down, r['sub'], transform=tr, ha='right', va='center', fontsize=7.2,
                         color=MUTED)
-                ax.text(0.682, y, f'{_fmt(d.val, True)} [{_fmt(d.lo)}, {_fmt(d.hi)}]', transform=tr, ha='left',
+                ax.text(0.682, y + up, f'{_fmt(d.val, True)} [{_fmt(d.lo)}, {_fmt(d.hi)}]', transform=tr, ha='left',
                         va='center', fontsize=8.5, color=INK)
-                ax.text(0.862, y, f'{_fmt(r["ra"].val)}% vs {_fmt(r["rb"].val)}%', transform=tr, ha='left',
+                ax.text(0.862, y + up, f'{_fmt(r["ra"].val)}%, {_fmt(r["rb"].val)}%', transform=tr, ha='left',
                         va='center', fontsize=7.6, color=INK2)
-            top = 0.75
+                if dt:      # the same contrast with tasks as the clusters: a thin line, level with its numbers
+                    ax.plot([dt.lo, dt.hi], [y + down, y + down], color=MUTED, lw=0.7, solid_capstyle='butt', zorder=2)
+                    for xx in (dt.lo, dt.hi):
+                        ax.plot([xx, xx], [y + down - 0.06, y + down + 0.06], color=MUTED, lw=0.7, zorder=2)
+                    ax.text(0.682, y + down, f'by task [{_fmt(dt.lo)}, {_fmt(dt.hi)}]', transform=tr, ha='left',
+                            va='center', fontsize=7.2, color=MUTED)
+            top = 0.78
             ax.text(0.682, top, 'points [95% interval]', transform=tr, ha='left', va='bottom', fontsize=7.2,
                     color=MUTED, style='italic')
-            ax.text(0.862, top, 'addresses vs names', transform=tr, ha='left', va='bottom', fontsize=7.2,
-                    color=MUTED, style='italic')
-            ax.set_ylim(-(len(rows) - 1) - 0.55, top + 0.35)
+            ax.text(0.862, top, 'rates: addresses,\nbare names', transform=tr, ha='left', va='bottom', fontsize=7.2,
+                    color=MUTED, style='italic', linespacing=1.15)
+            ax.set_ylim(-(len(rows) - 1) - 0.62, top + 0.42)
             ax.set_yticks([])
             ax.spines[['top', 'right', 'left']].set_visible(False)
             ax.tick_params(axis='x', labelsize=8.5, length=3)
             ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(2))
             ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(
                 lambda v, _: '0' if abs(v) < 1e-9 else f'{v:+.0f}'.replace('-', MINUS)))
-            ax.set_xlabel('addresses minus bare names: replays whose next call reads a listed neighbor, percentage points',
-                          fontsize=8.2)
-            return '(a)', 'Addresses against bare names, in every setting tested (the same 407 paused steps)'
-        panels.append((0.50 * len(rows) + 0.30, draw_a))
+            ax.set_xlabel('addresses minus bare names, in percentage points of replays\nwhose next call reads a '
+                          'neighbor\'s code', fontsize=8.2, linespacing=1.2)
+            return f'Addresses against bare names in every registered variation (the same {n_all:,} paused steps)'
+        panels.append(('a', 0.50 * len(rows) + 0.34, draw_a, 0.14))
 
-    # (b) the rented-GPU run: which part of an entry, and a false entry
+    # (b) the run on the second platform: which part of an entry, and a false entry
     c = exps.get('C')
     if c is None:
-        print('  not drawn: Figure 3(b): no experiment C run yet')
+        print('  not drawn: appendix figure, parts of an entry: no experiment C run yet')
     else:
         parts = [q for q in PARTS if c['rates'].get(q[0]) is not None]
         fals = [f for f in FALSE_ENTRY if c['rates'].get(f[0]) is not None]
         for q in PARTS:
             if q not in parts:
-                print(f'  not drawn: Figure 3(b) bar "{q[2]} ({q[3]})": arm not in the experiment C run')
-        if len(fals) < len(FALSE_ENTRY):
-            print('  not drawn: Figure 3(b) false-entry pair: arm E or Ep not in the experiment C run')
+                print(f'  not drawn: appendix figure, bar "{q[2]}": condition not in the experiment C run')
+        if len(fals) < len(FALSE_ENTRY) or c['diffs'].get('C1') is None:
+            print('  not drawn: appendix figure, the false-entry pair: a condition is not in the experiment C run')
             fals = []
-        brows = [('header', 'each neighbor written as (the next call reads a listed neighbor)')]
-        brows += [('bar', *q) for q in parts]
+        brows = [('header', 'The whole list, by how each neighbor is written: the next call reads a neighbor\'s code')]
+        brows += [('bar', key, 'legible' if lines else 'bare', text) for key, lines, text in parts]
         if fals:
-            brows += [('header', 'one entry of the list (the next call reads that entry)')]
+            brows += [('header', 'One entry of the list: the next call reads that entry\'s code')]
             brows += [('bar', *f) for f in fals]
-        n_units = sum(1.0 if kind == 'bar' else 0.9 for kind, *_ in brows)
+            brows += [('diff', 'C1', None, 'the difference, true minus false')]
+        n_units = sum(0.9 if kind == 'header' else 1.0 for kind, *_ in brows)
 
         def draw_b(fig, bottom, height):
             fh = fig.get_figheight()
             ax = fig.add_axes([LEFT, bottom + AXIS_H / fh, 0.97 - LEFT, height / fh])
             vals = [c['rates'][r[1]] for r in brows if r[0] == 'bar']
-            xlim = (0, _room(max(v.hi for v in vals), (0.97 - LEFT) * W_IN, 1.75))
+            xlim = (0, _room(max(v.hi for v in vals), (0.97 - LEFT) * W_IN, 1.9))
             ticks, labels, bold = [], [], []
             y = 0.0
-            for r in brows:
-                if r[0] == 'header':
+            for kind, key, group, text in ((r + (None, None))[:4] for r in brows):
+                if kind == 'header':
                     y -= 0.2 if y == 0 else 0.5
-                    ax.text(0, y, r[1], ha='left', va='center', fontsize=8, color=INK2, style='italic',
+                    ax.text(0, y, key, ha='left', va='center', fontsize=8, color=INK2, style='italic',
                             transform=ax.get_yaxis_transform())
                     y -= 0.7
                     continue
-                _, key, group, text, code = r
-                v = c['rates'][key]
-                extra = f'{v.k:,} of {v.n:,} replays' if key in ('swapped_E', 'decoy_Ep') else None
-                _bar(ax, y, v, COLORS[group], 0.62, show_ci=True, extra=extra)
+                if kind == 'diff':      # the difference of the two rates above, labelled so that it is not read as one
+                    d = c['diffs'][key]
+                    true, false = c['rates']['swapped_E'], c['rates']['decoy_Ep']
+                    met = d.lo > 0 and false.val < true.val / 2
+                    ax.text(0, y, f' {_fmt(d.val, True)} points [{_fmt(d.lo)}, {_fmt(d.hi)}]', ha='left', va='center',
+                            fontsize=8.5, color=INK, transform=ax.get_yaxis_transform())
+                    ax.text(0.34, y, f'registered rule {"met" if met else "not met"}', ha='left', va='center',
+                            fontsize=7.4, color=INK2, transform=ax.get_yaxis_transform())
+                else:
+                    v = c['rates'][key]
+                    extra = f'{v.k:,} of {v.n:,} replays' if key in ('swapped_E', 'decoy_Ep') else None
+                    _bar(ax, y, v, COLORS[group], 0.62, show_ci=True, extra=extra)
                 ticks.append(y)
                 labels.append(text)
                 bold.append(key == 'E')
@@ -1038,23 +1251,25 @@ def fig_extensions(exps, out_dir):
             for t, b in zip(ax.get_yticklabels(), bold):
                 if b:
                     t.set_fontweight('bold')
-            _xaxis(ax, xlim, f'% of replays, {_sub(c["n_complete"])} (whiskers: 95% interval)')
+            _xaxis(ax, xlim, '% of replays (whiskers: 95% interval, clustered by paused step)')
             ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(2))
-            return '(b)', 'Which part of an entry does the work, and a false entry'
-        panels.append((0.27 * n_units + 0.12, draw_b))
+            return f'The parts of an address, and a false entry (second GPU platform, {_sub(c["n_complete"], n_all)})'
+        panels.append(('b', 0.27 * n_units + 0.12, draw_b, 0.0))
 
-    # (c) the five-call run: reaching the fix, call by call
+    # (c) the five-call replays: reaching the fix, call by call
     k = exps.get('E')
     if k is None:
-        print('  not drawn: Figure 3(c): no experiment E run yet')
+        print('  not drawn: appendix figure, five calls: no experiment E run yet')
     elif ('R', 'Yline', 5, 'A') not in k['curves']:
-        print('  not drawn: Figure 3(c): no complete state where the list reaches the fix')
+        print('  not drawn: appendix figure, five calls: no complete step where a listed neighbor is in a changed file')
     else:
         cv = k['curves']
         show_u = ('U', 'Yfile', 5, 'A') in cv
+        head_in = 0.40      # two lines above each plot say which paused steps it holds and what it counts
 
         def draw_c(fig, bottom, height):
             fh = fig.get_figheight()
+            height = height - head_in
             cr = (0.085, 0.62 if show_u else 0.80)
             ax = fig.add_axes([cr[0], bottom + AXIS_H / fh, cr[1] - cr[0], height / fh])
             calls = [1, 2, 3, 4, 5]
@@ -1068,12 +1283,12 @@ def fig_extensions(exps, out_dir):
                 ends.append((arm, color, ys[-1]))
             ymax = 100
             ax.set_ylim(0, ymax)
-            ax.set_xlim(0.75, 5.95)
+            ax.set_xlim(0.75, 6.12)
             # values at call 5, moved apart just enough to stay legible
             gap = 8.6 / 72 / (height / ymax)   # one label height in data units
             ly = _spread([v for _, _, v in ends], gap)
             for (arm, color, v), yy in zip(ends, ly):
-                ax.text(5.17, yy, f'{K_WORDS[arm]} {_fmt(v, dec=1)}', ha='left', va='center',
+                ax.text(5.17, yy, f'{K_WORDS[arm]} {_fmt(v, dec=1)}%', ha='left', va='center',
                         fontsize=7.6, color=color if arm != 'A' else INK2,
                         fontweight='bold' if arm == 'E' else 'normal')
                 if abs(yy - v) > 0.4:
@@ -1089,23 +1304,28 @@ def fig_extensions(exps, out_dir):
                         color=INK2, linespacing=1.2, zorder=6)
 
             d3, d5 = cv[('R', 'Yline', 3, 'E - H')], k['diffs']['K1']
-            bracket(3.1, 3, f'addresses minus names {_fmt(d3.val, True, 1)} [{_fmt(d3.lo, dec=1)}, {_fmt(d3.hi, dec=1)}]\n'
-                            'exploratory', 74, 'center')
-            bracket(4.9, 5, f'addresses minus names {_fmt(d5.val, True)} [{_fmt(d5.lo)}, {_fmt(d5.hi)}]\n'
-                            'registered rule not met', 86, 'right')
+            bracket(3.1, 3, f'addresses minus bare names: {_fmt(d3.val, True, 1)} points [{_fmt(d3.lo, dec=1)}, '
+                            f'{_fmt(d3.hi, dec=1)}]\nexploratory', 73, 'center')
+            bracket(4.9, 5, f'addresses minus bare names: {_fmt(d5.val, True)} points [{_fmt(d5.lo)}, {_fmt(d5.hi)}]\n'
+                            f'registered rule {"met" if d5.lo > 0 else "not met"}', 86, 'right')
             ax.spines[['top', 'right']].set_visible(False)
             ax.set_xticks(calls)
             ax.tick_params(labelsize=8, length=3)
             ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f'{v:.0f}%'))
             ax.set_yticks([0, 20, 40, 60, 80, 100])
             ax.grid(axis='y', color='#eeeeee', lw=0.6, zorder=0)
-            ax.set_xlabel(f'model call (where the list reaches the fix: {k["n_pop"]["R"]} states, '
-                          f'{cv[("R", "Yline", 5, "A")].n} replays per arm)', fontsize=8)
-            ax.set_ylabel('shown a line the fix changes by that call', fontsize=8)
+            ax.set_xlabel(f'model call ({k["n_pop"]["R"]:,} paused steps, {cv[("R", "Yline", 5, "A")].n:,} replays per '
+                          'condition)', fontsize=8)
+            ax.set_ylabel('% of replays', fontsize=8)
             ax.legend(loc='lower right', bbox_to_anchor=(1.0, 0.02), ncol=2, frameon=False, fontsize=7.4,
                       handlelength=2.0, handletextpad=0.5, columnspacing=1.0, borderaxespad=0.0)
+            top_l = bottom + (AXIS_H + height) / fh
+            fig.text(cr[0], top_l + 0.24 / fh, 'Where a listed neighbor lies in a file the fix changes', ha='left',
+                     va='bottom', fontsize=8.4, color=INK)
+            fig.text(cr[0], top_l + 0.07 / fh, 'shown a line the fix changes by the end of each model call',
+                     ha='left', va='bottom', fontsize=7.4, color=INK2)
             if show_u:
-                ur = (0.745, 0.975)
+                ur = (0.775, 0.975)
                 au = fig.add_axes([ur[0], bottom + AXIS_H / fh, ur[1] - ur[0], height * 0.62 / fh])
                 uv = [cv[('U', 'Yfile', 5, a)] for a, _g in K_BARS]
                 for i, (a, g) in enumerate(K_BARS):
@@ -1113,39 +1333,41 @@ def fig_extensions(exps, out_dir):
                 au.set_yticks([-i for i in range(len(K_BARS))], [K_WORDS[a] for a, _g in K_BARS])
                 au.tick_params(axis='y', labelsize=7.4)
                 au.set_ylim(-len(K_BARS) + 0.45, 0.55)
-                _xaxis(au, (0, _room(max(v.hi for v in uv), (ur[1] - ur[0]) * W_IN, 0.62)),
-                       f'{k["n_pop"]["U"]} states, {uv[0].n} replays per arm', size=7.6)
+                _xaxis(au, (0, _room(max(v.hi for v in uv), (ur[1] - ur[0]) * W_IN, 0.66)),
+                       f'{k["n_pop"]["U"]:,} paused steps,\n{uv[0].n:,} replays per condition', size=7.6)
                 au.xaxis.set_major_locator(matplotlib.ticker.MaxNLocator(3))
                 top_u = bottom + (AXIS_H + height * 0.62) / fh
-                fig.text(ur[0] - 0.03, top_u + 0.30 / fh, 'where the fix is elsewhere', ha='left', va='bottom',
+                fig.text(ur[0] - 0.085, top_u + 0.30 / fh, 'Where no listed neighbor does', ha='left', va='bottom',
                          fontsize=8.4, color=INK)
-                fig.text(ur[0] - 0.03, top_u + 0.05 / fh, 'opens a file the fix changes\nwithin five calls',
+                fig.text(ur[0] - 0.085, top_u + 0.05 / fh, 'opens a file the fix changes\nwithin five calls',
                          ha='left', va='bottom', fontsize=7.4, color=INK2, linespacing=1.15)
             else:
-                print('  not drawn: Figure 3(c) bars where the fix is elsewhere: no complete state')
-            return '(c)', 'Within five model calls, with reads executing'
-        panels.append((2.6, draw_c))
+                print('  not drawn: appendix figure, bars where no listed neighbor is in a changed file: no complete '
+                      'step')
+            return 'Five-call replays, with reads executing: does the list bring the agent to the fix?'
+        panels.append(('c', 2.6 + head_in, draw_c, 0.12))
 
+    panels = [(h, draw, extra) for key, h, draw, extra in panels if key in which]
     if not panels:
-        print('  not drawn: Figure 3: no run available')
+        print(f'  not drawn: {name}: no run available')
         return False
-    H_IN = sum(TITLE_H + h + AXIS_H for h, _ in panels) + GAP_H * (len(panels) - 1) + 0.08
+    H_IN = sum(TITLE_H + h + AXIS_H + extra for h, _d, extra in panels) + GAP_H * (len(panels) - 1) + 0.08
     fig = plt.figure(figsize=(W_IN, H_IN))
     top = H_IN - 0.06
-    for h, draw in panels:
-        bottom = top - TITLE_H - h - AXIS_H
-        tag, title = draw(fig, bottom / H_IN, h)
-        _panel_title(fig, top / H_IN, tag, title)
+    for i, (h, draw, extra) in enumerate(panels):
+        bottom = top - TITLE_H - h - AXIS_H - extra      # extra: room for a second line under the axis
+        title = draw(fig, (bottom + extra) / H_IN, h)
+        _panel_title(fig, top / H_IN, '' if len(panels) == 1 else f'({chr(97 + i)})', title)
         top = bottom - GAP_H
     for ext in ('png', 'svg'):
-        fig.savefig(out_dir / f'fig_extensions.{ext}', dpi=300)
+        fig.savefig(out_dir / f'{name}.{ext}', dpi=300)
     plt.close(fig)
     return True
 
 
-# ---------------------------------------------------------------- Table 1: the pre-registered rules
+# ---------------------------------------------------------------- Tables 1 and 2: data files, rendered here
 def _display(s):
-    """Typographic minus for negative numbers and for 'X - Y' between arm names; nothing else changes."""
+    """Typographic minus for negative numbers and for 'X - Y' between words; nothing else changes."""
     s = re.sub(r'(?<![\w.])-(?=\d)', MINUS, s)
     return re.sub(r'(?<=\w) - (?=\w)', f' {MINUS} ', s)
 
@@ -1171,6 +1393,21 @@ def _wrap_pts(text, width_pt, size, weight='normal', style='normal'):
 
 
 NUM = r'[+\-−]?\d+\.\d+'
+# The only verdicts a rule may carry, in the order of the tally. "no difference detected" is for a rule that
+# registered both directions (its interval may exclude 0 either way) when the interval holds 0.
+OUTCOMES = ('met', 'not met', 'more often', 'less often', 'no difference detected', 'not tested', 'pending')
+
+
+def _verdict(outcome):
+    """An outcome as (its word, which the tally counts; the colon or comma after it; what follows): 'met',
+    'not met: no harm', 'less often, narrowly'. "more often" and "less often" are for a rule that registered both
+    directions and found one that is not a claim of the paper."""
+    m = re.match(r'([^:,]*)([:,]?)(.*)', outcome.strip(), re.S)
+    return m.group(1).strip(), m.group(2), m.group(3).strip()
+# The tables are read in a writeup that shows an image about 800 px wide. Their type is set so that a capital
+# letter is then about 12 px high: 10.6 pt on a page 7 inches wide (the figures' annotations are smaller).
+TABLE_FS = 10.6
+MAX_ROWS = 45      # a table of rules with more rows than this (rules and group headers) is drawn as two images
 
 
 def _estimates(text):
@@ -1188,14 +1425,14 @@ POINT_KEYS = {'G1', 'F1'}   # a single value (no interval): compared with the fi
 
 
 def checkable(exps):
-    """Values the figure code computes, by the key a table row names in "check" (estimate cell) or "check_outcome"
-    (outcome cell)."""
+    """Values the figure code computes, by the key a rule of Table 1 names in "check"."""
     out = {}
     src = {'B1': ('B', 'B1'), 'B3': ('B', 'B3'), 'B4_D': ('B', 'B4_D'), 'B4_E': ('B', 'B4_E'), 'G2': ('C', 'G2'),
            'C1': ('C', 'C1'), 'C2_EL': ('C', 'C2_EL'), 'C2_ES': ('C', 'C2_ES'), 'E_EL_90': ('C', 'E_EL_90'),
            'T1': ('D1', 'T1'), 'T2_90': ('D1', 'T2_90'), 'M1_D2a': ('D2a', 'M1'), 'M1_D2b': ('D2b', 'M1'),
            'K1': ('E', 'K1'), 'K1_task': ('E', 'K1_task'), 'K2': ('E', 'K2'), 'F2': ('F', 'F2'), 'F3': ('F', 'F3'),
-           'S1': ('S', 'S1'), 'M2': ('D2q', 'M1')}
+           'S1': ('S', 'S1'), 'M2': ('D2q', 'M1'), 'P1': ('P', 'P1'), 'P2': ('P', 'P2'), 'X1': ('X', 'X1'),
+           'X2': ('X', 'X2')}
     for key, (tag, k) in src.items():
         d = (exps.get(tag) or {}).get('diffs', {}).get(k)
         if d is not None:
@@ -1207,120 +1444,337 @@ def checkable(exps):
     return out
 
 
-def check_table(spec, exps, ck):
+def _plain(s):
+    """A cell as it is compared with a report: ASCII minus, no thousands separators."""
+    return s.replace(MINUS, '-').replace(',', '')
+
+
+def _expected(template, groups):
+    """The text a report line must give in an estimate: {0} is a group as the report prints it, {0:u} the same
+    without a leading plus sign (the way the tables write the bounds of an interval)."""
+    return re.sub(r'\{(\d+)(:u)?\}', lambda m: groups[int(m.group(1))].lstrip('+') if m.group(2)
+                  else groups[int(m.group(1))], template)
+
+
+def read_values(spec, name):
+    """The named values of a table: {name: number or text}, and the ones that are typed, with their sources.
+
+    A value is read from a stored report ({"file", "pattern"}: the first group of the first match; with "count":
+    true the group is a list the report prints, such as [1, 2, 3], and the value is how many items it has) or from a
+    stored JSON file ({"json", "field"}), worked out from other values ({"sum": [names]}, {"minus": [name, names to
+    subtract]}, {"product": [names]}, {"min": [names]}, {"max": [names]}) or typed ({"value", "source"}). A JSON
+    value may carry a typed "value" for the time its file is not in the repository yet: it is then listed as typed,
+    and once the file exists the two must agree. "equals": name makes the script stop unless the value equals that
+    other value (two reports, or a report and a count, that must agree). A missing file or line stops the script,
+    unless the value is marked {"optional": true}; it is then None, and min and max pass over it."""
+    defs, out, typed = spec.get('values', {}), {}, []
+    ops = {'sum': sum, 'minus': lambda p: p[0] - sum(p[1:]), 'product': lambda p: functools.reduce(operator.mul, p),
+           'min': min, 'max': max}
+
+    def get(key):
+        if key in out:
+            return out[key]
+        if key not in defs:
+            raise SystemExit(f'{name}: the text names a value "{key}" that the file does not define')
+        d = defs[key]
+        op = next((o for o in ops if o in d), None)
+        if 'file' in d:
+            path = ROOT / d['file']
+            m = re.search(d['pattern'], path.read_text(encoding='utf-8'), re.M) if path.exists() else None
+            if m is None and not d.get('optional'):
+                raise SystemExit(f'{name}: value "{key}": no line for {d["pattern"]!r} in {d["file"]}')
+            v = None if m is None else m.group(1)
+            if v is not None and d.get('count'):
+                try:
+                    items = ast.literal_eval(v)
+                except (ValueError, SyntaxError):
+                    items = None
+                if not isinstance(items, (list, tuple)) or len(set(items)) != len(items):
+                    raise SystemExit(f'{name}: value "{key}": {v!r} in {d["file"]} is not a list of distinct items')
+                v = len(items)
+            elif v is not None and re.fullmatch(r'\d[\d,]*', v):
+                v = int(v.replace(',', ''))
+        elif 'json' in d:
+            path = ROOT / d['json']
+            if path.exists():
+                v = json.loads(path.read_text(encoding='utf-8'))
+                for part in d['field'].split('.'):
+                    v = v[part]
+                if 'value' in d and d['value'] != v:
+                    raise SystemExit(f'{name}: value "{key}" is typed as {d["value"]} and {d["json"]} gives {v}')
+            elif 'value' in d:
+                v = d['value']
+                typed.append((key, v, d.get('source') or f'{d["json"]}, field {d["field"]} (file not there yet)'))
+            elif d.get('optional'):
+                v = None
+            else:
+                raise SystemExit(f'{name}: value "{key}": {d["json"]} is missing')
+        elif op:
+            parts = [get(k) for k in d[op]]
+            if op in ('min', 'max'):
+                parts = [p for p in parts if p is not None]
+            v = None if not parts or any(p is None for p in parts) else ops[op](parts)
+        else:
+            v = d['value']
+            typed.append((key, v, d.get('source') or 'NO SOURCE GIVEN'))
+        if 'equals' in d and v is not None and get(d['equals']) is not None and v != get(d['equals']):
+            raise SystemExit(f'{name}: value "{key}" is {v} and "{d["equals"]}" is {get(d["equals"])}: they must agree')
+        out[key] = v
+        return v
+
+    for key in defs:
+        get(key)
+    return out, typed
+
+
+def _fill(text, values, name):
+    """Put the named values into a text: {name}; whole numbers get thousands separators."""
+    def one(m):
+        key = m.group(1)
+        if key not in values:
+            raise SystemExit(f'{name}: the text names a value "{key}" that the file does not define')
+        v = values[key]
+        return 'pending' if v is None else f'{v:,}' if isinstance(v, int) else str(v)
+    return re.sub(r'\{(\w+)\}', one, text)
+
+
+def rule_rows(spec):
+    """Every rule of a table of rules, with the title of its group."""
+    return [(g['title'], row) for g in spec.get('groups', []) for row in g['rows']]
+
+
+def tally(rows):
+    """How many registered rules carry each outcome. A row marked "count": false is a second reading of the rule
+    above it and is not counted."""
+    count = collections.Counter(_verdict(row['outcome'])[0] for row in rows if row.get('count', True))
+    return count, f'{sum(count.values())} rules: ' + ', '.join(f'{k} {count[k]}' for k in OUTCOMES if count[k])
+
+
+def prepare_table(spec, name):
+    """Check the form of a table's data, read its values and fill its texts. Returns (the filled spec, typed values).
+    A table of rules has "groups" (a title, its pre-registrations, its rules: rule, estimate, outcome); a table of
+    samples has "rows" of "cells"."""
+    values, typed = read_values(spec, name)
+    out = json.loads(json.dumps(spec))
+    for row in out.get('rows', []):
+        ready = row.pop('cells_when', None)
+        if ready and (ROOT / ready['file']).exists():       # the row's final text, once its report exists
+            row['cells'] = ready['cells']
+        row['cells'] = [_fill(c, values, name) for c in row['cells']]
+    for title, row in rule_rows(out):
+        verdict = _verdict(row['outcome'])[0]
+        if verdict not in OUTCOMES:
+            raise SystemExit(f'{name}, "{row["rule"]}": outcome "{row["outcome"]}" is not one of {", ".join(OUTCOMES)}')
+        if (row['estimate'].strip().lower() == 'pending') != (verdict == 'pending'):
+            raise SystemExit(f'{name}, "{row["rule"]}": pending in one cell and not in the other')
+        row['estimate'] = _fill(row['estimate'], values, name)
+        row['rule'] = _fill(row['rule'], values, name)
+    fill = lambda text: _fill(text, {**values, 'tally': '{tally}'}, name)    # noqa: E731 (the tally: when drawn)
+    out['note'] = fill(out.get('note', ''))
+    out['note_split'] = [fill(text) for text in out.get('note_split', [])]
+    return out, typed
+
+
+def check_table(spec, exps, ck, name='Table 1'):
+    """Every estimate of a table of rules against the values computed here ("check") or a line of a stored report
+    ("report"); a pending rule prints what its run or report now gives, to be pasted in."""
     comp = checkable(exps)
-    ck.lines.append(f'  Table 1 ({TABLE_JSON.name}) against the computed values:')
-    for i, row in enumerate(spec['rows'], 1):
-        name = f'row {i} ({row["rule"][:34]}...)'
-        for field, keys in (('estimate', row.get('check') or []), ('outcome', row.get('check_outcome') or [])):
-            text = row[field]
-            if keys and text.strip().lower() == 'pending':
-                ready = [k for k in keys if k in comp and k not in POINT_KEYS]
-                if ready:
-                    ck.lines.append(f'    {name} is pending; computed: ' + '; '.join(
-                        f'{k} {_fmt(comp[k].val, True)} [{_fmt(comp[k].lo)}, {_fmt(comp[k].hi)}]' for k in ready))
+    ck.lines.append(f'  {name}, estimates against the computed values and the stored reports:')
+    loose = []
+    for _title, row in rule_rows(spec):
+        label = f'"{row["rule"]}"'
+        text, pending = row['estimate'], row['estimate'].strip().lower() == 'pending'
+        covered = []
+        found, k_found = _estimates(text), 0
+        for k in row.get('check') or []:
+            if k not in comp:
+                if not pending:
+                    ck.lines.append(f'    {label} {k}: no computed value (run not available): not checked')
                 continue
-            found = _estimates(text)
-            j = 0
-            for k in keys:
-                if k not in comp:
-                    ck.lines.append(f'    {name} {k}: no computed value (run not available): not checked')
-                    continue
-                if k in POINT_KEYS:
-                    m = re.search(NUM, text)
-                    ck.same(f'{name} {k}', comp[k], m.group(0).replace(MINUS, '-'), 100, 2) if m else ck.missing(
-                        f'{name} {k}')
-                    continue
-                if j >= len(found):
-                    ck.missing(f'{name} {k} (no "[lo, hi]" left in the {field} cell)')
-                    continue
-                pt, lo, hi = (None if x is None else x.replace(MINUS, '-') for x in found[j])
-                j += 1
-                if pt is not None:
-                    ck.same(f'{name} {k} point', comp[k].raw[0], pt, 100, 2)
-                ck.same(f'{name} {k} lo', comp[k].raw[1], lo, 100, 2)
-                ck.same(f'{name} {k} hi', comp[k].raw[2], hi, 100, 2)
+            if pending:
+                ck.lines.append(f'    {label} is pending; computed {k}: {comp[k].val:+.2f} [{comp[k].lo:.2f}, '
+                                f'{comp[k].hi:.2f}]')
+                continue
+            if k in POINT_KEYS:
+                m = re.search(NUM, text)
+                ck.same(f'{label} {k}', comp[k], m.group(0).replace(MINUS, '-'), 100, 2) if m else ck.missing(
+                    f'{label} {k}')
+                continue
+            if k_found >= len(found):
+                ck.missing(f'{label} {k} (no "[lo, hi]" left in the estimate)')
+                continue
+            pt, lo, hi = (None if x is None else x.replace(MINUS, '-') for x in found[k_found])
+            k_found += 1
+            if pt is not None:
+                ck.same(f'{label} {k} point', comp[k].raw[0], pt, 100, 2)
+                covered.append(pt)
+            ck.same(f'{label} {k} lo', comp[k].raw[1], lo, 100, 2)
+            ck.same(f'{label} {k} hi', comp[k].raw[2], hi, 100, 2)
+            covered += [f'[{lo} {hi}]']
+        for r in row.get('report') or []:
+            path = ROOT / r['file']
+            if not path.exists():
+                if not pending:
+                    ck.missing(f'{label}: {r["file"]} does not exist')
+                continue
+            m = re.search(r['pattern'], path.read_text(encoding='utf-8'), re.M)
+            if m is None:
+                ck.missing(f'{label}: no line for {r["pattern"]!r} in {r["file"]}')
+                continue
+            want = _expected(r['expect'], m.groups())
+            if pending:
+                ck.lines.append(f'    {label} is pending; {r["file"]} gives: {want}')
+                continue
+            ok = _plain(want) in _plain(text)
+            ck.lines.append(f'    {label}: "{want}" from {r["file"]} {"match" if ok else "MISMATCH"}')
+            if not ok:
+                ck.bad.append(label)
+            covered.append(_plain(want))
+        if not pending:      # numbers of the estimate that nothing above verified
+            rest = _plain(text)
+            for c in sorted(covered, key=len, reverse=True):
+                rest = rest.replace(c, ' ')
+            left = re.findall(r'(?<![\w.])[+-]?\d+(?:\.\d+)?%?', rest)
+            if left:
+                loose.append(f'    {label}: typed and not verified: {", ".join(left)}')
+    ck.lines += loose
 
 
-def fig_table(spec, out_dir):
+def table_lint(spec, name):
+    """Numbers written into the cells of a table of samples by hand (every other number is a named value)."""
+    out = []
+    for i, row in enumerate(spec.get('rows', []), 1):
+        ready = (row.get('cells_when') or {}).get('cells', [])
+        for j, cell in enumerate(row.get('cells', []) + ready):
+            rest = re.sub(r'\{\w+\}', ' ', cell)
+            rest = re.sub(r'pre-registrations? \d+(?:(?:, | and | to )\d+)*', ' ', rest)
+            left = re.findall(r'(?<![\w.\-])\d[\d,]*(?:\.\d+)?(?![\w\-])', rest)
+            if left:
+                out.append(f'    {name}, row {i}, column {j % len(row["cells"]) + 1}: written in the text: '
+                           + ', '.join(left))
+    return out
+
+
+def _draw_table(cols, fracs, body, note, out_dir, name):
+    """One table image. body: ('band', bold text, grey text) for a group header across the page, or
+    ('row', [cell, ...]) where a cell is a list of lines and a line a list of (text, size, weight, color, style)
+    pieces set one after another."""
+    fs, lh = TABLE_FS, TABLE_FS * 1.30
+    pad_x, pad_y = 5.0, 3.4
     W = W_IN * 72
-    fs, lh = 7.6, 7.6 * 1.30
-    pad_x, pad_y = 4.0, 3.6
-    fracs = spec.get('widths', [0.15, 0.42, 0.27, 0.16])
-    cols = spec['columns']
     xs = [W * sum(fracs[:i]) for i in range(len(fracs))]
-    ws = [W * f for f in fracs]
-    head = [_wrap_pts(c, ws[i] - 2 * pad_x, fs, 'bold') for i, c in enumerate(cols)]
-    body = []
-    prev = None
-    for row in spec['rows']:
-        first = row['experiment'] != prev
-        prev = row['experiment']
-        exp_lines = ([(l, 'bold', INK, 'normal') for l in _wrap_pts(row['experiment'], ws[0] - 2 * pad_x, fs, 'bold')]
-                     + [(l, 'normal', MUTED, 'normal') for l in _wrap_pts(row.get('prereg', ''), ws[0] - 2 * pad_x,
-                                                                           fs - 0.6)] if first else [])
-        pend = row['estimate'].strip().lower() == 'pending'
-        # the verdict (before any ';') is styled; a qualifier after it is set quietly on the lines below
-        oc = row['outcome'].strip()
-        cut = min([i for i in (oc.find(';'), oc.find(':')) if i >= 0], default=-1)
-        verdict, qual = (oc, '') if cut < 0 else (oc[:cut].strip(), oc[cut + 1:].strip())
-        ocl = verdict.lower()
-        positive = ocl in ('met', 'passed') or ocl.startswith('met, ')
-        o_color = MUTED if ocl == 'pending' else (COLORS['legible'] if positive else INK)
-        o_style = 'italic' if ocl == 'pending' else 'normal'
-        o_weight = 'bold' if positive or ocl == 'not met' else 'normal'
-        cells = [exp_lines,
-                 [(l, 'normal', INK, 'normal') for l in _wrap_pts(_display(row['rule']), ws[1] - 2 * pad_x, fs)],
-                 [(l, 'normal', MUTED if pend else INK, 'italic' if pend else 'normal')
-                  for l in _wrap_pts(_display(row['estimate']), ws[2] - 2 * pad_x, fs)],
-                 [(l, o_weight, o_color, o_style) for l in _wrap_pts(_display(verdict), ws[3] - 2 * pad_x, fs, o_weight)]
-                 + [(l, 'normal', INK2, 'normal') for l in (_wrap_pts(_display(qual), ws[3] - 2 * pad_x, fs)
-                                                            if qual else [])]]
-        body.append((first, cells))
+    head = [_wrap_pts(c, W * fracs[i] - 2 * pad_x, fs, 'bold') for i, c in enumerate(cols)]
     head_h = max(len(h) for h in head) * lh + 2 * pad_y
-    row_h = [max(len(c) for c in cells) * lh + 2 * pad_y for _, cells in body]
-    note = _wrap_pts(spec.get('note', ''), W - 2 * pad_x, fs - 0.8) if spec.get('note') else []
-    note_h = len(note) * (fs - 0.8) * 1.3 + (pad_y * 2 if note else 0)
-    H = head_h + sum(row_h) + note_h + 4
+    heights = [lh + 2 * pad_y + 1.5 if kind == 'band' else max(len(c) for c in rest[0]) * lh + 2 * pad_y
+               for kind, *rest in body]
+    note_fs = fs - 2.4
+    note_lines = _wrap_pts(_display(note), W - 2 * pad_x, note_fs) if note else []
+    note_h = len(note_lines) * note_fs * 1.32 + (2 * pad_y if note_lines else 0)
+    H = head_h + sum(heights) + note_h + 4
     fig = plt.figure(figsize=(W_IN, H / 72))
     ax = fig.add_axes([0, 0, 1, 1])
     ax.set_xlim(0, W)
     ax.set_ylim(0, H)
     ax.axis('off')
+    renderer = fig.canvas.get_renderer()
 
-    def put(x, y, lines):
-        for text, weight, color, style in lines:
-            ax.text(x, y, text, ha='left', va='top', fontsize=fs, fontweight=weight, color=color, style=style)
-            y -= lh
+    def put(x, y, pieces):
+        for text, size, weight, color, style in pieces:
+            t = ax.text(x, y, text, ha='left', va='baseline', fontsize=size, fontweight=weight, color=color,
+                        style=style)
+            x += t.get_window_extent(renderer).width * 72 / fig.dpi + size * 0.28
 
     y = H - 2
     ax.plot([0, W], [y, y], color=INK2, lw=0.9)
     for i, h in enumerate(head):
-        put(xs[i] + pad_x, y - pad_y, [(l, 'bold', INK, 'normal') for l in h])
+        for k, line in enumerate(h):
+            put(xs[i] + pad_x, y - pad_y - (k + 0.78) * lh, [(line, fs, 'bold', INK, 'normal')])
     y -= head_h
     ax.plot([0, W], [y, y], color=INK2, lw=0.6)
-    for (first, cells), h in zip(body, row_h):
-        if first and y < H - 2 - head_h - 0.1:
-            ax.plot([0, W], [y, y], color=RULE_LIGHT, lw=0.6)
-        for i, cell in enumerate(cells):
-            yy = y - pad_y
-            for text, weight, color, style in cell:
-                size = fs - 0.6 if (i == 0 and color == MUTED) else fs
-                ax.text(xs[i] + pad_x, yy, text, ha='left', va='top', fontsize=size, fontweight=weight, color=color,
-                        style=style)
-                yy -= lh
+    for (kind, *rest), h in zip(body, heights):
+        if kind == 'band':
+            ax.add_patch(plt.Rectangle((0, y - h), W, h, fc='#f1f1f1', ec='none', zorder=0))
+            put(pad_x, y - pad_y - 0.75 - 0.78 * lh, [(rest[0], fs, 'bold', INK, 'normal'),
+                                                       (rest[1], fs - 2.2, 'normal', INK2, 'normal')])
+        else:
+            for i, cell in enumerate(rest[0]):
+                for k, pieces in enumerate(cell):
+                    put(xs[i] + pad_x, y - pad_y - (k + 0.78) * lh, pieces)
+            ax.plot([0, W], [y - h, y - h], color=RULE_LIGHT, lw=0.5)
         y -= h
     ax.plot([0, W], [y, y], color=INK2, lw=0.9)
-    yy = y - pad_y
-    for line in note:
-        ax.text(pad_x, yy, line, ha='left', va='top', fontsize=fs - 0.8, color=MUTED)
-        yy -= (fs - 0.8) * 1.3
+    for k, line in enumerate(note_lines):
+        ax.text(pad_x, y - pad_y - k * note_fs * 1.32, line, ha='left', va='top', fontsize=note_fs, color=INK2)
     for ext in ('png', 'svg'):
-        fig.savefig(out_dir / f'table_rules.{ext}', dpi=300)
+        fig.savefig(out_dir / f'{name}.{ext}', dpi=300)
     plt.close(fig)
 
 
-# ---------------------------------------------------------------- figure 1: design
+def _outcome_cell(outcome, width, counted=True):
+    """The outcome as it is written ('met', 'not met: no harm', 'less often, narrowly'), all of it in the style of
+    its verdict; when it does not fit on one line it breaks after the verdict. The verdict of a row that the tally
+    does not count (a second reading of a rule) is set in plain grey."""
+    fs = TABLE_FS
+    verdict, sep, why = _verdict(outcome)
+    plain = ('normal', INK, 'normal')
+    style = {'met': ('bold', COLORS['legible'], 'normal'), 'not met': ('bold', INK, 'normal'), 'more often': plain,
+             'less often': plain, 'no difference detected': plain, 'not tested': ('normal', INK2, 'normal'),
+             'pending': ('normal', MUTED, 'italic')}[verdict]
+    if not counted:
+        style = ('normal', INK2, 'normal')
+    wrap = lambda text: _wrap_pts(text, width, fs, style[0], style[2])      # noqa: E731
+    whole = f'{verdict}{sep} {why}' if why else verdict
+    pieces = wrap(whole) if len(wrap(whole)) == 1 or not why else wrap(verdict + sep) + wrap(why)
+    return [[(l, fs, *style)] for l in pieces]
+
+
+def fig_table(spec, out_dir, name='table_rules'):
+    """Render a prepared table and return the names of the images written.
+
+    A table of rules: three columns; each group is a band across the page (its question in bold, its
+    pre-registrations in grey) and each rule one row. With more than MAX_ROWS rows, or with "split": true in its
+    data, it is drawn as two images, the second starting at the group named in "split_before", each with the tally
+    of its own rules in its note ("note_split": the note of each part; without it both carry "note"). A table of
+    samples: rows of cells, the first cell bold."""
+    fs = TABLE_FS
+    cols = spec['columns']
+    fracs = spec.get('widths') or [1 / len(cols)] * len(cols)
+    width = [W_IN * 72 * f - 10.0 for f in fracs]
+    plain = lambda text, i, weight='normal', color=INK: [[(l, fs, weight, color, 'normal')]      # noqa: E731
+                                                         for l in _wrap_pts(_display(text), width[i], fs, weight)]
+    if 'groups' not in spec:
+        body = [('row', [plain(c, i, 'bold' if i == 0 else 'normal') for i, c in enumerate(row['cells'])])
+                for row in spec['rows']]
+        _draw_table(cols, fracs, body, spec.get('note', ''), out_dir, name)
+        return [name]
+    parts = [spec['groups']]
+    n_rows = sum(1 + len(g['rows']) for g in spec['groups'])
+    titles = [g['title'] for g in spec['groups']]
+    if (n_rows > MAX_ROWS or spec.get('split')) and spec.get('split_before') in titles[1:]:
+        cut = titles.index(spec['split_before'])
+        parts = [spec['groups'][:cut], spec['groups'][cut:]]
+    names = []
+    for k, groups in enumerate(parts):
+        body = []
+        for g in groups:
+            body.append(('band', g['title'], g.get('prereg', '')))
+            for row in g['rows']:
+                pend = row['estimate'].strip().lower() == 'pending'
+                rule = plain(row['rule'], 0)
+                if len(rule) > 1:
+                    print(f'  {name}: the rule "{row["rule"]}" does not fit on one line')
+                est = [[(l, fs, 'normal', MUTED if pend else INK, 'italic' if pend else 'normal')]
+                       for l in _wrap_pts(_display(row['estimate']), width[1], fs)]
+                body.append(('row', [rule, est, _outcome_cell(row['outcome'], width[2], row.get('count', True))]))
+        _count, line = tally([row for g in groups for row in g['rows']])
+        names.append(name if k == 0 else f'{name}_{k + 1}')
+        own = spec.get('note_split') or []
+        note = own[k] if len(parts) > 1 and len(own) == len(parts) else spec.get('note', '')
+        _draw_table(cols, fracs, body, note.replace('{tally}', line), out_dir, names[-1])
+    return names
+
+
+# ---------------------------------------------------------------- figure 2: design
 def _call_lines(tc, width):
     """One tool call of the history as one or more short monospace lines."""
     fn, a = tc['function_name'], tc.get('arguments') or {}
@@ -1340,13 +1794,14 @@ def _call_lines(tc, width):
 
 
 def pick_example(states_path, key=None):
-    """One real state (default: the first in the file)."""
-    for line in open(states_path, encoding='utf-8'):
-        s = json.loads(line)
-        k = (s['task'], s['run'], s.get('fork', 0))
-        if key is None or k == key:
-            return s
-    raise SystemExit(f'state {key} not found')
+    """One real paused step (default: the first in the file)."""
+    with open(states_path, encoding='utf-8') as f:
+        for line in f:
+            s = json.loads(line)
+            k = (s['task'], s['run'], s.get('fork', 0))
+            if key is None or k == key:
+                return s
+    raise SystemExit(f'paused step {key} not found in {states_path}')
 
 
 def _wrap(text, width, indent='  '):
@@ -1359,159 +1814,236 @@ def _wrap(text, width, indent='  '):
     return out
 
 
-def example_formats(s):
-    """The bare-name list as the tool prints it (arm P's result) and arm E's entries, from the state, cut to two.
-
-    Display only: entries after the second are counted, the "node" key (already in the call) is left out, and
-    lines are broken to fit; every value shown is read from the state's own arm texts.
-    """
-    p_resp = s['arms']['P']['response']
-    names = p_resp['neighbors']
-    bare = (f'get_code_neighbors(\n  node="{p_resp["node"]}")\nreturned:\n'
-            '{"status": "ok",\n "neighbors": [\n'
-            + ''.join(f'   "{n}",\n' for n in names[:2])
-            + f'   … {len(names) - 2} more],\n "count": {p_resp["count"]}}}')
-    head, body = s['arms']['E']['user_text'].split('returned:\n', 1)
-    e_resp = json.loads(body)
-    items = e_resp['neighbors']
-    ents = []
-    for e in items[:2]:
-        ents.append(' {"name": "%s",\n  "file": "%s", "lines": "%s",\n  "def": "%s"},'
-                    % (e['name'], e['file'], e['lines'], e['def']))
-    # same text, broken onto lines for display: after the first sentence and before node=
-    head = head.strip().replace('. get_code_neighbors(', '.\nget_code_neighbors(\n  ')
-    legible = (head + ' returned:\n{"status": "ok", "neighbors": [\n' + '\n'.join(ents)
-               + f'\n … {len(items) - 2} more], "count": {e_resp["count"]}}}')
-    return bare, legible
+WORD = {1: 'one', 2: 'two', 3: 'three'}
+LINE_NUMBERS = ('file and lines', 'addresses', 'search hits')      # the conditions whose list gives line numbers
+# The conditions, in the words every figure and table uses, each with what its message holds
+CONDITIONS = [
+    ('no list', 'nothing is added'),
+    ('bare names', 'the neighbors as the tool prints them'),
+    ('names with an instruction', 'bare names and an instruction to read them'),
+    ('file only', 'each neighbor with its file'),
+    ('file and lines', 'with its file and line range'),
+    ('addresses', 'file, line range and first definition line'),
+    ('search hits', 'the same addresses as file:line:definition'),
+    ('false entry', 'one true neighbor swapped for a non-neighbor'),
+    ('rewired list', 'neighbors from a degree-preserving rewiring of the graph'),
+]
 
 
-def fig_design(s, n_states, n_complete, n_arms, seeds, out_dir):
-    W_IN, H_IN = 7.0, 5.0
+def _list_lines(body, width, shown=2):
+    """A stored JSON list message, trimmed for display: its opening as stored, its first entries one per line (a
+    long entry is broken between its fields), and the count of the entries left out. Nothing is reworded: the
+    function first checks that the pieces it shows add up to the stored text."""
+    obj = json.loads(body)
+    items = obj['neighbors']
+    opening = body[:body.index('[') + 1]
+    closing = body[body.rindex(']'):]
+    if opening + ', '.join(json.dumps(e) for e in items) + closing != body:
+        raise SystemExit('fig_design: the stored list message is not written as json.dumps writes it')
+    lines = [opening]
+    for e in items[:shown]:
+        if not isinstance(e, dict):
+            lines.append(' ' + json.dumps(e) + ',')
+            continue
+        fields = [f'{json.dumps(k)}: {json.dumps(v)}' for k, v in e.items()]
+        cur = ' {' + fields[0]
+        for field in fields[1:]:
+            if len(cur) + 2 + len(field) + 2 > width:
+                lines.append(cur + ',')
+                cur = '  ' + field
+            else:
+                cur += ', ' + field
+        lines.append(cur + '},')
+    lines.append(f' … {len(items) - shown} more{closing}')
+    return [piece for line in lines for piece in _wrap(line, width, indent='   ')]
+
+
+def example_forms(s, hits, width):
+    """[(label, accent, the message's first line, its lines as displayed)] for bare names, addresses and, when the
+    paused step is given with its search-hit condition, search hits. Every text is read from the stored conditions
+    of one paused step and trimmed in one way: the first two entries, then how many more."""
+    out = []
+    for label, arm, accent in (('bare names', 'H', False), ('addresses', 'E', True)):
+        head, body = s['arms'][arm]['user_text'].split('\n', 1)
+        out.append((label, accent, head, _list_lines(body, width)))
+    if hits is not None:
+        head, *rows = hits['arms']['EG']['user_text'].split('\n')
+        if head != out[0][2]:
+            raise SystemExit('fig_design: the search-hit condition does not begin with the line the others begin with')
+        lines = [piece for row in rows[:2] for piece in _wrap(row, width, indent='   ')]
+        out.append(('search hits', True, head, lines + [f'… {len(rows) - 2} more lines']))
+    if len({head for _l, _a, head, _lines in out}) != 1:
+        raise SystemExit('fig_design: the example conditions do not share their first line')
+    return out
+
+
+def fig_design(key, exps, out_dir):
+    """One paused step, the one message that differs between conditions, and the outcome."""
+    s = pick_example(B_STATES, key)
+    hits = pick_example(H_STATES, (s['task'], s['run'], s.get('fork', 0))) if H_STATES.exists() else None
+    n_states, _n_complete, _n_arms, seeds = exps['B']['info']
+    W_IN = 7.0
     U = W_IN * 72 / 100                  # points per x unit; y units are the same size
+    PAD = 1.4
+    T, BS, MS, ES = 8.6, 7.4, 6.6, 6.1   # title, body, monospace of the history, monospace of the examples
+    blue = COLORS['legible']
+
+    def step(size, gap=1.32):
+        return size * gap / U
+
+    def prose(text, w_units, size=BS, weight='normal', style='normal'):
+        """A text wrapped to a box of w_units, by the width of its letters."""
+        return _wrap_pts(text, (w_units - 2 * PAD) * U, size, weight, style)
+
+    # Everything is laid out before the page is sized. A block is (lines, size, monospace, color, weight, style,
+    # space after it); a box is its title and its blocks, and the last block may be pinned to the box's foot.
+    cols = [(1.0, 26.0), (30.0, 24.0), (57.0, 18.5), (78.5, 20.5)]
+    calls = [tc for st in s['steps'] if st.get('source') == 'agent' for tc in (st.get('tool_calls') or [])]
+    calls = calls[:s['tool_calls_before_fork']]
+    width = int((cols[0][1] - 2 * PAD) * U / (MS * 0.602))
+    show = list(range(len(calls))) if len(calls) <= 4 else [0, 1, None, len(calls) - 1]
+    history = [(['the task prompt (an issue), then'], BS, False, INK2, 'normal', 'normal', 0.9)]
+    for i in show:
+        if i is None:
+            history.append(([f'… {len(calls) - 3} more calls'], MS, True, MUTED, 'normal', 'normal', 0.7))
+            continue
+        last = i == len(calls) - 1
+        history.append((_call_lines(calls[i], width), MS, True, INK if last else INK2, 'bold' if last else 'normal',
+                        'normal', 0.7))
+    boxes = [
+        ('1  A recorded run, paused', MUTED, 'white', history,
+         (prose('This result shows file content: the run is paused here.', cols[0][1], style='italic'), BS, False, INK,
+          'normal', 'italic', 0)),
+        ('2  One message is added', blue, '#f3f7fb',
+         [(prose('The graph neighbors of a function the agent has just read, written in one of the ways below.',
+                 cols[1][1]), BS, False, INK, 'normal', 'normal', 1.4),
+          (prose('Nothing else differs between conditions.', cols[1][1], weight='bold'), BS, False, blue, 'bold',
+           'normal', 1.4),
+          (prose('The agent did not ask for the list.', cols[1][1]), BS, False, INK2, 'normal', 'normal', 0)], None),
+        ('3  One model call', MUTED, 'white',
+         [(prose('The harness\'s own agent makes its next call. No tool runs.', cols[2][1]), BS, False, INK, 'normal',
+           'normal', 1.4),
+          (prose(f'{n_states:,} paused steps, {len(seeds)} seeds per condition.', cols[2][1]), BS, False, INK2,
+           'normal', 'normal', 0)], None),
+        ('4  What the call does', MUTED, 'white',
+         [(['opens a neighbor\'s file'], BS, False, INK, 'bold', 'normal', 0),
+          (prose('it reads that file, at any line', cols[3][1]), BS, False, INK2, 'normal', 'normal', 0.8),
+          (['reads a neighbor\'s code'], BS, False, INK, 'bold', 'normal', 0),
+          (prose('it reads lines of a listed neighbor in a file not yet opened', cols[3][1]), BS, False, INK2, 'normal',
+           'normal', 0.8)],
+         (prose('Compared: addresses against bare names; each against no list.', cols[3][1]), BS, False, INK, 'normal',
+          'normal', 0)),
+    ]
+
+    def height(blocks):
+        return sum(len(lines) * step(size) + after for lines, size, _m, _c, _w, _s, after in blocks)
+
+    top_h = max(PAD + step(T) + 1.0 + height(blocks) + (1.2 + height([foot]) if foot else 0) + PAD - 0.4
+                for _t, _ec, _fc, blocks, foot in boxes)
+
+    label_w = 11.0                                        # the column of the example labels
+    forms = example_forms(s, hits, int((98.0 - 2 * PAD - label_w) * U / (ES * 0.602)))
+    cell_w = (98.0 - 2 * PAD) / 3
+    cells = [(name, _wrap_pts(text, (cell_w - 2.0) * U, BS)) for name, text in CONDITIONS]
+    rows = [cells[i:i + 3] for i in range(0, len(cells), 3)]
+    row_h = [step(BS) * (1 + max(len(lines) for _n, lines in row)) + 0.9 for row in rows]
+    forms_h = sum(step(ES) * (1 + len(lines)) + 1.3 for _l, _a, _h, lines in forms)
+    link_h = 4.6
+    low_h = PAD + step(T) + 1.6 + sum(row_h) + 0.8 + step(6.8) + 1.0 + forms_h + PAD - 1.3
+    ytop = 1.0 + top_h + link_h + low_h + 1.0
+    H_IN = ytop * U / 72
+
     fig = plt.figure(figsize=(W_IN, H_IN))
     ax = fig.add_axes([0, 0, 1, 1])
-    ytop = H_IN * 72 / U
     ax.set_xlim(0, 100)
     ax.set_ylim(0, ytop)
     ax.axis('off')
-    PAD = 1.4
 
     def box(x0, y0, w, h, ec=MUTED, fc='white', lw=0.8):
         ax.add_patch(FancyBboxPatch((x0, y0), w, h, boxstyle='round,pad=0,rounding_size=1.2', fc=fc, ec=ec,
                                     lw=lw, zorder=1))
 
-    def lines_at(x, y, lines, size, mono=False, color=INK, weight='normal', style='normal', gap=1.32):
+    def lines_at(x, y, lines, size, mono=False, color=INK, weight='normal', style='normal'):
         for ln in lines:
             ax.text(x, y, ln, ha='left', va='top', fontsize=size, family=MONO if mono else None, color=color,
                     fontweight=weight, style=style)
-            y -= size * gap / U
+            y -= step(size)
         return y
-
-    def chars(w_units, size, mono):
-        return int((w_units - 2 * PAD) * U / (size * (0.602 if mono else 0.53)))
 
     def arrow(x0, y0, x1, y1, color=INK2):
         ax.annotate('', xy=(x1, y1), xytext=(x0, y0),
                     arrowprops=dict(arrowstyle='-|>', color=color, lw=1.0, shrinkA=0, shrinkB=0))
 
-    T, TS, BS, MS = 8.6, 8.6, 7.4, 6.6   # title, title size, body size, mono size
-    top, h = ytop - 1.0, 34.0
-    cols = [(1.0, 28.0), (32.0, 30.0), (65.0, 15.5), (83.5, 15.5)]
-
-    # 1. a real run, paused right after a tool result that shows file content
-    x, w = cols[0]
-    box(x, top - h, w, h)
-    y = lines_at(x + PAD, top - PAD, ['1  A real run, paused'], TS, weight='bold') - 1.0
-    y = lines_at(x + PAD, y, ['issue text (task prompt)'], BS, color=INK2) - 0.9
-    calls = [tc for st in s['steps'] if st.get('source') == 'agent' for tc in (st.get('tool_calls') or [])]
-    calls = calls[:s['tool_calls_before_fork']]
-    width = chars(w, MS, True)
-    show = list(range(len(calls)))
-    if len(calls) > 4:
-        show = [0, 1, None, len(calls) - 1]
-    for i in show:
-        if i is None:
-            y = lines_at(x + PAD, y, [f'… {len(calls) - 3} more calls'], MS, mono=True, color=MUTED) - 0.7
-            continue
-        last = i == len(calls) - 1
-        y = lines_at(x + PAD, y, _call_lines(calls[i], width), MS, mono=True, color=INK if last else INK2,
-                     weight='bold' if last else 'normal') - 0.7
-    lines_at(x + PAD, top - h + PAD + BS * 1.3 / U, ['the file is open: pause here'], BS, color=INK,
-             style='italic')
-
-    # 2. the one piece that differs per arm
-    x, w = cols[1]
-    box(x, top - h, w, h, ec=COLORS['legible'], fc='#f3f7fb')
-    y = lines_at(x + PAD, top - PAD, ['2  One last message, by condition'], TS, weight='bold') - 1.0
-    # each condition: its name on one line, what it adds on the next lines
-    arms_txt = [('no list', 'nothing added'),
-                ('bare names', 'neighbors of a function it just saw, as the tool prints them'),
-                ('addresses', 'the same; each with file, line range and first line'),
-                ('false entry', 'one entry is not a neighbor'),
-                ('rewired', 'neighbors in a rewired graph')]
-    for code, t in arms_txt:
-        legible = code == 'addresses'
-        y = lines_at(x + PAD, y, [code], BS, weight='bold', color=COLORS['legible'] if legible else INK)
-        y = lines_at(x + PAD + 1.6, y, _wrap(t, chars(w - 1.6, BS, False), indent=''), BS,
-                     color=COLORS['legible'] if legible else INK2) - 0.3
-
-    # 3. the next call
-    x, w = cols[2]
-    box(x, top - h, w, h)
-    y = lines_at(x + PAD, top - PAD, ['3  Next call'], TS, weight='bold') - 1.0
-    cw3 = chars(w, BS, False)
-    y = lines_at(x + PAD, y, _wrap('The model makes one call; no tool runs.', cw3, ''), BS) - 1.6
-    words = {10: 'ten'}
-    lines_at(x + PAD, y, _wrap(f'{n_states} paused states, {len(seeds)} seeds per condition ({n_complete} complete '
-                               f'in all {words.get(n_arms, n_arms)} conditions of the first runs)', cw3, ''), BS,
-             color=INK2)
-
-    # 4. the score
-    x, w = cols[3]
-    box(x, top - h, w, h)
-    y = lines_at(x + PAD, top - PAD, ['4  Scored'], TS, weight='bold') - 1.0
-    y = lines_at(x + PAD, y, _wrap('Does it read or edit the lines of a listed neighbor in a file not yet '
-                                   'opened?', cw3, ''), BS) - 1.6
-    lines_at(x + PAD, y, _wrap('Compared with the no-list base rate.', cw3, ''), BS, color=INK2)
-
-    ymid = top - h / 2
+    # the four steps
+    top = ytop - 1.0
+    for (x, w), (title, ec, fc, blocks, foot) in zip(cols, boxes):
+        box(x, top - top_h, w, top_h, ec=ec, fc=fc, lw=1.0 if ec == blue else 0.8)
+        y = lines_at(x + PAD, top - PAD, [title], T, weight='bold') - 1.0
+        for lines, size, mono, color, weight, style, after in blocks:
+            y = lines_at(x + PAD, y, lines, size, mono, color, weight, style) - after
+        if foot:
+            lines, size, mono, color, weight, style, _after = foot
+            lines_at(x + PAD, top - top_h + PAD - 0.4 + len(lines) * step(size), lines, size, mono, color, weight,
+                     style)
+    ymid = top - top_h / 2
     for (xa, wa), (xb, _) in zip(cols, cols[1:]):
         arrow(xa + wa + 0.4, ymid, xb - 0.4, ymid)
 
-    # the two list formats, side by side, fed from box 2
-    bare, legible = example_formats(s)
-    by, bh = 1.0, top - h - 6.0
-    left, right = (1.0, 43.0), (46.0, 53.0)
-    box(left[0], by, left[1], bh, ec=COLORS['bare'])
-    box(right[0], by, right[1], bh, ec=COLORS['legible'], lw=1.1)
-    y = lines_at(left[0] + PAD, by + bh - PAD, ['bare names'], T, weight='bold') - 0.9
-    y = lines_at(left[0] + PAD, y, _wrap(bare, chars(left[1], MS, True)), MS, mono=True)
-    lines_at(left[0] + PAD, by + PAD + 2 * BS * 1.32 / U,
-             _wrap('What get_code_neighbors returns: as its result, as a note, or in an instruction to read them.',
-                   chars(left[1], BS, False), ''), BS, color=INK2)
-    y = lines_at(right[0] + PAD, by + bh - PAD, ['addresses'], T, weight='bold',
-                 color=COLORS['legible']) - 0.9
-    lines_at(right[0] + PAD, y, _wrap(legible, chars(right[1], MS, True), indent='       '), MS, mono=True)
-
-    yc = by + bh + 2.6
+    # the message, by condition: what each one holds, then some of them as stored
+    by, bh = 1.0, low_h
+    box(1.0, by, 98.0, bh, ec=blue, lw=1.0)
     xc = cols[1][0] + cols[1][1] / 2
-    ax.plot([xc, xc], [top - h, yc], color=COLORS['legible'], lw=0.9)
-    xl, xr = left[0] + left[1] / 2, right[0] + right[1] / 2
-    ax.plot([xl, xr], [yc, yc], color=COLORS['legible'], lw=0.9)
-    for xx in (xl, xr):
-        arrow(xx, yc, xx, by + bh + 0.2, color=COLORS['legible'])
+    arrow(xc, top - top_h, xc, by + bh + 0.2, color=blue)
+    y = by + bh - PAD
+    ax.text(1.0 + PAD, y, 'The added message, by condition', ha='left', va='top', fontsize=T, fontweight='bold',
+            color=INK)
+    ax.text(99.0 - PAD, y - 0.25, 'blue: the list gives line numbers', ha='right', va='top', fontsize=7.2, color=blue)
+    y -= step(T) + 1.6
+    for row, rh in zip(rows, row_h):
+        for j, (name, lines) in enumerate(row):
+            xx = 1.0 + PAD + j * cell_w
+            yy = lines_at(xx, y, [name], BS, weight='bold', color=blue if name in LINE_NUMBERS else INK)
+            lines_at(xx, yy, lines, BS, color=INK2)
+        y -= rh
+    y -= 0.8
+    ax.plot([1.0 + PAD, 99.0 - PAD], [y + 0.5, y + 0.5], color=RULE_LIGHT, lw=0.6)
+    ax.text(1.0 + PAD, y - 0.2, f'{WORD[len(forms)].capitalize()} of them, as this paused step stores them (the first '
+            'line is the same in every one):', ha='left', va='top', fontsize=6.8, color=INK2, style='italic')
+    y -= step(6.8) + 1.0
+    for label, accent, head, lines in forms:
+        ax.text(1.0 + PAD, y, label, ha='left', va='top', fontsize=BS, fontweight='bold', color=blue if accent else INK)
+        yy = lines_at(1.0 + PAD + label_w, y - (BS - ES) * 0.8 / U, [head], ES, mono=True, color=MUTED)
+        lines_at(1.0 + PAD + label_w, yy, lines, ES, mono=True, color=INK)
+        y -= step(ES) * (1 + len(lines)) + 1.3
     for ext in ('png', 'svg'):
         fig.savefig(out_dir / f'fig_design.{ext}', dpi=300)
     plt.close(fig)
 
 
 # ---------------------------------------------------------------- main
+def load_all(run_dirs):
+    """Every run that exists, with the registered code path of its experiment: {tag: its rates, contrasts, counts}."""
+    exps = {'B': exp_b()}
+    for tag, d in run_dirs.items():
+        rows_path = Path(d) / ROWS_FILE[tag]
+        if not rows_path.exists():
+            where = rows_path.relative_to(ROOT).as_posix() if rows_path.is_relative_to(ROOT) else rows_path
+            print(f'not drawn: {EXP_NAME[tag]} (no {where} yet)')
+            continue
+        e = LOADERS[tag](d, run_dirs[REFERENCE[tag]]) if tag in REFERENCE else LOADERS[tag](d)
+        exps[tag] = e
+        tag_ex = ' [EXPLORATORY: fewer than 200 complete states]' if e['n_complete'] < MIN_COMPLETE else ''
+        print(f'{EXP_NAME[tag]}: {e["n_rows"]} replays, {e["n_complete"]} complete states{tag_ex}')
+    return exps
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--run', nargs=2, action='append', default=[], metavar=('TAG', 'RUN_DIR'),
                     help=f'override the run directory of one later run; TAG is one of {", ".join(RUN_DIRS)}')
-    ap.add_argument('--table', default=str(TABLE_JSON), help='the data file of Table 1')
-    ap.add_argument('--example', default=None, help='state for fig_design as task,run,fork (default: first state)')
+    ap.add_argument('--table', default=str(TABLE_JSON), help='the data file of Table 1 (the registered rules)')
+    ap.add_argument('--samples', default=str(SAMPLES_JSON), help='the data file of Table 2 (the samples)')
+    ap.add_argument('--example', default=None, help='paused step for fig_design as task,run,fork (default: the first)')
     ap.add_argument('--out', default=str(FIG))
     ap.add_argument('--verbose', action='store_true', help='list every checked value, not only the summary')
     args = ap.parse_args()
@@ -1523,24 +2055,21 @@ def main():
             ap.error(f'--run: unknown tag {tag}; use one of {", ".join(RUN_DIRS)}')
         run_dirs[tag] = Path(d)
 
-    exps = {'B': exp_b()}
-    for tag, d in run_dirs.items():
-        rows_path = Path(d) / ROWS_FILE[tag]
-        if not rows_path.exists():
-            print(f'not drawn: {EXP_NAME[tag]} (no {rows_path.relative_to(ROOT).as_posix() if rows_path.is_relative_to(ROOT) else rows_path} yet)')
-            continue
-        e = LOADERS[tag](d)
-        exps[tag] = e
-        tag_ex = ' [EXPLORATORY: fewer than 200 complete states]' if e['n_complete'] < MIN_COMPLETE else ''
-        print(f'{EXP_NAME[tag]}: {e["n_rows"]} replays, {e["n_complete"]} complete states{tag_ex}')
+    exps = load_all(run_dirs)
 
     ck = Checks()
     check_b(exps['B'], ck)
     for tag in RUN_DIRS:
         if tag in exps:
             check_later(tag, exps[tag], ck)
-    spec = json.load(open(args.table, encoding='utf-8'))
-    check_table(spec, exps, ck)
+    check_by_task(exps, ck)
+    with open(args.table, encoding='utf-8') as f:
+        rules_raw = json.load(f)
+    with open(args.samples, encoding='utf-8') as f:
+        samples_raw = json.load(f)
+    rules, rules_typed = prepare_table(rules_raw, Path(args.table).name)
+    samples, samples_typed = prepare_table(samples_raw, Path(args.samples).name)
+    check_table(rules, exps, ck)
     print('Checks (plotted values against the registered outputs):')
     n_ok = sum(1 for l in ck.lines if l.endswith(' match'))
     print('\n'.join(l for l in ck.lines if args.verbose or not l.endswith(' match')))
@@ -1548,16 +2077,29 @@ def main():
     if ck.bad:
         raise SystemExit(f'check failed for {ck.bad}; no figure saved')
     print('  all checks passed')
+    n_rows = sum(1 + len(g['rows']) for g in rules['groups'])
+    print(f'  Table 1: {n_rows} rows with the group headers; {tally([row for _t, row in rule_rows(rules)])[1]}')
+    typed = [(Path(args.table).name, *t) for t in rules_typed] + [(Path(args.samples).name, *t) for t in samples_typed]
+    lint = table_lint(samples_raw, 'Table 2')
+    if typed or lint:
+        print('  Numbers of the tables that are typed, not read from a report:')
+        for name, key, value, source in typed:
+            print(f'    {name}: {key} = {value} (source: {source})')
+        print('\n'.join(lint))
 
-    fig_results(exps['B']['values'], out_dir)
-    fig_extensions(exps, out_dir)
-    fig_table(spec, out_dir)
+    fig_results(exps, out_dir)
+    fig_extensions(exps, out_dir, which=('a',))
+    fig_extensions(exps, out_dir, which=('b', 'c'), name='fig_appendix')
+    tables = fig_table(rules, out_dir, 'table_rules') + fig_table(samples, out_dir, 'table_samples')
+    if len(tables) > 2:
+        print(f'  Table 1 has more than {MAX_ROWS} rows and is drawn as two images: {tables[0]} and {tables[1]}')
     key = None
     if args.example:
         t, r, f = args.example.split(',')
         key = (t, int(r) if r.isdigit() else r, int(f))
-    fig_design(pick_example(B_STATES, key), *exps['B']['info'], out_dir)
-    print(f'wrote fig_design, fig_results, fig_extensions, table_rules (.png and .svg) in {out_dir}')
+    fig_design(key, exps, out_dir)
+    print(f'wrote fig_design, fig_results, fig_extensions, fig_appendix, {", ".join(tables)} (.png and .svg) in '
+          f'{out_dir}')
 
 
 if __name__ == '__main__':
