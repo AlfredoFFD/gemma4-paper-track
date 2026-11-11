@@ -1655,6 +1655,16 @@ def est_04_es():
     return [interval_text(*pts)]
 
 
+def est_13_x1():
+    """Rule X1 of pre-registration 13: EG (the address written as a search hit) minus E (the address in a list), on
+    reading a listed neighbor, with the verdict the report prints."""
+    s = Source(RES / '13' / 'analyze_13.txt')
+    m, line = s.find(r'^  X1, EG - E on reading a listed neighbor: ([+-][\d.]+) \[([+-][\d.]+), ([+-][\d.]+)\]', 'rule X1')
+    v, vline = s.find(r'^  X1 verdict: (.+)$', 'the verdict of X1')
+    s.record('table_rules_v2', f'13 X1, EG - E (verdict "{v.group(1)}", line {vline})', _pts(m.groups()), line)
+    return [_pts(m.groups())], v.group(1).strip()
+
+
 def est_03_b4():
     s = Source(R03B4)
     m, line = s.find(r'^  E matched true - RE rewired, touch\s+([+-][\d.]+) \[ *([+-][\d.]+), +([+-][\d.]+)\]',
@@ -1779,6 +1789,7 @@ TABLE_ROWS = (   # (first column, the estimates, the outcome: a string, or None 
     ('File and lines against file only (12)', est_12, 'met'),
     ("File only against names, opens the neighbor's file (12)", est_12_p2, 'not met'),
     ('Names with their definition line against names (04)', est_04_es, 'not met'),
+    ('Addresses written as search hits against as a list (13)', est_13_x1, None),
     ('True against false entry (04)', est_04, 'met'),
     ('True against rewired list (03)', est_03_b4, 'not met'),
     ('Search with against without line numbers (15); on eight other models (17, 19)', est_15_and_eight,
