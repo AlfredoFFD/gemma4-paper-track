@@ -129,6 +129,8 @@ JOBS = [
     ('14 whole runs scored by tests, independent', 'independent',
      ['analysis/rederive_14.py', f'{R}/14', '--no-write'], f'{R}/rederive_14.txt',
      [f'{R}/14/N/seed1/task_results.jsonl', f'{R}/14/NAF/seed1/task_results.jsonl', 'data/tasks.jsonl']),
+    ('whole runs: runs shown every changed region against the others', 'exploratory',
+     ['analysis/explore_every_region.py', '--no-write'], f'{R}/explore_every_region.txt', [f'{R}/14/runs_14.csv']),
     ('graph-tool calls by the agent itself under two wordings of the task prompt', 'exploratory',
      ['analysis/explore_graph_calls.py', '--no-write'], f'{R}/explore_graph_calls.txt',
      [f'{R}/09/forks/results_09.jsonl', f'{R}/14/N/seed1/task_results.jsonl', 'analysis/fork_states_g/fresh_states.jsonl',
