@@ -196,7 +196,7 @@ JOBS = [
      ['analysis/explore_oracle_once.py'], f'{R}/22/explore_oracle_once.txt', [f'{R}/18/runs_18.csv', f'{R}/22/runs_22.csv']),
     ('18 and 22 together: each task counted once, independent', 'independent',
      ['analysis/rederive_oracle_once.py', '--no-write'], f'{R}/22/rederive_oracle_once.txt', [f'{R}/18/runs_18.csv', f'{R}/22/runs_22.csv']),
-    ('the graphs: how many definitions a text search for a neighbor's name returns', 'exploratory',
+    ('the graphs: how many definitions a text search for the name of a neighbor returns', 'exploratory',
      ['analysis/explore_graph_ambiguity.py', '--no-write'], f'{R}/explore_graph_ambiguity.txt',
      ['data/graphs', 'data/snapshots', 'data/tasks.jsonl', f'{R}/c/forks/results.jsonl']),
     ('20 asked or told, the same search hits: T1 to T4', 'registered',
