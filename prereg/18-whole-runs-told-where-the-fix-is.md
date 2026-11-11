@@ -131,3 +131,10 @@ what any tool that prints the fix's places could do, not a tool.
 - Nov 11, 2026, 2:25 AM EST, after the run: both shards ran to the end; all 120 sessions entered the analysis (no
   infrastructure failure, no missing trace); the note stood once in the first user message of every ON and OA
   session and in none of N.
+- Nov 11, 2026, 2:26 AM EST: the independent script (`analysis/rederive_18.py`, written blind) gives the same verdict on
+  every rule and the same counts of resolved runs. It found that the registered script, through the loader of 14,
+  credits a step that holds several tool calls with the result of its first call only, so reads made in parallel
+  are lost: 2 results in N, 10 in ON, 48 in OA, where the agent often reads all the given addresses at once. With
+  every call paired with its result, OA is shown every changed region in 32 of 40 runs, not 25 (N 8 and ON 27 are
+  unchanged); U3 keeps both verdicts (OA against N +60.0 [45.0, 75.0]; OA against ON +12.5 [-2.5, 25.0]). The
+  registered output is left as the script printed it; the paper gives the corrected count and says so.
