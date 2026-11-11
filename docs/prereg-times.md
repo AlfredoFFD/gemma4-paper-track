@@ -24,4 +24,5 @@ status line; the commits are every commit that touched the file, oldest first (h
 | `18-whole-runs-told-where-the-fix-is.md` | Nov 11, 2026, 1:02 AM EST | `508e44c` 2026-11-11 01:02:43 -0500; `a9b0041` 2026-11-11 01:21:37 -0500; `683ff2a` 2026-11-11 02:25:40 -0500; `966d515` 2026-11-11 02:26:29 -0500; `e29b2b2` 2026-11-11 03:26:51 -0500 |
 | `19-one-call-contrasts-on-hosted-models.md` | Nov 11, 2026, 12:55 AM EST | `bcc3c04` 2026-11-11 00:55:11 -0500; `26349a1` 2026-11-11 01:15:18 -0500 |
 | `20-asked-or-told.md` | Nov 11, 2026, 1:01 AM EST | `6a4f782` 2026-11-11 01:01:21 -0500; `e29b2b2` 2026-11-11 03:26:51 -0500 |
-| `22-told-where-the-fix-is-second-seed.md` | Nov 11, 2026, 2:33 AM EST | `7527b78` 2026-11-11 02:33:12 -0500; `7bf2c16` 2026-11-11 02:45:44 -0500 |
+| `22-told-where-the-fix-is-second-seed.md` | Nov 11, 2026, 2:33 AM EST | `7527b78` 2026-11-11 02:33:12 -0500; `7bf2c16` 2026-11-11 02:45:44 -0500; `fdc4d3f` 2026-11-11 04:41:11 -0500 |
+| `24-asked-or-told-on-hosted-models.md` | Nov 11, 2026, 4:58 AM EST | `62fb391` 2026-11-11 04:58:37 -0500; `eccc8f0` 2026-11-11 05:08:09 -0500; `825863f` 2026-11-11 05:15:35 -0500; `18dacc8` 2026-11-11 05:15:49 -0500 |
