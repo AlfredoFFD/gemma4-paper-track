@@ -405,6 +405,94 @@ def parse_asked_told():
     return out
 
 
+R24 = RES / '24' / 'analyze_24.txt'
+HOSTED24 = (  # short label, a token of the model's name in analyze_24.txt
+    ('DeepSeek-V4.1', 'deepseek-v4.1'), ('MiniMax-M3.1', 'minimax-m3.1'), ('Nemotron-3', 'nemotron-3'),
+    ('gpt-oss-120b', 'gpt-oss-120b'), ('Qwen3-235B', 'qwen3-235b'), ('Qwen3-30B', 'qwen3-30b'), ('GLM-5.3', 'glm-5.3'),
+)
+INTERVAL = r'([+-][\d.]+) \[([+-][\d.]+), ([+-][\d.]+)\] \((\d+)\)'
+
+
+@functools.lru_cache(maxsize=None)
+def parse_24():
+    """Pre-registration 24 (the design of 20 on seven hosted models; registered: the first line of its report, "BUILD,
+    not registered", is stale, as a dated note in prereg/24 says). Per model: USES THE LINE under NONE, TOLD, ASKED
+    (section 1); W1 and W2 with their verdicts (section 2); the counts and the reading of section 3. The reference row
+    of Gemma-4-31B is read apart and not counted."""
+    s = Source(R24)
+    lo, hi = s.block(r'^1\. Rates by arm', 'section 1 of analyze_24.txt', end=r'^\d\. ')
+    _h, hl = s.find(r'USES THE LINE, % of replays:\s+NONE\s+TOLD\s+ASKED\s+TOLDX \| SEARCHES:\s+NONE\s+TOLD\s*$',
+                    'the column heads of section 1', lo, hi)
+    rx1 = re.compile(r'^(\S+(?: \(pre-registration 20; refe)?)\s.*?\s(in|out) \([\d.]+% usable\) \|\s+([\d.]+)\s+([\d.]+)\s+'
+                     r'([\d.]+)\s+([\d.]+) \|\s+[\d.]+\s+[\d.]+\s*$')
+    models, ref = {}, None
+    for i in range(hl, hi):
+        m = rx1.match(s.lines[i])
+        if not m:
+            continue
+        rates = dict(NONE=m.group(3), TOLD=m.group(4), ASKED=m.group(5))
+        if m.group(1).startswith('Gemma-4-31B'):
+            ref = dict(rates=rates, line=i + 1)
+            continue
+        short = [lab for lab, tok in HOSTED24 if tok in m.group(1).lower()]
+        if len(short) != 1 or m.group(2) != 'in':
+            stop(f'analyze_24.txt, line {i + 1}: {m.group(1)} matches {short}, gate {m.group(2)}')
+        models[short[0]] = dict(name=m.group(1), rates=rates, line=i + 1)
+        s.record('fig_asked_told', f'(b) {short[0]}: USES THE LINE % under NONE; TOLD; ASKED (heads line {hl})',
+                 '; '.join(rates.values()), i + 1)
+    if sorted(models) != sorted(lab for lab, _t in HOSTED24) or ref is None:
+        stop(f'analyze_24.txt: section 1 has {sorted(models)}, reference {ref is not None}')
+    lo, hi = s.block(r'^2\. Rules, one verdict per model', 'section 2 of analyze_24.txt', end=r'^\d\. ')
+    rx2 = re.compile(rf'^(\S+(?: \(pre-registration 20; refe)?)\s+{INTERVAL}\s+{INTERVAL}\s+{INTERVAL}')
+    for i in range(lo, hi):
+        m = rx2.match(s.lines[i])
+        if not m or m.group(1).startswith('Gemma-4-31B'):
+            continue
+        v = re.match(r'^\s+W1 (.+?)\s+W2 (.+?)\s+W3 (.+?)\s*$', s.lines[i + 1])
+        if not v:
+            stop(f'analyze_24.txt, line {i + 2}: no verdicts under {m.group(1)}')
+        short = [lab for lab, tok in HOSTED24 if tok in m.group(1).lower()]
+        if len(short) != 1 or models[short[0]]['name'] != m.group(1):
+            stop(f'analyze_24.txt, line {i + 1}: {m.group(1)} is not one model of section 1')
+        x = models[short[0]]
+        x.update(w1=m.group(1 + 1), w2=m.group(1 + 5), w1v=v.group(1), w2v=v.group(2), rline=i + 1)
+        s.record('fig_asked_told', f'(b) {short[0]}: W1; W2 (verdicts "{v.group(1)}"; "{v.group(2)[:30]}", line '
+                 f'{i + 2})', f'{x["w1"]}; {x["w2"]}', i + 1)
+    if any('w1' not in x for x in models.values()):
+        stop('analyze_24.txt: a model of section 1 has no rules in section 2')
+    lo, hi = s.block(r'^3\. Reading across models', 'section 3 of analyze_24.txt', end=r'^\d\. ')
+    m, cl = s.find(r'^  W1 met on (\d+); W1 and W2 both met on (\d+); W3 met on \d+ \(of (\d+) through the gate\)$',
+                   'the counts of section 3', lo, hi)
+    r, rl = s.find(r'^  READING: ([^:]+):', 'the reading of section 3', lo, hi)
+    counts = dict(w1=int(m.group(1)), both=int(m.group(2)), n=int(m.group(3)), reading=r.group(1))
+    s.record('table_rules_v2', '24: W1 met on; W1 and W2 both met on; of (models through the gate)',
+             f'{m.group(1)}; {m.group(2)}; {m.group(3)}', cl)
+    s.record('table_rules_v2', '24: the reading of section 3', r.group(1), rl)
+    # the counts must be the verdicts' own
+    if counts['n'] != len(models) or counts['w1'] != sum(x['w1v'] == 'used' for x in models.values()) or \
+            counts['both'] != sum(x['w1v'] == 'used' and x['w2v'] == 'used less than asked' for x in models.values()):
+        stop('analyze_24.txt: the counts of section 3 are not those of the verdicts of section 2')
+    return dict(models=models, ref=ref, counts=counts)
+
+
+def est_24(rule):
+    """Rows of pre-registration 24: the smallest and largest difference over the seven models, and the outcome."""
+    d = parse_24()
+    ms = d['models']
+    key = 'w1' if rule == 'W1' else 'w2'
+    lo_m = min(ms, key=lambda k: Decimal(ms[k][key]))
+    hi_m = max(ms, key=lambda k: Decimal(ms[k][key]))
+    rng = f'{num(ms[lo_m][key])} to {num(ms[hi_m][key])}'
+    PARSED.append(('table_rules_v2', f'24 {rule}: smallest ({lo_m}, line {ms[lo_m]["rline"]}); largest ({hi_m}, line '
+                   f'{ms[hi_m]["rline"]})', rng, rel(R24), f'{ms[lo_m]["rline"]}, {ms[hi_m]["rline"]}'))
+    c = d['counts']
+    if rule == 'W1':
+        if c['w1'] != c['n']:
+            stop(f'analyze_24.txt: W1 is met on {c["w1"]} of {c["n"]}; the row says met on each')
+        return [rng], 'met on each'
+    return [rng], f'met on {c["both"]} of {c["n"]}: {c["reading"]}'
+
+
 def fig_asked_told(out):
     d = parse_asked_told()
     seeds = {d[a]['n'] // d[a]['states'] for a, _l, _c in ARMS20}
@@ -417,7 +505,22 @@ def fig_asked_told(out):
         f'times; the hits of another search exist for {d["TOLDX"]["states"]} of them. Intervals: 95% bootstrap by '
         'paused step.', 128)
     rows_h = ROW * len(ARMS20)
-    h_in = TOP + rows_h + AXIS + 0.13 * len(note) + 0.10
+    # panel (b), below: the same three arms on the seven hosted models of pre-registration 24, Gemma-4-31B first
+    d24 = parse_24()
+    ref = d24['ref']['rates']
+    for arm in ('NONE', 'TOLD', 'ASKED'):         # the reference row of 24 is the row of 20 drawn above
+        if f'{d[arm]["rate"]:.1f}' != ref[arm]:
+            stop(f'analyze_24.txt, line {d24["ref"]["line"]}: Gemma-4-31B {arm} {ref[arm]}, analyze_20.txt '
+                 f'{d[arm]["rate"]}')
+    order = sorted(d24['models'], key=lambda k: -float(d24['models'][k]['rates']['TOLD']))
+    note_b = wrap(f'These models continue Gemma-4-31B\'s histories: the search in the history is not their own. '
+                  f'Pre-registration 24, registered.', 128)
+    B_TOP = TOP + rows_h + AXIS + 0.13 * len(note) + 0.30
+    ROWB, GAP = 0.23, 0.14
+    RB0 = B_TOP + 0.66
+    rows_b = ROWB * (1 + len(order)) + GAP
+    YB = RB0 + rows_b + AXIS
+    h_in = YB + 0.13 * len(note_b) + 0.10
     fig, page = page_of(h_in)
     page.text(0.09, 0.07, 'A line the agent was told is used, less often than one it asked for', ha='left', va='top',
               fontsize=10.5, color=INK)
@@ -448,6 +551,51 @@ def fig_asked_told(out):
     yn = TOP + rows_h + AXIS
     for i, line in enumerate(note):
         page.text(0.09, yn + 0.13 * i, line, ha='left', va='top', fontsize=6.9, color=MUTED)
+    # ---- panel (b)
+    page.plot([0.09, W_IN - 0.09], [B_TOP - 0.12] * 2, color=HAIR, lw=0.7)
+    page.text(0.09, B_TOP, f'The same hits on {WORDS[len(order)]} hosted models', ha='left', va='top', fontsize=9.0,
+              color=INK)
+    marks = (('NONE', 'nothing added', PALE, GREY), ('TOLD', 'told in a note', LIGHT, LIGHT),
+             ('ASKED', 'in a search result', BLUE, BLUE))
+    x = X0
+    for _arm, lab, fc, ec in marks:            # the key, one row, at the left edge of the axis
+        page.plot(x, B_TOP + 0.30, marker='o', ms=5.6, mfc=fc, mec=ec, mew=0.8, ls='none')
+        t = page.text(x + 0.09, B_TOP + 0.30, lab, ha='left', va='center', fontsize=7.6, color=INK)
+        x += 0.09 + width_in(fig, t) + 0.28
+    page.plot(X0, B_TOP + 0.47, marker='D', ms=4.0, mfc=INK, mec=INK, ls='none')
+    page.text(X0 + 0.09, B_TOP + 0.47, 'note used less than the search result (registered rule met)', ha='left',
+              va='center', fontsize=7.6, color=INK)
+    bx = axes_at(fig, X0, X1, RB0, RB0 + rows_b)
+    bx.set_xlim(0, 100)
+    bx.set_ylim(rows_b, 0)
+    for v in (25, 50, 75, 100):
+        bx.plot([v, v], [0.02, rows_b], color=GRID, lw=0.6, zorder=0)
+    rows = [('Gemma-4-31B (above)', {a: d[a]['rate'] for a in ('NONE', 'TOLD', 'ASKED')}, False, ROWB / 2)]
+    for k, lab in enumerate(order):
+        x24 = d24['models'][lab]
+        rows.append((lab, {a: float(x24['rates'][a]) for a in ('NONE', 'TOLD', 'ASKED')},
+                     x24['w2v'] == 'used less than asked', ROWB * (k + 1.5) + GAP))
+    for lab, rates, w2, yc in rows:
+        vals = list(rates.values())
+        bx.plot([min(vals), max(vals)], [yc, yc], color=MUTED, lw=0.8, zorder=2)
+        for arm, _l, fc, ec in marks:
+            bx.plot(rates[arm], yc, marker='o', ms=5.6, mfc=fc, mec=ec, mew=0.8, ls='none',
+                    zorder=4 if arm == 'ASKED' else 3, clip_on=False)      # a mark at 0% is drawn whole
+        page.text(LAB_R, RB0 + yc, lab, ha='right', va='center', fontsize=8.0, color=INK,
+                  style='italic' if lab.startswith('Gemma') else 'normal')
+        if w2:
+            page.plot(X1 + 0.16, RB0 + yc, marker='D', ms=4.0, mfc=INK, mec=INK, ls='none')
+    PARSED.append(('fig_asked_told', '(b) order (by TOLD); W2 met on', f'{", ".join(order)}; '
+                   f'{", ".join(lab for lab, _r, w2, _y in rows if w2)}', rel(R24), 'section 2'))
+    bx.plot([0, 100], [ROWB + GAP / 2] * 2, color=HAIR, lw=0.7, zorder=1)      # Gemma-4-31B set apart
+    bx.set_yticks([])
+    bx.set_xticks([0, 25, 50, 75, 100])
+    bx.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f'{v:.0f}%'))
+    bx.spines[['top', 'right', 'left']].set_visible(False)
+    bx.tick_params(axis='x', labelsize=7.8, length=3)
+    bx.set_xlabel('share of replays whose next call reads a noted file past line 1', fontsize=7.8)
+    for i, line in enumerate(note_b):
+        page.text(0.09, YB + 0.13 * i, line, ha='left', va='top', fontsize=6.9, color=MUTED)
     save(fig, page, out, 'fig_asked_told')
 
 
@@ -1567,6 +1715,10 @@ TABLE_ROWS = (   # (first column, the estimates, the outcome: a string, or None 
     ('Next call is a search, told against nothing (20)', est_20_t4, None),
     (lambda: f'Told its own hits against those of another search, {states_t3()} steps (20)', lambda: est_20('T3'),
      'not met'),
+    (lambda: f'A line in a note against nothing, {WORDS[len(parse_24()["models"])]} hosted models (24)',
+     lambda: est_24('W1'), None),
+    (lambda: f'The same line in a search result against in a note, {WORDS[len(parse_24()["models"])]} hosted models '
+             '(24)', lambda: est_24('W2'), None),
     ('Whole runs, both changes against as shipped, resolved (14)', est_14, 'no detectable difference'),
     ('First call goes to a graph tool, the September wording of the tool lines against the current one, under '
      'either listing (16)', est_16_wording, None),
@@ -1655,7 +1807,7 @@ def table_rules(out, r22):
         cell2 = [[(line, TABLE_FS, 'normal', INK, 'normal')] for line in est_lines]
         # the met color for "met" and for a registered difference that was found ("more", "fewer", or the words a
         # registration gives one, as W3's "more graph calls with ..."); neutral for "not met", no detectable difference
-        met = (outcome.split(';')[0].split(' (')[0] in ('met', 'more', 'fewer')
+        met = (outcome.split(';')[0].split(' (')[0] in ('met', 'met on each', 'more', 'fewer')
                or outcome.startswith(('more graph calls', 'fewer graph calls')))
         style = ('bold', BLUE, 'normal') if met else ('normal', INK, 'normal')
         o_lines = []
