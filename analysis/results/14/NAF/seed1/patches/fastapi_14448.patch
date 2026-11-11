@@ -1,0 +1,71 @@
+diff --git a/fastapi/dependencies/models.py b/fastapi/dependencies/models.py
+index 2a4d9a01..a0edd14a 100644
+--- a/fastapi/dependencies/models.py
++++ b/fastapi/dependencies/models.py
+@@ -15,6 +15,25 @@ else:  # pragma: no cover
+     from asyncio import iscoroutinefunction
+ 
+ 
++def _is_callable_recursive(call: Any, check_func: Callable[[Any], bool]) -> bool:
++    current = call
++    while current is not None:
++        if inspect.isroutine(current):
++            if check_func(current):
++                return True
++        elif not inspect.isclass(current) and hasattr(current, "__call__"):
++            if check_func(getattr(current, "__call__", None)):
++                return True
++
++        if isinstance(current, partial):
++            current = current.func
++        elif hasattr(current, "__wrapped__"):
++            current = current.__wrapped__
++        else:
++            break
++    return False
++
++
+ @dataclass
+ class SecurityRequirement:
+     security_scheme: SecurityBase
+@@ -75,37 +94,17 @@ class Dependant:
+                 return True
+         return False
+ 
+-    @cached_property
+-    def _unwrapped_call(self) -> Any:
+-        if self.call is None:
+-            return self.call  # pragma: no cover
+-        unwrapped = inspect.unwrap(self.call)
+-        if isinstance(unwrapped, partial):
+-            unwrapped = unwrapped.func
+-        return unwrapped
+-
+     @cached_property
+     def is_gen_callable(self) -> bool:
+-        if inspect.isgeneratorfunction(self._unwrapped_call):
+-            return True
+-        dunder_call = getattr(self._unwrapped_call, "__call__", None)  # noqa: B004
+-        return inspect.isgeneratorfunction(dunder_call)
++        return _is_callable_recursive(self.call, inspect.isgeneratorfunction)
+ 
+     @cached_property
+     def is_async_gen_callable(self) -> bool:
+-        if inspect.isasyncgenfunction(self._unwrapped_call):
+-            return True
+-        dunder_call = getattr(self._unwrapped_call, "__call__", None)  # noqa: B004
+-        return inspect.isasyncgenfunction(dunder_call)
++        return _is_callable_recursive(self.call, inspect.isasyncgenfunction)
+ 
+     @cached_property
+     def is_coroutine_callable(self) -> bool:
+-        if inspect.isroutine(self._unwrapped_call):
+-            return iscoroutinefunction(self._unwrapped_call)
+-        if inspect.isclass(self._unwrapped_call):
+-            return False
+-        dunder_call = getattr(self._unwrapped_call, "__call__", None)  # noqa: B004
+-        return iscoroutinefunction(dunder_call)
++        return _is_callable_recursive(self.call, iscoroutinefunction)
+ 
+     @cached_property
+     def computed_scope(self) -> Union[str, None]:

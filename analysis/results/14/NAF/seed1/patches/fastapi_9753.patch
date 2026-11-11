@@ -1,0 +1,119 @@
+diff --git a/fastapi/dependencies/models.py b/fastapi/dependencies/models.py
+index 13486dd1..8a34a522 100644
+--- a/fastapi/dependencies/models.py
++++ b/fastapi/dependencies/models.py
+@@ -1,5 +1,6 @@
+ import inspect
+ import sys
++import functools
+ from dataclasses import dataclass, field
+ from functools import cached_property
+ from typing import Any, Callable, List, Optional, Sequence, Union
+@@ -79,7 +80,10 @@ class Dependant:
+     def _unwrapped_call(self) -> Any:
+         if self.call is None:
+             return self.call  # pragma: no cover
+-        return inspect.unwrap(self.call)
++        call = self.call
++        while isinstance(call, functools.partial):
++            call = call.func
++        return inspect.unwrap(call)
+ 
+     @cached_property
+     def is_gen_callable(self) -> bool:
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 1a493a9f..eb453a42 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -1,5 +1,6 @@
+ import dataclasses
+ import inspect
++import functools
+ from contextlib import AsyncExitStack, contextmanager
+ from copy import copy, deepcopy
+ from dataclasses import dataclass
+@@ -192,7 +193,10 @@ def get_flat_params(dependant: Dependant) -> List[ModelField]:
+ 
+ def get_typed_signature(call: Callable[..., Any]) -> inspect.Signature:
+     signature = inspect.signature(call)
+-    unwrapped = inspect.unwrap(call)
++    unwrapped = call
++    while isinstance(unwrapped, functools.partial):
++        unwrapped = unwrapped.func
++    unwrapped = inspect.unwrap(unwrapped)
+     globalns = getattr(unwrapped, "__globals__", {})
+     typed_params = [
+         inspect.Parameter(
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..952828ba
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,67 @@
++import functools
++import pytest
++from fastapi import Depends, FastAPI
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++def sync_dep(value: "str"):
++    return value
++
++async def async_dep(value: "str"):
++    return value
++
++class CallableDep:
++    def __call__(self, value: "str"):
++        return value
++
++class AsyncCallableDep:
++    async def __call__(self, value: "str"):
++        return value
++
++sync_dep_partial = functools.partial(sync_dep, value="partial-sync")
++async_dep_partial = functools.partial(async_dep, value="partial-async")
++callable_dep_partial = functools.partial(CallableDep(), value="partial-callable")
++async_callable_dep_partial = functools.partial(AsyncCallableDep(), value="partial-async-callable")
++
++@app.get("/sync-partial")
++async def get_sync_partial(value: str = Depends(sync_dep_partial)):
++    return value
++
++@app.get("/async-partial")
++async def get_async_partial(value: str = Depends(async_dep_partial)):
++    return value
++
++@app.get("/callable-partial")
++async def get_callable_partial(value: str = Depends(callable_dep_partial)):
++    return value
++
++@app.get("/async-callable-partial")
++async def get_async_callable_partial(value: str = Depends(async_callable_dep_partial)):
++    return value
++
++client = TestClient(app)
++
++def test_sync_partial():
++    response = client.get("/sync-partial")
++    assert response.status_code == 200
++    assert response.json() == "partial-sync"
++
++def test_async_partial():
++    response = client.get("/async-partial")
++    assert response.status_code == 200
++    assert response.json() == "partial-async"
++
++def test_callable_partial():
++    response = client.get("/callable-partial")
++    assert response.status_code == 200
++    assert response.json() == "partial-callable"
++
++def test_async_callable_partial():
++    response = client.get("/async-callable-partial")
++    assert response.status_code == 200
++    assert response.json() == "partial-async-callable"
++
++if __name__ == "__main__":
++    import pytest
++    pytest.main([__file__])

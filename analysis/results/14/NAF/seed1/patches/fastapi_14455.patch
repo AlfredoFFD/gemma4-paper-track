@@ -1,0 +1,87 @@
+diff --git a/fastapi/openapi/utils.py b/fastapi/openapi/utils.py
+index dbc93d28..31e538d5 100644
+--- a/fastapi/openapi/utils.py
++++ b/fastapi/openapi/utils.py
+@@ -75,6 +75,24 @@ status_code_ranges: Dict[str, str] = {
+ }
+ 
+ 
++def merge_security_schemes(existing: Dict[str, Any], new: Dict[str, Any]) -> Dict[str, Any]:
++    for name, scheme in new.items():
++        if name in existing and existing[name].get("type") == "oauth2" and scheme.get("type") == "oauth2":
++            existing_flows = existing[name].get("flows", {})
++            new_flows = scheme.get("flows", {})
++            for flow_name, flow_details in new_flows.items():
++                if flow_name in existing_flows:
++                    existing_scopes = existing_flows[flow_name].get("scopes", {})
++                    new_scopes = flow_details.get("scopes", {})
++                    existing_flows[flow_name]["scopes"] = {**existing_scopes, **new_scopes}
++                else:
++                    existing_flows[flow_name] = flow_details
++            existing[name]["flows"] = existing_flows
++        else:
++            existing[name] = scheme
++    return existing
++
++
+ def get_openapi_security_definitions(
+     flat_dependant: Dependant,
+ ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+@@ -87,7 +105,7 @@ def get_openapi_security_definitions(
+             exclude_none=True,
+         )
+         security_name = security_requirement.security_scheme.scheme_name
+-        security_definitions[security_name] = security_definition
++        merge_security_schemes(security_definitions, {security_name: security_definition})
+         operation_security.append({security_name: security_requirement.scopes})
+     return security_definitions, operation_security
+ 
+@@ -280,7 +298,7 @@ def get_openapi_path(
+             if operation_security:
+                 operation.setdefault("security", []).extend(operation_security)
+             if security_definitions:
+-                security_schemes.update(security_definitions)
++                merge_security_schemes(security_schemes, security_definitions)
+             operation_parameters = _get_openapi_operation_parameters(
+                 dependant=route.dependant,
+                 model_name_map=model_name_map,
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..70d93275
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,34 @@
++
++from fastapi import FastAPI, Depends
++from fastapi.security import OAuth2PasswordBearer
++from fastapi.openapi.utils import get_openapi
++import json
++
++app = FastAPI()
++
++auth1 = OAuth2PasswordBearer(tokenUrl="token", scopes={"read": "Read access"})
++auth2 = OAuth2PasswordBearer(tokenUrl="token", scopes={"write": "Write access"})
++
++@app.get("/read", dependencies=[Depends(auth1)])
++def read():
++    return {"message": "read"}
++
++@app.get("/write", dependencies=[Depends(auth2)])
++def write():
++    return {"message": "write"}
++
++openapi_schema = app.openapi()
++security_schemes = openapi_schema.get("components", {}).get("securitySchemes", {})
++
++print(json.dumps(security_schemes, indent=2))
++
++# Check if both scopes are present in the OAuth2PasswordBearer scheme
++oauth2_scheme = security_schemes.get("OAuth2PasswordBearer", {})
++flows = oauth2_scheme.get("flows", {})
++password_flow = flows.get("password", {})
++scopes = password_flow.get("scopes", {})
++
++print(f"Scopes: {scopes}")
++
++assert "read" in scopes
++assert "write" in scopes

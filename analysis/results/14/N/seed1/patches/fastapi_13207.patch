@@ -1,0 +1,183 @@
+diff --git a/fastapi/_compat/v2.py b/fastapi/_compat/v2.py
+index 3d91814c..cb82386c 100644
+--- a/fastapi/_compat/v2.py
++++ b/fastapi/_compat/v2.py
+@@ -238,7 +238,11 @@ def get_definitions(
+     }
+ 
+     inputs = [
+-        (field, override_mode or field.mode, field._type_adapter.core_schema)
++        (
++            field,
++            field.mode if field.mode == "serialization" else override_mode or field.mode,
++            field._type_adapter.core_schema,
++        )
+         for field in list(fields) + list(unique_flat_model_fields)
+     ]
+     field_mapping, definitions = schema_generator.generate_definitions(inputs=inputs)
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..7499510e
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,40 @@
++from fastapi import FastAPI
++from pydantic import BaseModel, computed_field
++from fastapi.testclient import TestClient
++import json
++
++app = FastAPI(separate_input_output_schemas=True)
++
++class Item(BaseModel):
++    name: str
++    
++    @computed_field
++    @property
++    def description(self) -> str:
++        return f"Description of {self.name}"
++
++@app.get("/item", response_model=Item)
++def read_item():
++    return Item(name="test")
++
++client = TestClient(app)
++
++def test_openapi_schema():
++    response = client.get("/openapi.json")
++    schema = response.json()
++    
++    # Find the Item schema
++    # It should be in components/schemas
++    item_schema = schema["components"]["schemas"]["Item"]
++    print(json.dumps(item_schema, indent=2))
++    
++    assert "description" in item_schema["properties"], "Computed field 'description' should be in the OpenAPI schema"
++
++if __name__ == "__main__":
++    try:
++        test_openapi_schema()
++        print("Test passed!")
++    except AssertionError as e:
++        print(f"Test failed: {e}")
++    except Exception as e:
++        print(f"An error occurred: {e}")
+diff --git a/repro_final.py b/repro_final.py
+new file mode 100644
+index 00000000..ef678f8e
+--- /dev/null
++++ b/repro_final.py
+@@ -0,0 +1,54 @@
++import json
++from fastapi import FastAPI
++from fastapi.openapi.utils import get_openapi
++from pydantic import BaseModel, computed_field
++
++app = FastAPI()
++
++class Item(BaseModel):
++    name: str
++
++    @computed_field
++    @property
++    def description(self) -> str:
++        return f"Item {self.name}"
++
++@app.get("/items", response_model=Item)
++def read_item():
++    return Item(name="test")
++
++def test_openapi_schema(separate_input_output_schemas: bool):
++    openapi_schema = get_openapi(
++        title="Test",
++        version="1.0.0",
++        routes=app.routes,
++        separate_input_output_schemas=separate_input_output_schemas,
++    )
++    
++    # Find the Item schema in components/schemas
++    schemas = openapi_schema["components"]["schemas"]
++    print(f"Schemas for separate_input_output_schemas={separate_input_output_schemas}: {list(schemas.keys())}")
++    
++    if separate_input_output_schemas:
++        # Should have Item-Input and Item-Output
++        # Computed field should be in Item-Output
++        item_output = schemas.get("Item-Output")
++        assert item_output is not None, "Item-Output schema missing"
++        assert "description" in item_output["properties"], "Computed field 'description' missing from Item-Output"
++        print(f"separate_input_output_schemas=True: Passed")
++    else:
++        # Should have Item
++        # Computed field should be in Item
++        item = schemas.get("Item")
++        assert item is not None, "Item schema missing"
++        assert "description" in item["properties"], "Computed field 'description' missing from Item"
++        print(f"separate_input_output_schemas=False: Passed")
++
++if __name__ == "__main__":
++    try:
++        test_openapi_schema(separate_input_output_schemas=True)
++        test_openapi_schema(separate_input_output_schemas=False)
++        print("All tests passed!")
++    except AssertionError as e:
++        print(f"Test failed: {e}")
++        exit(1)
+diff --git a/reproduction_script.py b/reproduction_script.py
+new file mode 100644
+index 00000000..ab7c508c
+--- /dev/null
++++ b/reproduction_script.py
+@@ -0,0 +1,54 @@
++from fastapi import FastAPI
++from pydantic import BaseModel, computed_field
++import json
++
++app = FastAPI()
++
++class Item(BaseModel):
++    name: str
++    
++    @computed_field
++    @property
++    def description(self) -> str:
++        return "This is a computed description"
++
++@app.get("/items", response_model=Item)
++def read_items():
++    return Item(name="Test Item")
++
++def test_openapi(separate_input_output_schemas: bool):
++    # We need to pass separate_input_output_schemas to get_openapi
++    # But app.openapi() doesn't take it. It uses app.openapi_extra or something?
++    # No, it's a parameter of get_openapi.
++    # Let's use get_openapi directly.
++    from fastapi.openapi.utils import get_openapi
++    from fastapi.routing import APIRoute
++    
++    routes = app.routes
++    openapi_schema = get_openapi(
++        title="Test API",
++        version="1.0.0",
++        openapi_version="3.1.0",
++        routes=routes,
++        separate_input_output_schemas=separate_input_output_schemas,
++    )
++    
++    schemas = openapi_schema.get("components", {}).get("schemas", {})
++    item_schema = schemas.get("Item", {})
++    properties = item_schema.get("properties", {})
++    
++    print(f"separate_input_output_schemas={separate_input_output_schemas}")
++    print(f"Properties: {list(properties.keys())}")
++    
++    assert "description" in properties, f"Computed field 'description' missing from schema when separate_input_output_schemas={separate_input_output_schemas}"
++    print("Success!")
++
++if __name__ == "__main__":
++    try:
++        test_openapi(separate_input_output_schemas=True)
++        print("Test with separate_input_output_schemas=True passed.")
++        test_openapi(separate_input_output_schemas=False)
++        print("Test with separate_input_output_schemas=False passed.")
++    except AssertionError as e:
++        print(f"Test failed: {e}")
++        exit(1)

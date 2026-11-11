@@ -1,0 +1,141 @@
+diff --git a/reproduce_newline.py b/reproduce_newline.py
+new file mode 100644
+index 00000000..1838419c
+--- /dev/null
++++ b/reproduce_newline.py
+@@ -0,0 +1,7 @@
++from rich.console import Console
++from rich.padding import Padding
++from rich.text import Text
++
++console = Console(width=10)
++padding = Padding(Text("\n"), pad=(0, 6, 0, 6))
++console.print(padding)
+diff --git a/reproduce_padding.py b/reproduce_padding.py
+new file mode 100644
+index 00000000..6ee47e1a
+--- /dev/null
++++ b/reproduce_padding.py
+@@ -0,0 +1,9 @@
++from rich.console import Console
++from rich.padding import Padding
++
++console = Console(width=None)
++try:
++    console.print(Padding("Hello", (1, 1, 1, 1), expand=False))
++    print("Success")
++except Exception as e:
++    print(f"Error: {e}")
+diff --git a/reproduce_padding_2.py b/reproduce_padding_2.py
+new file mode 100644
+index 00000000..17e9bd8e
+--- /dev/null
++++ b/reproduce_padding_2.py
+@@ -0,0 +1,21 @@
++from rich.console import Console
++from rich.padding import Padding
++from rich.measure import Measurement
++
++console = Console(width=None)
++options = console.options
++print(f"options.max_width: {options.max_width}")
++
++# Try to trigger the min(..., None)
++try:
++    # We need to call __rich_console__ or something that uses it.
++    # Padding.__rich_console__ is called by console.render_lines or console.print
++    # Let's see what happens inside __rich_console__
++    # We can mock options.max_width = None if it's not already.
++    
++    # Let's try to force max_width to be None
++    # In rich, options is usually a ConsoleOptions object.
++    # Let's see its definition.
++    pass
++except Exception as e:
++    print(f"Error: {e}")
+diff --git a/reproduce_padding_3.py b/reproduce_padding_3.py
+new file mode 100644
+index 00000000..fcc3f3e3
+--- /dev/null
++++ b/reproduce_padding_3.py
+@@ -0,0 +1,6 @@
++from rich.console import Console
++from rich.padding import Padding
++
++console = Console(width=10)
++# Padding left=6, right=6, total=12. Console width=10.
++console.print(Padding("Hello", (0, 6, 0, 6), expand=False))
+diff --git a/reproduce_padding_4.py b/reproduce_padding_4.py
+new file mode 100644
+index 00000000..b25e9d73
+--- /dev/null
++++ b/reproduce_padding_4.py
+@@ -0,0 +1,7 @@
++from rich.console import Console
++from rich.padding import Padding
++
++console = Console(width=10, force_terminal=False, record=True)
++# Padding left=6, right=6, total=12. Console width=10.
++console.print(Padding("A", (0, 6, 0, 6), expand=False))
++print(f"Output:\n{console.export_text()}")
+diff --git a/rich/padding.py b/rich/padding.py
+index d1aa01be..e3d1ebe4 100644
+--- a/rich/padding.py
++++ b/rich/padding.py
+@@ -99,10 +99,12 @@ class Padding(JupyterMixin):
+         )
+         _Segment = Segment
+ 
+-        left = _Segment(" " * self.left, style) if self.left else None
++        left_padding = min(self.left, width)
++        right_padding = min(self.right, width - left_padding)
++        left = _Segment(" " * left_padding, style) if left_padding else None
+         right = (
+-            [_Segment(f'{" " * self.right}', style), _Segment.line()]
+-            if self.right
++            [_Segment(f'{" " * right_padding}', style), _Segment.line()]
++            if right_padding
+             else [_Segment.line()]
+         )
+         blank_line: Optional[List[Segment]] = None
+diff --git a/verify_fix.py b/verify_fix.py
+new file mode 100644
+index 00000000..e8a8eb0c
+--- /dev/null
++++ b/verify_fix.py
+@@ -0,0 +1,35 @@
++from rich.console import Console
++from rich.padding import Padding
++from rich.text import Text
++from rich.segment import Segment
++
++def test_padding_overflow():
++    console = Console(width=10)
++    # Inner renderable that produces at least one line
++    inner = Text("foo")
++    # Padding that exceeds max_width
++    # max_width for inner will be 10 - 6 - 6 = -2 -> 0
++    # But if we set console width to 20, and padding to 12 each side
++    # max_width for inner = 20 - 12 - 12 = -4 -> 0
++    # Let's use a smaller padding that still overflows
++    padding = Padding(inner, left=6, right=6)
++    
++    # We want to see if the resulting lines exceed console.width
++    # We can use console.render_lines to get the segments
++    lines = console.render_lines(padding)
++    
++    for i, line in enumerate(lines):
++        line_width = sum(len(segment.text) for segment in line)
++        print(f"Line {i} width: {line_width}")
++        if line_width > console.width:
++            print(f"OVERFLOW DETECTED: {line_width} > {console.width}")
++            return True
++    
++    print("No overflow detected.")
++    return False
++
++if __name__ == "__main__":
++    if test_padding_overflow():
++        print("Bug reproduced!")
++    else:
++        print("Bug not reproduced.")

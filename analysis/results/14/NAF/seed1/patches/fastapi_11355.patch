@@ -1,0 +1,110 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 91348c8e..14ee83ae 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -17,6 +17,7 @@ from typing import (
+     Type,
+     Union,
+     cast,
++    get_type_hints,
+ )
+ 
+ import anyio
+@@ -194,12 +195,18 @@ def get_typed_signature(call: Callable[..., Any]) -> inspect.Signature:
+     signature = inspect.signature(call)
+     unwrapped = inspect.unwrap(call)
+     globalns = getattr(unwrapped, "__globals__", {})
++    try:
++        type_hints = get_type_hints(call)
++    except Exception:
++        type_hints = {}
+     typed_params = [
+         inspect.Parameter(
+             name=param.name,
+             kind=param.kind,
+             default=param.default,
+-            annotation=get_typed_annotation(param.annotation, globalns),
++            annotation=type_hints.get(
++                param.name, get_typed_annotation(param.annotation, globalns)
++            ),
+         )
+         for param in signature.parameters.values()
+     ]
+@@ -217,15 +224,19 @@ def get_typed_annotation(annotation: Any, globalns: Dict[str, Any]) -> Any:
+ 
+ 
+ def get_typed_return_annotation(call: Callable[..., Any]) -> Any:
+-    signature = inspect.signature(call)
+-    unwrapped = inspect.unwrap(call)
+-    annotation = signature.return_annotation
+-
+-    if annotation is inspect.Signature.empty:
+-        return None
++    try:
++        type_hints = get_type_hints(call)
++        return type_hints.get("return")
++    except Exception:
++        signature = inspect.signature(call)
++        unwrapped = inspect.unwrap(call)
++        annotation = signature.return_annotation
++
++        if annotation is inspect.Signature.empty:
++            return None
+ 
+-    globalns = getattr(unwrapped, "__globals__", {})
+-    return get_typed_annotation(annotation, globalns)
++        globalns = getattr(unwrapped, "__globals__", {})
++        return get_typed_annotation(annotation, globalns)
+ 
+ 
+ def get_dependant(
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..593698e7
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,26 @@
++
++from __future__ import annotations
++import inspect
++from typing import ForwardRef, get_type_hints, Any, Dict
++from fastapi.dependencies.utils import get_typed_signature
++
++class MyModel:
++    pass
++
++def test_func(a: MyModel, b: str):
++    pass
++
++def test_repro():
++    print(f"Function: {test_func}")
++    sig = inspect.signature(test_func)
++    print(f"Inspect signature params: {sig.parameters}")
++    for name, param in sig.parameters.items():
++        print(f"Param {name} annotation: {param.annotation} (type: {type(param.annotation)})")
++
++    typed_sig = get_typed_signature(test_func)
++    print(f"Typed signature params: {typed_sig.parameters}")
++    for name, param in typed_sig.parameters.items():
++        print(f"Typed param {name} annotation: {param.annotation} (type: {type(param.annotation)})")
++
++if __name__ == "__main__":
++    test_repro()
+diff --git a/repro_forwardref.py b/repro_forwardref.py
+new file mode 100644
+index 00000000..20b5175d
+--- /dev/null
++++ b/repro_forwardref.py
+@@ -0,0 +1,12 @@
++
++from __future__ import annotations
++from typing import ForwardRef
++from fastapi.dependencies.utils import get_typed_annotation
++
++def test_repro():
++    globalns = {}
++    annotation = "MyModel"
++    print(f"Result: {get_typed_annotation(annotation, globalns)}")
++
++if __name__ == "__main__":
++    test_repro()

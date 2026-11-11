@@ -1,0 +1,146 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 7c6558c69..ec19294e2 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -820,8 +820,10 @@ def request_params_to_args(
+             )
+             if convert_underscores:
+                 alias = get_validation_alias(field)
++                print(f"DEBUG: field.name={field.name}, alias={alias}, convert_underscores={convert_underscores}")
+                 if alias == field.name:
+                     alias = alias.replace("_", "-")
++                print(f"DEBUG: final alias={alias}")
+         value = _get_multidict_value(field, received_params, alias=alias)
+         if value is not None:
+             params_to_process[get_validation_alias(field)] = value
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 000000000..74830dac9
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,39 @@
++from fastapi import FastAPI, Header
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.get("/headers_default")
++async def read_headers_default(x_header: str = Header(alias="x_header")):
++    return {"x_header": x_header}
++
++@app.get("/headers_disabled")
++async def read_headers_disabled(x_header: str = Header(alias="x_header", convert_underscores=False)):
++    return {"x_header": x_header}
++
++client = TestClient(app)
++
++def test_underscore_header_with_alias_default():
++    print("Testing default (convert_underscores=True)...")
++    # Should NOT accept "x_header"
++    response = client.get("/headers_default", headers={"x_header": "foo"})
++    print(f"Response with x_header: {response.status_code}")
++    
++    # Should accept "x-header"
++    response = client.get("/headers_default", headers={"x-header": "bar"})
++    print(f"Response with x-header: {response.status_code}")
++
++def test_underscore_header_with_alias_disabled():
++    print("\nTesting disabled (convert_underscores=False)...")
++    # Should accept "x_header"
++    response = client.get("/headers_disabled", headers={"x_header": "foo"})
++    print(f"Response with x_header: {response.status_code}")
++    
++    # Should NOT accept "x-header" (unless it's also the name, but here alias is "x_header")
++    # Actually, if convert_underscores=False, it only looks for the alias.
++    response = client.get("/headers_disabled", headers={"x-header": "bar"})
++    print(f"Response with x-header: {response.status_code}")
++
++if __name__ == "__main__":
++    test_underscore_header_with_alias_default()
++    test_underscore_header_with_alias_disabled()
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 000000000..d09b2cffa
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,36 @@
++from fastapi import FastAPI, Header
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.get("/test")
++def read_header(x_header: str = Header()):
++    return {"x_header": x_header}
++
++client = TestClient(app)
++
++def test_underscore_header_accepted():
++    # Default convert_underscores=True
++    # Should NOT accept x_header, should accept x-header
++    response = client.get("/test", headers={"x_header": "foo"})
++    print(f"Response with x_header: {response.json()}")
++    assert response.status_code == 422 # Expecting validation error because x_header is missing (since it's looking for x-header)
++
++def test_hyphen_header_accepted():
++    response = client.get("/test", headers={"x-header": "foo"})
++    print(f"Response with x-header: {response.json()}")
++    assert response.status_code == 200
++    assert response.json() == {"x_header": "foo"}
++
++if __name__ == "__main__":
++    try:
++        test_underscore_header_accepted()
++        print("test_underscore_header_accepted passed")
++    except Exception as e:
++        print(f"test_underscore_header_accepted failed: {e}")
++
++    try:
++        test_hyphen_header_accepted()
++        print("test_hyphen_header_accepted passed")
++    except Exception as e:
++        print(f"test_hyphen_header_accepted failed: {e}")
+diff --git a/reproduce_issue_false.py b/reproduce_issue_false.py
+new file mode 100644
+index 000000000..954f6528d
+--- /dev/null
++++ b/reproduce_issue_false.py
+@@ -0,0 +1,38 @@
++from fastapi import FastAPI, Header
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.get("/test")
++def read_header(x_header: str = Header(convert_underscores=False)):
++    return {"x_header": x_header}
++
++client = TestClient(app)
++
++def test_underscore_header_accepted_when_false():
++    # convert_underscores=False
++    # Should accept x_header
++    response = client.get("/test", headers={"x_header": "foo"})
++    print(f"Response with x_header: {response.json()}")
++    assert response.status_code == 200
++    assert response.json() == {"x_header": "foo"}
++
++def test_hyphen_header_rejected_when_false():
++    # convert_underscores=False
++    # Should NOT accept x-header
++    response = client.get("/test", headers={"x-header": "foo"})
++    print(f"Response with x-header: {response.json()}")
++    assert response.status_code == 422
++
++if __name__ == "__main__":
++    try:
++        test_underscore_header_accepted_when_false()
++        print("test_underscore_header_accepted_when_false passed")
++    except Exception as e:
++        print(f"test_underscore_header_accepted_when_false failed: {e}")
++
++    try:
++        test_hyphen_header_rejected_when_false()
++        print("test_hyphen_header_rejected_when_false passed")
++    except Exception as e:
++        print(f"test_hyphen_header_rejected_when_false failed: {e}")

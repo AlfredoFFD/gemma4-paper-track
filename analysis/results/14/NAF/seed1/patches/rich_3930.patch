@@ -1,0 +1,224 @@
+diff --git a/rich/cells.py b/rich/cells.py
+index a8546227..1a6bab68 100644
+--- a/rich/cells.py
++++ b/rich/cells.py
+@@ -1,10 +1,58 @@
+ from __future__ import annotations
+ 
+ from functools import lru_cache
+-from typing import Callable
++from typing import Callable, Iterable
+ 
+ from ._cell_widths import CELL_WIDTHS
+ 
++
++def graphemes(text: str) -> Iterable[str]:
++    """Yields each grapheme from the text.
++
++    Args:
++        text: The text to split into graphemes.
++
++    Returns:
++        An iterable of graphemes.
++    """
++    if not text:
++        return
++
++    import unicodedata
++
++    chars = list(text)
++    i = 0
++    while i < len(chars):
++        char = chars[i]
++        grapheme = [char]
++        i += 1
++
++        while i < len(chars):
++            if grapheme[-1] == "\u200d":
++                grapheme.append(chars[i])
++                i += 1
++                continue
++
++            next_char = chars[i]
++            if len(grapheme) == 1 and "\U0001f1e6" <= grapheme[0] <= "\U0001f1ff" and "\U0001f1e6" <= next_char <= "\U0001f1ff":
++                grapheme.append(next_char)
++                i += 1
++                continue
++
++            if (
++                unicodedata.combining(next_char)
++                or next_char == "\u200d"
++                or "\U0001f3fb" <= next_char <= "\U0001f3ff"
++            ):
++                grapheme.append(next_char)
++                i += 1
++                continue
++
++            break
++
++        yield "".join(grapheme)
++
++
+ # Ranges of unicode ordinals that produce a 1-cell wide character
+ # This is non-exhaustive, but covers most common Western characters
+ _SINGLE_CELL_UNICODE_RANGES: list[tuple[int, int]] = [
+@@ -110,22 +158,19 @@ def set_cell_size(text: str, total: int) -> str:
+     if cell_size < total:
+         return text + " " * (total - cell_size)
+ 
+-    start = 0
+-    end = len(text)
+-
+-    # Binary search until we find the right size
+-    while True:
+-        pos = (start + end) // 2
+-        before = text[: pos + 1]
+-        before_len = cell_len(before)
+-        if before_len == total + 1 and cell_len(before[-1]) == 2:
+-            return before[:-1] + " "
+-        if before_len == total:
+-            return before
+-        if before_len > total:
+-            end = pos
++    g_list = list(graphemes(text))
++    current_len = 0
++    result_graphemes = []
++    for g in g_list:
++        g_len = cell_len(g)
++        if current_len + g_len <= total:
++            result_graphemes.append(g)
++            current_len += g_len
+         else:
+-            start = pos
++            break
++
++    result = "".join(result_graphemes)
++    return result + " " * (total - current_len)
+ 
+ 
+ def chop_cells(
+@@ -150,16 +195,16 @@ def chop_cells(
+ 
+     total_width = 0
+ 
+-    for character in text:
+-        cell_width = _get_character_cell_size(character)
++    for grapheme in graphemes(text):
++        cell_width = cell_len(grapheme)
+         char_doesnt_fit = total_width + cell_width > width
+ 
+         if char_doesnt_fit:
+-            append_new_line([character])
++            append_new_line([grapheme])
+             append_to_last_line = lines[-1].append
+             total_width = cell_width
+         else:
+-            append_to_last_line(character)
++            append_to_last_line(grapheme)
+             total_width += cell_width
+ 
+     return ["".join(line) for line in lines]
+diff --git a/rich/text.py b/rich/text.py
+index b57d77c2..43cc8646 100644
+--- a/rich/text.py
++++ b/rich/text.py
+@@ -1185,19 +1185,17 @@ class Text(JupyterMixin):
+ 
+     def right_crop(self, amount: int = 1) -> None:
+         """Remove a number of characters from the end of the text."""
+-        max_offset = len(self.plain) - amount
+-        _Span = Span
+-        self._spans[:] = [
+-            (
+-                span
+-                if span.end < max_offset
+-                else _Span(span.start, min(max_offset, span.end), span.style)
+-            )
+-            for span in self._spans
+-            if span.start < max_offset
+-        ]
+-        self._text = [self.plain[:-amount]]
+-        self._length -= amount
++        if amount <= 0:
++            return
++
++        from rich.cells import graphemes
++        plain = self.plain
++        g_list = list(graphemes(plain))
++        if amount >= len(g_list):
++            self.plain = ""
++            return
++
++        self.plain = "".join(g_list[:-amount])
+ 
+     def wrap(
+         self,
+diff --git a/verify_graphemes.py b/verify_graphemes.py
+new file mode 100644
+index 00000000..9ba41964
+--- /dev/null
++++ b/verify_graphemes.py
+@@ -0,0 +1,63 @@
++from rich.cells import graphemes, chop_cells, set_cell_size
++from rich.text import Text
++
++def test_graphemes():
++    print("Testing graphemes()...")
++    test_cases = [
++        ("hello", ["h", "e", "l", "l", "o"]),
++        ("👋🌍", ["👋", "🌍"]),
++        ("👨‍👩‍👧‍👦", ["👨‍👩‍👧‍👦"]),
++        ("A\u0301", ["A\u0301"]), # A with combining acute accent
++        ("🇺🇸", ["🇺🇸"]),
++        ("👋🏾", ["👋🏾"]), # Wave with skin tone
++    ]
++    for text, expected in test_cases:
++        result = list(graphemes(text))
++        assert result == expected, f"Failed for {text!r}: expected {expected!r}, got {result!r}"
++    print("graphemes() passed!")
++
++def test_set_cell_size():
++    print("Testing set_cell_size()...")
++    # 👨‍👩‍👧‍👦 is 2 cells
++    text = "👨‍👩‍👧‍👦"
++    result = set_cell_size(text, 1)
++    assert result == " ", f"Should pad with space if first grapheme is too large. Got {result!r}"
++    
++    text = "👨‍👩‍👧‍👦hello" # 2 + 5 = 7 cells
++    result = set_cell_size(text, 3)
++    assert result == "👨‍👩‍👧‍👦h", f"Should fit 👨‍👩‍👧‍👦 (2) and 'h' (1). Got {result!r}"
++    
++    result = set_cell_size("👨‍👩‍👧‍👦", 3)
++    assert result == "👨‍👩‍👧‍👦 ", f"Should pad with space. Got {result!r}"
++    print("set_cell_size() passed!")
++
++def test_chop_cells():
++    print("Testing chop_cells()...")
++    # 👨‍👩‍👧‍👦 is 2 cells.
++    result = chop_cells(["👨‍👩‍👧‍👦"], 1)
++    assert result == [" "], f"Should replace 👨‍👩‍👧‍👦 with space if it doesn't fit. Got {result!r}"
++    result = chop_cells(["👨‍👩‍👧‍👦"], 2)
++    assert result == ["👨‍👩‍👧‍👦"], f"Should keep 👨‍👩‍👧‍👦 if it fits. Got {result!r}"
++    print("chop_cells() passed!")
++
++def test_text_right_crop():
++    print("Testing Text.right_crop()...")
++    t = Text("👨‍👩‍👧‍👦hello") # 👨‍👩‍👧‍👦 is 1 grapheme, h,e,l,l,o are 5. Total 6 graphemes.
++    t.right_crop(1) # remove 'o'
++    assert t.plain == "👨‍👩‍👧‍👦hell", f"Expected 👨‍👩‍👧‍👦hell, got {t.plain!r}"
++    t.right_crop(4) # remove 'h','e','l','l'
++    assert t.plain == "👨‍👩‍👧‍👦", f"Expected 👨‍👩‍👧‍👦, got {t.plain!r}"
++    t.right_crop(1) # remove 👨‍👩‍👧‍👦
++    assert t.plain == "", f"Expected empty, got {t.plain!r}"
++    print("Text.right_crop() passed!")
++
++if __name__ == "__main__":
++    try:
++        test_graphemes()
++        test_set_cell_size()
++        test_chop_cells()
++        test_text_right_crop()
++        print("All tests passed!")
++    except AssertionError as e:
++        print(f"Test failed: {e}")
++        exit(1)

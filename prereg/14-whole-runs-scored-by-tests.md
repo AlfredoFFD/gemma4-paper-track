@@ -135,4 +135,11 @@ kind; the harness's result files, patches, test logs and traces of every session
 
 ## Amendments
 
-(none)
+- Nov 10, 2026, 8:16 PM EST, after the run; no rule changes. The run ended at 8:12 PM: 206 sessions (103 tasks, two
+  conditions, seed 1) in two launches of 104 and 102 sessions. No session failed for a reason outside the agent,
+  so no retry was made, and neither stopping rule was reached. The copy stored in the repository
+  (`analysis/results/14/`, written by `analysis/store_14.py`) leaves out the text of the system prompt and of the
+  task prompt at the start of each trace, because task statements are competition data that we do not
+  redistribute; each is replaced by a marker with its length and sha1. The session logs, which repeat both
+  prompts, are not stored; the test logs are. The registered analysis prints the same report on the stored copy
+  and on the full copy.

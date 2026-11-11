@@ -1,0 +1,93 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 45353835..b98bd84c 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -615,26 +615,27 @@ async def solve_dependencies(
+                 scope=sub_dependant.scope,
+             )
+ 
+-        solved_result = await solve_dependencies(
+-            request=request,
+-            dependant=use_sub_dependant,
+-            body=body,
+-            background_tasks=background_tasks,
+-            response=response,
+-            dependency_overrides_provider=dependency_overrides_provider,
+-            dependency_cache=dependency_cache,
+-            async_exit_stack=async_exit_stack,
+-            embed_body_fields=embed_body_fields,
+-        )
+-        background_tasks = solved_result.background_tasks
+-        if solved_result.errors:
+-            errors.extend(solved_result.errors)
+-            continue
+         if sub_dependant.use_cache and sub_dependant.cache_key in dependency_cache:
+             solved = dependency_cache[sub_dependant.cache_key]
+-        elif (
+-            use_sub_dependant.is_gen_callable or use_sub_dependant.is_async_gen_callable
+-        ):
++        else:
++            solved_result = await solve_dependencies(
++                request=request,
++                dependant=use_sub_dependant,
++                body=body,
++                background_tasks=background_tasks,
++                response=response,
++                dependency_overrides_provider=dependency_overrides_provider,
++                dependency_cache=dependency_cache,
++                async_exit_stack=async_exit_stack,
++                embed_body_fields=embed_body_fields,
++            )
++            background_tasks = solved_result.background_tasks
++            if solved_result.errors:
++                errors.extend(solved_result.errors)
++                continue
++            if (
++                use_sub_dependant.is_gen_callable or use_sub_dependant.is_async_gen_callable
++            ):
+             use_astack = request_astack
+             if sub_dependant.scope == "function":
+                 use_astack = function_astack
+diff --git a/reproduce_bug.py b/reproduce_bug.py
+new file mode 100644
+index 00000000..a5653797
+--- /dev/null
++++ b/reproduce_bug.py
+@@ -0,0 +1,37 @@
++from fastapi import FastAPI, Depends, Security
++from fastapi.testclient import TestClient
++from fastapi.security import OAuth2PasswordBearer
++
++oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
++
++app = FastAPI()
++
++call_count = 0
++
++def my_dependency(token: str = Security(oauth2_scheme, scopes=["me"])):
++    global call_count
++    call_count += 1
++    return "value"
++
++@app.get("/")
++async def root(d1: str = Depends(my_dependency), d2: str = Depends(my_dependency)):
++    return {"d1": d1, "d2": d2}
++
++client = TestClient(app)
++
++def test_dependency_caching():
++    global call_count
++    call_count = 0
++    # We need to provide a token because oauth2_scheme requires it
++    response = client.get("/", headers={"Authorization": "Bearer token"})
++    assert response.status_code == 200
++    assert response.json() == {"d1": "value", "d2": "value"}
++    assert call_count == 1, f"Dependency should be called once, but was called {call_count} times"
++
++if __name__ == "__main__":
++    try:
++        test_dependency_caching()
++        print("Test passed!")
++    except AssertionError as e:
++        print(f"Test failed: {e}")
++        exit(1)

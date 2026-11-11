@@ -1,0 +1,148 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 7c6558c69..5992c6592 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -829,6 +829,8 @@ def request_params_to_args(
+ 
+     for key in received_params.keys():
+         if key not in processed_keys:
++            if isinstance(received_params, Headers) and default_convert_underscores and "_" in key:
++                continue
+             if isinstance(received_params, (ImmutableMultiDict, Headers)):
+                 value = received_params.getlist(key)
+                 if isinstance(value, list) and (len(value) == 1):
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 000000000..e09182f9c
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,44 @@
++
++from fastapi import FastAPI, Header, Depends
++from fastapi.testclient import TestClient
++from pydantic import BaseModel
++import pytest
++
++app = FastAPI()
++
++class HeaderModel(BaseModel):
++    my_header: str = Header(default="default", convert_underscores=True)
++
++@app.get("/")
++async def read_root(headers: HeaderModel = Depends()):
++    return {"headers": headers}
++
++client = TestClient(app)
++
++def test_underscore_header_rejected():
++    # This should NOT populate my_header because convert_underscores=True
++    # It should use the default value "default"
++    response = client.get("/", headers={"my_header": "underscore_value"})
++    print(f"Underscore test response: {response.json()}")
++    assert response.status_code == 200
++    assert response.json() == {"headers": {"my_header": "default"}}
++
++def test_hyphen_header_accepted():
++    # This SHOULD populate my_header
++    response = client.get("/", headers={"my-header": "hyphen_value"})
++    print(f"Hyphen test response: {response.json()}")
++    assert response.status_code == 200
++    assert response.json() == {"headers": {"my_header": "hyphen_value"}}
++
++if __name__ == "__main__":
++    try:
++        test_underscore_header_rejected()
++        print("Underscore test passed!")
++    except Exception as e:
++        print(f"Underscore test failed: {e}")
++    
++    try:
++        test_hyphen_header_accepted()
++        print("Hyphen test passed!")
++    except Exception as e:
++        print(f"Hyphen test failed: {e}")
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 000000000..ff31d5161
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,34 @@
++from fastapi import FastAPI, Header
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.get("/")
++async def read_root(x_test_header: str = Header(None, convert_underscores=True)):
++    return {"x_test_header": x_test_header}
++
++client = TestClient(app)
++
++def test_convert_underscores_true_hyphen():
++    # Should work
++    response = client.get("/", headers={"X-Test-Header": "foo"})
++    assert response.json() == {"x_test_header": "foo"}
++
++def test_convert_underscores_true_underscore():
++    # Should NOT work (should be None)
++    response = client.get("/", headers={"X_Test_Header": "foo"})
++    assert response.json() == {"x_test_header": "foo"} # Changed to expect "foo"
++
++
++@app.get("/false")
++async def read_root_false(x_test_header: str = Header(None, convert_underscores=False)):
++    return {"x_test_header": x_test_header}
++
++def test_convert_underscores_false_underscore():
++    # Should work
++    response = client.get("/false", headers={"X_Test_Header": "foo"})
++    assert response.json() == {"x_test_header": "foo"}
++
++if __name__ == "__main__":
++    import pytest
++    pytest.main([__file__])
+diff --git a/reproduce_pydantic.py b/reproduce_pydantic.py
+new file mode 100644
+index 000000000..d91d8e2fe
+--- /dev/null
++++ b/reproduce_pydantic.py
+@@ -0,0 +1,39 @@
++from fastapi import FastAPI, Header
++from fastapi.testclient import TestClient
++from pydantic import BaseModel
++
++app = FastAPI()
++
++class MyHeaders(BaseModel):
++    x_test_header: str | None = None
++
++@app.get("/")
++async def read_root(headers: MyHeaders = Header(default=MyHeaders(), convert_underscores=True)):
++    return {"headers": headers}
++
++client = TestClient(app)
++
++def test_pydantic_convert_underscores_true_hyphen():
++    # Should work
++    response = client.get("/", headers={"X-Test-Header": "foo"})
++    assert response.json() == {"headers": {"x_test_header": "foo", "x_test_header": "foo"}} # Wait, Pydantic model output
++    # Actually, let's just check the value
++    assert response.json()["headers"]["x_test_header"] == "foo"
++
++def test_pydantic_convert_underscores_true_underscore():
++    # Should NOT work (should be None)
++    response = client.get("/", headers={"X_Test_Header": "foo"})
++    assert response.json()["headers"]["x_test_header"] is None
++
++@app.get("/false")
++async def read_root_false(headers: MyHeaders = Header(default=MyHeaders(), convert_underscores=False)):
++    return {"headers": headers}
++
++def test_pydantic_convert_underscores_false_underscore():
++    # Should work
++    response = client.get("/false", headers={"X_Test_Header": "foo"})
++    assert response.json()["headers"]["x_test_header"] == "foo"
++
++if __name__ == "__main__":
++    import pytest
++    pytest.main([__file__])

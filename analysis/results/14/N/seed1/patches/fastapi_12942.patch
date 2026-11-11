@@ -1,0 +1,111 @@
+diff --git a/fastapi/_compat.py b/fastapi/_compat.py
+index 8ea5bf25..7016bf8a 100644
+--- a/fastapi/_compat.py
++++ b/fastapi/_compat.py
+@@ -563,6 +563,8 @@ def _annotation_is_sequence(annotation: Union[Type[Any], None]) -> bool:
+ 
+ def field_annotation_is_sequence(annotation: Union[Type[Any], None]) -> bool:
+     origin = get_origin(annotation)
++    if origin is Annotated:
++        return field_annotation_is_sequence(get_args(annotation)[0])
+     if origin is Union or origin is UnionType:
+         for arg in get_args(annotation):
+             if field_annotation_is_sequence(arg):
+@@ -589,6 +591,8 @@ def field_annotation_is_complex(annotation: Union[Type[Any], None]) -> bool:
+     origin = get_origin(annotation)
+     if origin is Union or origin is UnionType:
+         return any(field_annotation_is_complex(arg) for arg in get_args(annotation))
++    if origin is Annotated:
++        return field_annotation_is_complex(get_args(annotation)[0])
+ 
+     return (
+         _annotation_is_complex(annotation)
+@@ -605,6 +609,8 @@ def field_annotation_is_scalar(annotation: Any) -> bool:
+ 
+ def field_annotation_is_scalar_sequence(annotation: Union[Type[Any], None]) -> bool:
+     origin = get_origin(annotation)
++    if origin is Annotated:
++        return field_annotation_is_scalar_sequence(get_args(annotation)[0])
+     if origin is Union or origin is UnionType:
+         at_least_one_scalar_sequence = False
+         for arg in get_args(annotation):
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..fe109c86
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,74 @@
++from typing import Any, Literal, Annotated
++from pydantic import BaseModel
++from fastapi import FastAPI, Body
++from fastapi.testclient import TestClient
++
++class Pie(BaseModel):
++    time_to_cook: int
++    num_ingredients: int
++
++class ApplePie(Pie):
++    fruit: Literal["apple"] = "apple"
++
++class PumpkinPie(Pie):
++    filling: Literal["pumpkin"] = "pumpkin"
++
++def get_discriminator_value(v: Any) -> str:
++    if isinstance(v, dict):
++        return v.get("fruit", v.get("filling"))
++    return getattr(v, "fruit", getattr(v, "filling", None))
++
++# This is the problematic type
++# Note: Tag and Discriminator are not standard Pydantic/FastAPI types in the example, 
++# but they seem to be used as markers. 
++# Wait, the example uses Tag and Discriminator. I need to see where they come from.
++# In the problem statement, they are used but not imported. 
++# Actually, they might be from pydantic or some other library, or just placeholders.
++# Let's check if they are available in the environment or if I should define them.
++# Looking at the example again, they are used inside Annotated.
++# If they are not defined, the code will fail.
++# Let's define them as simple classes for the reproduction.
++
++class Tag:
++    def __init__(self, value):
++        self.value = value
++
++class Discriminator:
++    def __init__(self, func):
++        self.func = func
++
++Dessert = Annotated[
++    Annotated[ApplePie, Tag("apple")] | Annotated[PumpkinPie, Tag("pumpkin")],
++    Discriminator(get_discriminator_value),
++]
++
++app = FastAPI()
++
++@app.post("/dessert")
++async def dinner(dessert: Dessert) -> dict[str, Any]:
++    return dessert.model_dump()
++
++client = TestClient(app)
++
++def test_dessert_body():
++    # This should be recognized as a body field
++    response = client.post("/dessert", json={"fruit": "apple", "time_to_cook": 10, "num_ingredients": 5})
++    print(f"Response status: {response.status_code}")
++    print(f"Response body: {response.json()}")
++    assert response.status_code == 200
++
++    assert response.json() == {"fruit": "apple", "time_to_cook": 10, "num_ingredients": 5}
++
++    response = client.post("/dessert", json={"filling": "pumpkin", "time_to_cook": 20, "num_ingredients": 3})
++    assert response.status_code == 200
++    assert response.json() == {"filling": "pumpkin", "time_to_cook": 20, "num_ingredients": 3}
++
++if __name__ == "__main__":
++    try:
++        test_dessert_body()
++        print("Test passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        import traceback
++        traceback.print_exc()
++        exit(1)

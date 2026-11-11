@@ -1,0 +1,281 @@
+diff --git a/fastapi/applications.py b/fastapi/applications.py
+index 05c7bd2b..0ad999af 100644
+--- a/fastapi/applications.py
++++ b/fastapi/applications.py
+@@ -624,6 +624,38 @@ class FastAPI(Starlette):
+                 """
+             ),
+         ] = None,
++        external_docs: Annotated[
++            Optional[Dict[str, Union[str, Any]]],
++            Doc(
++                """
++                A dictionary with the external documentation for the exposed API.
++
++                It can contain several fields.
++
++                * `description`: (`str`) A short description of the target documentation.
++                    [CommonMark syntax](https://commonmark.org/) MAY be used for
++                    rich text representation.
++                * `url`: (`str`) The URL for the target documentation. Value MUST be in
++                    the form of a URL.
++
++                It will be added to the generated OpenAPI (e.g. visible at `/docs`).
++
++                Read more at the
++                [FastAPI docs for Metadata and Docs URLs](https://fastapi.tiangolo.com/tutorial/metadata/#metadata-for-api).
++
++                **Example**
++
++                ```python
++                app = FastAPI(
++                    external_docs={
++                        "description": "External docs",
++                        "url": "https://fastapi.tiangolo.com/",
++                    }
++                )
++                ```
++                """
++            ),
++        ] = None,
+         openapi_prefix: Annotated[
+             str,
+             Doc(
+@@ -828,6 +860,7 @@ class FastAPI(Starlette):
+         self.terms_of_service = terms_of_service
+         self.contact = contact
+         self.license_info = license_info
++        self.external_docs = external_docs
+         self.openapi_url = openapi_url
+         self.openapi_tags = openapi_tags
+         self.root_path_in_servers = root_path_in_servers
+@@ -992,6 +1025,7 @@ class FastAPI(Starlette):
+                 tags=self.openapi_tags,
+                 servers=self.servers,
+                 separate_input_output_schemas=self.separate_input_output_schemas,
++                external_docs=self.external_docs,
+             )
+         return self.openapi_schema
+ 
+diff --git a/fastapi/openapi/utils.py b/fastapi/openapi/utils.py
+index eda64a99..b88f874b 100644
+--- a/fastapi/openapi/utils.py
++++ b/fastapi/openapi/utils.py
+@@ -487,6 +487,7 @@ def get_openapi(
+     terms_of_service: Optional[str] = None,
+     contact: Optional[Dict[str, Union[str, Any]]] = None,
+     license_info: Optional[Dict[str, Union[str, Any]]] = None,
++    external_docs: Optional[Dict[str, Union[str, Any]]] = None,
+     separate_input_output_schemas: bool = True,
+ ) -> Dict[str, Any]:
+     info: Dict[str, Any] = {"title": title, "version": version}
+@@ -500,6 +501,8 @@ def get_openapi(
+         info["contact"] = contact
+     if license_info:
+         info["license"] = license_info
++    if external_docs:
++        info["externalDocs"] = external_docs
+     output: Dict[str, Any] = {"openapi": openapi_version, "info": info}
+     if servers:
+         output["servers"] = servers
+diff --git a/modify_applications.py b/modify_applications.py
+new file mode 100644
+index 00000000..a19a6a2e
+--- /dev/null
++++ b/modify_applications.py
+@@ -0,0 +1,96 @@
++
++import sys
++
++file_path = 'fastapi/applications.py'
++with open(file_path, 'r') as f:
++    lines = f.readlines()
++
++# 1. Add external_docs to __init__ arguments
++# Find license_info end
++license_info_end = -1
++for i, line in enumerate(lines):
++    if '],\n        ] = None,' in line and 'license_info' in "".join(lines[max(0, i-10):i]):
++        # This is a bit fragile, let's find the exact block
++        pass
++
++# Let's use a more robust way to find the insertion point for the argument
++# We look for the end of license_info definition
++# license_info: Annotated[ ... ] = None,
++# It ends with ] = None,
++
++# Let's find the line that says '],\n        ] = None,' after license_info
++# Actually, let's just find the line that says '        openapi_prefix: Annotated['
++# and insert before it.
++
++openapi_prefix_start = -1
++for i, line in enumerate(lines):
++    if '        openapi_prefix: Annotated[' in line:
++        openapi_prefix_start = i
++        break
++
++if openapi_prefix_start != -1:
++    external_docs_arg = [
++        '        external_docs: Annotated[\n',
++        '            Optional[Dict[str, Union[str, Any]]],\n',
++        '            Doc(\n',
++        '                """\n',
++        '                A dictionary with the external documentation for the exposed API.\n\n',
++        '                It can contain several fields.\n\n',
++        '                * `description`: (`str`) A short description of the target documentation.\n',
++        '                    [CommonMark syntax](https://commonmark.org/) MAY be used for\n',
++        '                    rich text representation.\n',
++        '                * `url`: (`str`) The URL for the target documentation. Value MUST be in\n',
++        '                    the form of a URL.\n\n',
++        '                It will be added to the generated OpenAPI (e.g. visible at `/docs`).\n\n',
++        '                Read more at the\n',
++        '                [FastAPI docs for Metadata and Docs URLs](https://fastapi.tiangolo.com/tutorial/metadata/#metadata-for-api).\n\n',
++        '                **Example**\n\n',
++        '                ```python\n',
++        '                app = FastAPI(\n',
++        '                    external_docs={\n',
++        '                        "description": "External docs",\n',
++        '                        "url": "https://fastapi.tiangolo.com/",\n',
++        '                    }\n',
++        '                )\n',
++        '                ```\n',
++        '                """\n',
++        '            ),\n',
++        '        ] = None,\n',
++    ]
++    lines[openapi_prefix_start:openapi_prefix_start] = external_docs_arg
++
++# 2. Assign self.external_docs in __init__
++# Find self.license_info = license_info
++license_info_assign = -1
++for i, line in enumerate(lines):
++    if '        self.license_info = license_info' in line:
++        license_info_assign = i
++        break
++
++if license_info_assign != -1:
++    lines.insert(license_info_assign + 1, '        self.external_docs = external_docs\n')
++
++# 3. Pass external_docs to get_openapi
++# Find the get_openapi call
++get_openapi_call_start = -1
++for i, line in enumerate(lines):
++    if '            self.openapi_schema = get_openapi(' in line:
++        get_openapi_call_start = i
++        break
++
++if get_openapi_call_start != -1:
++    # Find the end of the call
++    get_openapi_call_end = -1
++    for i in range(get_openapi_call_start, len(lines)):
++        if '            )' in lines[i] and 'self.openapi_schema' not in lines[i]:
++            get_openapi_call_end = i
++            break
++    
++    if get_openapi_call_end != -1:
++        # Insert before the closing parenthesis
++        # The closing parenthesis is on its own line: '            )'
++        # We want to insert '                external_docs=self.external_docs,' before it.
++        lines.insert(get_openapi_call_end, '                external_docs=self.external_docs,\n')
++
++with open(file_path, 'w') as f:
++    f.writelines(lines)
+diff --git a/modify_openapi_utils.py b/modify_openapi_utils.py
+new file mode 100644
+index 00000000..e8c96ffd
+--- /dev/null
++++ b/modify_openapi_utils.py
+@@ -0,0 +1,58 @@
++
++import sys
++
++file_path = 'fastapi/openapi/utils.py'
++with open(file_path, 'r') as f:
++    content = f.read()
++
++old_signature = """def get_openapi(
++    *,
++    title: str,
++    version: str,
++    openapi_version: str = "3.1.0",
++    summary: Optional[str] = None,
++    description: Optional[str] = None,
++    routes: Sequence[BaseRoute],
++    webhooks: Optional[Sequence[BaseRoute]] = None,
++    tags: Optional[List[Dict[str, Any]]] = None,
++    servers: Optional[List[Dict[str, Union[str, Any]]]] = None,
++    terms_of_service: Optional[str] = None,
++    contact: Optional[Dict[str, Union[str, Any]]] = None,
++    license_info: Optional[Dict[str, Union[str, Any]]] = None,
++    separate_input_output_schemas: bool = True,
++) -> Dict[str, Any]:"""
++
++new_signature = """def get_openapi(
++    *,
++    title: str,
++    version: str,
++    openapi_version: str = "3.1.0",
++    summary: Optional[str] = None,
++    description: Optional[str] = None,
++    routes: Sequence[BaseRoute],
++    webhooks: Optional[Sequence[BaseRoute]] = None,
++    tags: Optional[List[Dict[str, Any]]] = None,
++    servers: Optional[List[Dict[str, Union[str, Any]]]] = None,
++    terms_of_service: Optional[str] = None,
++    contact: Optional[Dict[str, Union[str, Any]]] = None,
++    license_info: Optional[Dict[str, Union[str, Any]]] = None,
++    external_docs: Optional[Dict[str, Union[str, Any]]] = None,
++    separate_input_output_schemas: bool = True,
++) -> Dict[str, Any]:"""
++
++content = content.replace(old_signature, new_signature)
++
++old_body = """    if license_info:
++        info["license"] = license_info
++    output: Dict[str, Any] = {"openapi": openapi_version, "info": info}"""
++
++new_body = """    if license_info:
++        info["license"] = license_info
++    if external_docs:
++        info["externalDocs"] = external_docs
++    output: Dict[str, Any] = {"openapi": openapi_version, "info": info}"""
++
++content = content.replace(old_body, new_body)
++
++with open(file_path, 'w') as f:
++    f.write(content)
+diff --git a/verify_external_docs.py b/verify_external_docs.py
+new file mode 100644
+index 00000000..2d2b5dfd
+--- /dev/null
++++ b/verify_external_docs.py
+@@ -0,0 +1,29 @@
++
++from fastapi import FastAPI
++import json
++
++def test_external_docs():
++    app = FastAPI(
++        title="Test App",
++        version="1.0.0",
++        external_docs={
++            "description": "Test External Docs",
++            "url": "https://example.com/docs"
++        }
++    )
++    openapi_schema = app.openapi()
++    
++    assert "info" in openapi_schema
++    assert "externalDocs" in openapi_schema["info"]
++    assert openapi_schema["info"]["externalDocs"]["description"] == "Test External Docs"
++    assert openapi_schema["info"]["externalDocs"]["url"] == "https://example.com/docs"
++    print("Test passed!")
++
++if __name__ == "__main__":
++    try:
++        test_external_docs()
++    except Exception as e:
++        print(f"Test failed: {e}")
++        import traceback
++        traceback.print_exc()
++        exit(1)

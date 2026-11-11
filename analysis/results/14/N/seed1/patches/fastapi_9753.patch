@@ -1,0 +1,74 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 1a493a9f..870acd58 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -190,10 +190,24 @@ def get_flat_params(dependant: Dependant) -> List[ModelField]:
+     return path_params + query_params + header_params + cookie_params
+ 
+ 
++def get_callable_name(call: Any) -> str:
++    while hasattr(call, "func"):
++        call = call.func
++    if hasattr(call, "__name__"):
++        return call.__name__
++    if hasattr(call, "__class__"):
++        return call.__class__.__name__
++    return str(call)
++\n\n
+ def get_typed_signature(call: Callable[..., Any]) -> inspect.Signature:
+     signature = inspect.signature(call)
+-    unwrapped = inspect.unwrap(call)
++    unwrapped = call
++    while hasattr(unwrapped, "func"):
++        unwrapped = unwrapped.func
++    unwrapped = inspect.unwrap(unwrapped)
+     globalns = getattr(unwrapped, "__globals__", {})
++    if not globalns and hasattr(unwrapped, "__call__"):
++        globalns = getattr(unwrapped.__call__, "__globals__", {})
+     typed_params = [
+         inspect.Parameter(
+             name=param.name,
+@@ -218,13 +232,18 @@ def get_typed_annotation(annotation: Any, globalns: Dict[str, Any]) -> Any:
+ 
+ def get_typed_return_annotation(call: Callable[..., Any]) -> Any:
+     signature = inspect.signature(call)
+-    unwrapped = inspect.unwrap(call)
++    unwrapped = call
++    while hasattr(unwrapped, "func"):
++        unwrapped = unwrapped.func
++    unwrapped = inspect.unwrap(unwrapped)
+     annotation = signature.return_annotation
+ 
+     if annotation is inspect.Signature.empty:
+         return None
+ 
+     globalns = getattr(unwrapped, "__globals__", {})
++    if not globalns and hasattr(unwrapped, "__call__"):
++        globalns = getattr(unwrapped.__call__, "__globals__", {})
+     return get_typed_annotation(annotation, globalns)
+ 
+ 
+@@ -273,7 +292,7 @@ def get_dependant(
+             ):
+                 assert dependant.call
+                 raise DependencyScopeError(
+-                    f'The dependency "{dependant.call.__name__}" has a scope of '
++                    f'The dependency "{get_callable_name(dependant.call)}" has a scope of '
+                     '"request", it cannot depend on dependencies with scope "function".'
+                 )
+             sub_own_oauth_scopes: List[str] = []
+diff --git "a/test_callable_class.py<|\"|>" "b/test_callable_class.py<|\"|>"
+new file mode 100644
+index 00000000..b7a0a1ad
+--- /dev/null
++++ "b/test_callable_class.py<|\"|>"
+@@ -0,0 +1,9 @@
++import inspect
++
++class A:
++    def __call__(self):
++        pass
++
++a = A()
++print(f'unwrap: {inspect.unwrap(a)}')
++print(f'globals: {getattr(inspect.unwrap(a), "__globals__", "None")}')

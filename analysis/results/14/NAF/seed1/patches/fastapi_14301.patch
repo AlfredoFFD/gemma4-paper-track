@@ -1,0 +1,57 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index c5c6b69b..0db73c66 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -129,7 +129,11 @@ def get_parameterless_sub_dependant(*, depends: params.Depends, path: str) -> De
+     if isinstance(depends, params.Security) and depends.scopes:
+         use_security_scopes.extend(depends.scopes)
+     return get_dependant(
+-        path=path, call=depends.dependency, security_scopes=use_security_scopes
++        path=path,
++        call=depends.dependency,
++        security_scopes=use_security_scopes,
++        use_cache=depends.use_cache,
++        scope=depends.scope,
+     )
+ 
+ 
+@@ -624,7 +628,7 @@ async def solve_dependencies(
+         if solved_result.errors:
+             errors.extend(solved_result.errors)
+             continue
+-        if sub_dependant.use_cache and sub_dependant.cache_key in dependency_cache:
++        if sub_dependant.use_cache and sub_dependant.scope != "function" and sub_dependant.cache_key in dependency_cache:
+             solved = dependency_cache[sub_dependant.cache_key]
+         elif (
+             use_sub_dependant.is_gen_callable or use_sub_dependant.is_async_gen_callable
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..7724ca20
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,25 @@
++import pytest
++from fastapi import FastAPI, Depends
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++call_count = 0
++
++def dep():
++    global call_count
++    call_count += 1
++    return "hello"
++
++@app.get("/", dependencies=[Depends(dep, scope="function"), Depends(dep, scope="function")])
++def root():
++    return "hello"
++
++client = TestClient(app)
++
++def test_scope_function_top_level():
++    global call_count
++    call_count = 0
++    response = client.get("/")
++    assert response.status_code == 200
++    assert call_count == 2
