@@ -49,6 +49,7 @@ are compared with the numbers parsed from the reports, and a difference stops th
 At the end the script prints every parsed number with its file and line.
 """
 import argparse
+import json
 import os
 import re
 import functools
@@ -87,6 +88,7 @@ TYPED = {
     'B1': ('+1.55', '0.60', '2.66'),     # analysis/results/analyze_b.txt, line "  B1: 0.0155 [0.0060, 0.0266]"
 }
 R08 = RES / 'g' / 'analyze_g.txt'     # pre-registration 08, rule S1 (one step on the newest wheels)
+RUNS_PER_ARM = 103   # typed, from the brief, only to check the task results of 14 (NAF) and 23 (PH, PE): never drawn
 
 # ---------------------------------------------------------------- style (as make_figures.py, make_fig_runs.py)
 INK, INK2, MUTED = '#222222', '#555555', '#8a8a8a'
@@ -708,9 +710,17 @@ def fig_graph(out):
     h_in = STORED + 0.32 + 5 * 0.19 + 0.30
     fig, page = page_of(h_in)
     page.text(0.09, 0.07, 'What an edge of the code graph is', ha='left', va='top', fontsize=10.5, color=INK)
-    page.text(0.09, 0.34, f'The {v["entries"]:,} neighbor relations of the competition\'s {v["graphs"]} code graphs '
-              '(a node and one of its neighbors, each direction once)', ha='left', va='top', fontsize=7.8,
-              color=INK2)
+    # the subtitle says every ordered pair is stored in the other direction too: the counts must say so
+    if not v['entries'] == v['pairs'] == v['both']:
+        stop(f'fig_graph: relations {v["entries"]}, pairs {v["pairs"]}, stored both ways {v["both"]}: the subtitle '
+             'says every ordered pair is stored in the other direction too')
+    subtitle = (f'The {v["entries"]:,} neighbor relations of the competition\'s {v["graphs"]} code graphs: ordered pairs '
+                '(a node and one of its neighbors), each also stored in the other direction')
+    if _text_w(subtitle, 7.8) / 72 > 0.92 * (W_IN - 0.18):     # two lines, broken after the colon
+        subtitle = subtitle.replace(': ', ':\n', 1)
+    sub = page.text(0.09, 0.34, subtitle, ha='left', va='top', fontsize=7.8, color=INK2, linespacing=1.3)
+    if 0.09 + width_in(fig, sub) > W_IN - 0.09:
+        stop('fig_graph: the subtitle does not fit')
     # a priority classification: the first class is tested first, the second counts only what the first did not take
     parts = (('search', BLUE, 'white', 'Tested first: the neighbor contains the\nfunction\'s name, so one search finds it'),
              ('text', LIGHT, INK, 'Otherwise: the neighbor\'s name is in\nthe function\'s own text'),
@@ -742,7 +752,7 @@ def fig_graph(out):
     types = f'{next(iter(v["types"]))} only' if len(v['types']) == 1 else ', '.join(v['types'])
     facts = (
         ('edge types', types),
-        ('pairs stored both ways', f'{v["both"]:,} of {v["pairs"]:,} ({v["both_pct"]}%)'),
+        ('ordered pairs also stored the other way', f'{v["both"]:,} of {v["pairs"]:,} ({v["both_pct"]}%)'),
         ('nodes with a neighbor', f'{v["with"]:,} of {v["with_n"]:,} ({v["with_pct"]}%)'),
         ('graph neighbors per node', f'median {v["median"]} (quartiles {v["q1"]} to {v["q3"]}), '
                                      'among the nodes with a neighbor'),
@@ -2076,8 +2086,6 @@ TABLE_ROWS = (   # (reason, first column, the estimates, the outcome: a string, 
         'of the tool lines (16)', est_16_listing, None),
     (1, 'First call goes to a graph tool, the September wording of the tool lines against the current one, under '
         'either listing (16)', est_16_wording, None),
-    (1, 'Whole runs: tool answers with addresses and the line-bound repair, against as shipped, resolved (14)', est_14,
-     'no detectable difference'),
     (1, 'Told against nothing (20)', lambda: est_20('T1'), 'met'),
     (1, 'Told as a share of asked; registered threshold two thirds (20)', est_20_t2, None),
     (1, 'Next call is a search, told against nothing (20)', est_20_t4, None),
@@ -2101,8 +2109,10 @@ TABLE_ROWS = (   # (reason, first column, the estimates, the outcome: a string, 
     (2, 'True against rewired list (03)', est_03_b4, 'not met'),
     (2, 'Search with against without line numbers (15); on eight other models (17, 19)', est_15_and_eight,
      'met; met on each'),
-    # pre-registration 23: drawn only when analysis/results/23/analyze_23.txt exists (est_23 gives None otherwise)
-    (2, 'Graph neighbors pushed after each read, with addresses against as names: first reads of a listed file that '
+    # whole runs (14, then 23; the paper's Section 4): 23 drawn only when analysis/results/23/analyze_23.txt exists
+    (2, 'Whole runs: tool answers with addresses and the line-bound repair, against as shipped, resolved (14)', est_14,
+     'no detectable difference'),
+    (2, 'Graph neighbors pushed with file reads, with addresses against as names: first reads of a listed file that '
         'start past line 1 (23)', lambda: est_23('A1'), None),
     (2, 'The same: lines read per run (23)', lambda: est_23('A2'), None),
     (2, 'The same: resolved (23)', lambda: est_23('A3'), None),
@@ -2389,6 +2399,26 @@ def population_rows(r22):
         stop(f'analyze_14.txt: runs {ours}, seed 1 {ours_seed1}, tasks {m2.group(2)}')
     s14.record('table_populations', 'our runs as shipped (N): runs, all seed 1; tasks (line %d)' % line2,
                f'{ours}; {m2.group(2)}', line)
+    # 4a. our other whole-run arms: 14 with addresses and the line-bound repair (NAF, seed 1); 23 pushed (PH, PE, seed 2,
+    # drawn only when its registered report exists). One task result per task: lines, and distinct task ids.
+    def task_results(path):
+        if not path.exists():
+            stop(f'{rel(path)} is missing')
+        rows = [json.loads(x) for x in path.read_text(encoding='utf-8').splitlines() if x.strip()]
+        ids = {r['instance_id'] for r in rows}
+        if len(ids) != len(rows) or len(rows) != RUNS_PER_ARM:
+            stop(f'{rel(path)}: {len(rows)} task results, {len(ids)} distinct tasks; the row says {RUNS_PER_ARM}, one '
+                 'run each')
+        PARSED.append(('table_populations', 'task results; distinct tasks', f'{len(rows)}; {len(ids)}', rel(path),
+                       f'1-{len(rows)}'))
+        return len(rows)
+    n14 = task_results(RES / '14' / 'NAF' / 'seed1' / 'task_results.jsonl')
+    more_ours = [("the same with addresses in the tools' answers and the line-bound repair (14)",
+                  f'{n14} tasks, one run each', '4')]
+    if R23.exists():
+        n23 = {arm: task_results(RES / '23' / arm / 'seed2' / 'task_results.jsonl') for arm in ('PH', 'PE')}
+        more_ours.append(('the same with graph neighbors pushed with file reads, as names and with addresses (23)',
+                          f'{n23["PE"]} tasks, one run each, seed 2', '4'))
     # 4b. the first model calls of pre-registration 16: its arms, its seeds, the tasks complete on every arm
     s16 = Source(R16)
     m, line = s16.find(r'^PRE-REGISTRATION 16: .*\(arms ([\w, ]+)\)$', 'the arms of 16')
@@ -2438,6 +2468,7 @@ def population_rows(r22):
          f'each); counts of changed regions use the {pub_tasks} tasks whose fix changes an existing line '
          f'({pub_per * pub_tasks} runs)', '3, 5, 6'),
         ('Our runs, harness as shipped (Oct 12)', f'the {ours} tasks our sandbox can score, one run each', '3, 4'),
+        *more_ours,
         (f'First calls under {WORDS[p16["arms"]]} task prompts',
          f'{p16["tasks"]} tasks, {WORDS[p16["seeds"]]} seeds, one model call each', '3'),
         ('Oracle runs', oracle, '7'),
