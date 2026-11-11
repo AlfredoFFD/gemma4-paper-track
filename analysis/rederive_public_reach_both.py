@@ -35,12 +35,22 @@ Variants (applied to both directions alike):
 - Intervals: 95% percentile bootstrap over tasks, 2,000 resamples, random.Random(0) fresh for each interval (the
   earlier recount's boot); a share is summed counts over summed denominator; EDGE minus EITHER is per task
   (edge - either) over the summed number of missed pairs.
+- SAME-FILE STAND-IN (last section, added after the first output): for a missed pair whose TARGET exists and is not
+  shown, the pool is every other NODE with a span in the TARGET's file (nested ones included) that is neither the
+  TARGET nor a SHOWN NODE of the run; a pair qualifies when the pool is not empty. For k = 0..19 one stand-in is drawn by
+  random.Random('standin|<notebook run>|<arm>|<task>|<file>|<region start>|<region end>|<k>').randrange over the pool
+  sorted by node id. Every measure is applied with the stand-in in the TARGET's place: EDGE on the graph without
+  class-to-member links; FORWARD with the stand-in's short name; BACKWARD in the stand-in's own text (its span's
+  snapshot lines), leaving out shown names equal to the stand-in's short name; EITHER. The true count is on the
+  qualifying pairs only. True minus stand-in is in points of the qualifying pairs, its interval per task
+  (true count - mean stand-in count over the 20 seeds) over the summed qualifying pairs, the same bootstrap.
 
 Usage: py -I -X utf8 analysis/rederive_public_reach_both.py > analysis/results/public/rederive_reach_both.txt
 """
 import collections
 import functools
 import json
+import random
 import re
 import statistics
 import sys
@@ -55,6 +65,7 @@ import rederive_public_reach as rp  # noqa: E402
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace', newline='\n')
 DATA = HERE.parent / 'data'
+N_STANDIN = 20
 WORD = re.compile(r'\w+')
 CALL = re.compile(r'(?<!\w)(\w+)[ \t]*\(')
 ATTR = re.compile(r'\.(\w+)(?!\w)')
@@ -220,6 +231,33 @@ def main():
         txt = nodes.file_text(t, p)
         return None if txt is None else tuple(txt.splitlines())
 
+    node_words = {}
+
+    def measure(t, X, ni, shown_nodes, text, use_fwd, fwd_cache):
+        """EDGE, FORWARD and BACKWARD (three variants) with node ni in the TARGET's place."""
+        res = {'edge': bool(X['adj2'][ni] & shown_nodes)}
+        ts = short(X['names'][ni])
+        if ts not in fwd_cache:
+            fwd_cache[ts] = bool(re.search(r'(?<!\w)' + re.escape(ts) + r'(?!\w)', text))
+        fa = fwd_cache[ts]
+        res['fwd'] = [fa, fa and not dunder(ts), (ts in use_fwd) and not dunder(ts)]
+        key = (t, ni)
+        if key not in node_words:
+            tp, tsa, tse = X['spans'][ni]
+            raw = file_lines(t, tp)
+            if raw is None:
+                diag['node file text missing'] += 1
+                node_words[key] = (set(), set())
+            else:
+                cl, mask = cleaned(t, tp, raw)
+                node_words[key] = (set(WORD.findall('\n'.join(raw[tsa - 1:tse]))), use_names(cl, mask, tsa, tse))
+        tw, tu = node_words[key]
+        sn_all = {short(X['names'][i]) for i in shown_nodes if i != ni} - {ts}
+        sn_nd = {x for x in sn_all if not dunder(x)}
+        res['nnames'] = [len(sn_all), len(sn_nd), len(sn_nd)]
+        res['bwd'] = [bool(sn_all & tw), bool(sn_nd & tw), bool(sn_nd & tu)]
+        return res
+
     recs = []
     for r, reads in run_reads:
         t = r['task']
@@ -244,35 +282,31 @@ def main():
             cl, mask = cleaned(t, p, lines)
             use_fwd |= use_names(cl, mask, s, e)
         text = '\n'.join(parts)
+        fwd_cache = {}
         for f, s, e in regions[t]:
             if ml.overlaps(shown.get(f, []), s, e):
                 continue
             rec = {'task': t, 'arm': r['arm'], 'ns': False, 'edge': False,
-                   'fwd': [False] * 3, 'bwd': [False] * 3, 'nnames': [None] * 3}
+                   'fwd': [False] * 3, 'bwd': [False] * 3, 'nnames': [None] * 3, 'sq': False}
             cands = sorted((ee - ss, nm, i) for ss, ee, nm, i in X['by_path'].get(f, []) if ss <= e and s <= ee)
             if cands:
                 _, nm, ti = cands[0]
                 if ti not in shown_nodes:
                     rec['ns'] = True
-                    rec['edge'] = bool(X['adj2'][ti] & shown_nodes)
-                    ts = short(nm)
-                    # forward
-                    fa = bool(re.search(r'(?<!\w)' + re.escape(ts) + r'(?!\w)', text))
-                    rec['fwd'] = [fa, fa and not dunder(ts), (ts in use_fwd) and not dunder(ts)]
-                    # backward
-                    tp, tsa, tse = X['spans'][ti]
-                    raw = file_lines(t, tp)
-                    if raw is None:
-                        diag['TARGET file text missing'] += 1
-                        tw, tu = set(), set()
-                    else:
-                        tw = set(WORD.findall('\n'.join(raw[tsa - 1:tse])))
-                        cl, mask = cleaned(t, tp, raw)
-                        tu = use_names(cl, mask, tsa, tse)
-                    sn_all = {short(X['names'][i]) for i in shown_nodes if i != ti} - {ts}
-                    sn_nd = {x for x in sn_all if not dunder(x)}
-                    rec['nnames'] = [len(sn_all), len(sn_nd), len(sn_nd)]
-                    rec['bwd'] = [bool(sn_all & tw), bool(sn_nd & tw), bool(sn_nd & tu)]
+                    m = measure(t, X, ti, shown_nodes, text, use_fwd, fwd_cache)
+                    rec.update(m)
+                    # SAME-FILE STAND-IN
+                    tp = X['spans'][ti][0]
+                    pool = sorted((X['names'][i], i) for _, _, _, i in X['by_path'][tp]
+                                  if i != ti and i not in shown_nodes)
+                    if pool:
+                        rec['sq'] = True
+                        rec['pool'] = len(pool)
+                        rec['sd'] = []
+                        for k in range(N_STANDIN):
+                            rng = random.Random(f'standin|{r["run"]}|{r["arm"]}|{t}|{f}|{s}|{e}|{k}')
+                            si = pool[rng.randrange(len(pool))][1]
+                            rec['sd'].append(measure(t, X, si, shown_nodes, text, use_fwd, fwd_cache))
             recs.append(rec)
 
     def per_task(num):
@@ -320,6 +354,36 @@ def main():
         P(f'  backward: distinct shown names searched per pair (n={len(nn)}): median {statistics.median(nn):g}; '
           f'pairs with none {sum(1 for k in nn if k == 0)}')
         P('')
+
+    # ---- SAME-FILE STAND-IN
+    sq = [x for x in recs if x['sq']]
+    nq = len(sq)
+    P(f'SAME-FILE STAND-IN BASELINE ({N_STANDIN} seeds; stand-in drawn uniformly from the other NODES of the TARGET\'s '
+      f'file that are not SHOWN NODES; seed string "standin|<notebook run>|<arm>|<task>|<file>|<region start>|'
+      f'<region end>|<k>", k = 0..{N_STANDIN - 1}, random.Random(seed).randrange over the pool sorted by node id)')
+    P(f'  qualifying pairs (TARGET exists, not shown, and its file holds another NODE not shown): {nq} of {len(ns)} '
+      f'(tasks {len({x["task"] for x in sq})}); stand-in pool size per pair: median '
+      f'{statistics.median(x["pool"] for x in sq):g}, min {min(x["pool"] for x in sq)}')
+    P('  measure                      true   stand-in mean (range over seeds)   true - stand-in, pts of qualifying '
+      '[95% CI over tasks]')
+    measures = [('EDGE (no class-to-member)', lambda d: d['edge'])]
+    vlab = ['ALL', 'NO DUNDER', 'USE, NO DUNDER']
+    for v in range(3):
+        measures.append((f'FORWARD  {vlab[v]}', lambda d, v=v: d['fwd'][v]))
+        measures.append((f'BACKWARD {vlab[v]}', lambda d, v=v: d['bwd'][v]))
+        measures.append((f'EITHER   {vlab[v]}', lambda d, v=v: d['fwd'][v] or d['bwd'][v]))
+    for lab, fn in measures:
+        kt = sum(bool(fn(x)) for x in sq)
+        per_seed = [sum(bool(fn(x['sd'][k])) for x in sq) for k in range(N_STANDIN)]
+        ms = statistics.mean(per_seed)
+        d = collections.OrderedDict()
+        for x in sq:
+            a = d.setdefault(x['task'], [0.0, 0])
+            a[0] += bool(fn(x)) - statistics.mean(bool(fn(y)) for y in x['sd'])
+            a[1] += 1
+        pt = [tuple(a) for a in d.values()]
+        P(f'  {lab:<26} {kt:5d}   {ms:8.2f} ({min(per_seed)} to {max(per_seed)})'
+          f'{"":14}{100 * (kt - ms) / nq:+.1f} {rp.ci(pt, signed=True)}')
     print('\n'.join(out))
 
 
