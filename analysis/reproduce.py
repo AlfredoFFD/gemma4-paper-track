@@ -131,6 +131,8 @@ JOBS = [
      ['analysis/rederive_18.py', '--no-write'], f'{R}/rederive_18.txt',
      [f'{R}/18/N/seed2/task_results.jsonl', f'{R}/18/ON/seed2/task_results.jsonl', f'{R}/18/OA/seed2/task_results.jsonl',
       'data/tasks.jsonl']),
+    ('18 whole runs told where the fix is: endings by arm, and outcomes by ending', 'exploratory',
+     ['analysis/explore_endings_18.py'], f'{R}/explore_endings_18.txt', [f'{R}/18/runs_18.csv']),
     ('20 asked or told, the same search hits: T1 to T4', 'registered',
      ['analysis/analyze_20.py', '--no-write'], f'{R}/20/analyze_20.txt',
      [f'{R}/20/forks/results.jsonl', f'{R}/15/forks/results.jsonl', 'analysis/fork_states_t/states.jsonl',
