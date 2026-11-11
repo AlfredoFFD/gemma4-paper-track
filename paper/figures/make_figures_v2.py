@@ -1188,6 +1188,122 @@ def table_rules(out, r22):
     return compare_markdown(rows)
 
 
+# ================================================================ table_populations
+STATES_B = ROOT / 'analysis' / 'fork_states' / 'states.jsonl'      # the first replay population
+MANIFEST_T = ROOT / 'analysis' / 'fork_states_t' / 'manifest.json'
+TASKS_18 = ROOT / 'analysis' / 'oracle_18' / 'tasks_18.txt'
+TABLE2_MD = ROOT / 'private' / 'table2-rows-nov11.md'               # optional: the paper's rows, only to compare
+
+
+def population_rows(r22):
+    """The five populations, every size read from a stored file; [(population, size, where)]."""
+    import json
+    # 1. the paused steps of the first replays: states, runs and tasks of the states file; the report's header agrees
+    states = [json.loads(line) for line in STATES_B.read_text(encoding='utf-8').splitlines() if line.strip()]
+    n_states = len(states)
+    n_runs = len({(s['task'], s['run']) for s in states})
+    n_tasks = len({s['task'] for s in states})
+    PARSED.append(('table_populations', 'paused steps; runs; tasks (states file)', f'{n_states}; {n_runs}; {n_tasks}',
+                   rel(STATES_B), f'1-{n_states}'))
+    sb = Source(R03)
+    m, line = sb.find(r'^\d+ replays .* over (\d+) states$', 'the states of analyze_b.txt')
+    if int(m.group(1)) != n_states:
+        stop(f'analyze_b.txt counts {m.group(1)} states, the states file {n_states}')
+    sb.record('table_populations', 'states (header of analyze_b.txt)', m.group(1), line)
+    # 2. the search steps (pre-registration 15) and those that can be cut one call earlier (20)
+    s15 = Source(R15)
+    m, line = s15.find(r'^  (\d+) states, \d+ records;', 'the states of analyze_15.txt')
+    n_search = int(m.group(1))
+    s15.record('table_populations', 'search steps (header of analyze_15.txt)', m.group(1), line)
+    man = json.loads(MANIFEST_T.read_text(encoding='utf-8'))['counts']
+    if man['states_of_15'] != n_search:
+        stop(f'fork_states_t/manifest.json: states_of_15 {man["states_of_15"]}, analyze_15.txt {n_search}')
+    n_cut = man['states_kept']
+    PARSED.append(('table_populations', 'search steps; kept when cut one call earlier (manifest counts)',
+                   f'{man["states_of_15"]}; {n_cut}', rel(MANIFEST_T), 'counts'))
+    # 3. the public runs of the starter agent, without and with the skill (section 3 of explore_read_starts.txt)
+    ss = Source(STARTS)
+    s3, e3 = ss.block(r'^3\. Where the fix lies', 'section 3', end=r'^\d\. ')
+    pub = []
+    for head, what in ((STARTER, 'without the skill'),
+                       (r'^the same agent with a graph skill, public runs \(GraphLoc skill arm\)', 'with the skill')):
+        m, line = ss.find(head + r': runs of tasks with a CHANGED REGION (\d+), tasks (\d+)$', f'public runs, {what}',
+                          s3, e3)
+        runs, tasks = int(m.group(1)), int(m.group(2))
+        if runs % tasks:
+            stop(f'explore_read_starts.txt: {what}: {runs} runs on {tasks} tasks')
+        pub.append((tasks, runs // tasks))
+        ss.record('table_populations', f'public runs {what}: runs; tasks', f'{runs}; {tasks}', line)
+    if pub[0] != pub[1]:
+        stop(f'explore_read_starts.txt: the two public sets differ: {pub}')
+    pub_tasks, pub_per = pub[0]
+    # 4. our runs as shipped (pre-registration 14)
+    s14 = Source(R14)
+    m, line = s14.find(r'^   N\s+runs with a task result (\d+) \(seed 1: (\d+)\)', 'our runs as shipped')
+    ours, ours_seed1 = int(m.group(1)), int(m.group(2))
+    m2, line2 = s14.find(r'ENTER the paired analysis (\d+) \((\d+) tasks;', 'the tasks of 14')
+    if not ours == ours_seed1 == int(m2.group(1)) == int(m2.group(2)):
+        stop(f'analyze_14.txt: runs {ours}, seed 1 {ours_seed1}, tasks {m2.group(2)}')
+    s14.record('table_populations', 'our runs as shipped (N): runs, all seed 1; tasks (line %d)' % line2,
+               f'{ours}; {m2.group(2)}', line)
+    # 5. the oracle runs (18, and 22 when its report exists)
+    t18 = [t for t in TASKS_18.read_text(encoding='utf-8').split() if t]
+    PARSED.append(('table_populations', 'oracle tasks (task list)', str(len(t18)), rel(TASKS_18), f'1-{len(t18)}'))
+    s18 = Source(R18)
+    m, line = s18.find(r'^   tasks of tasks_18\.txt: (\d+)$', 'the tasks of analyze_18.txt')
+    if int(m.group(1)) != len(t18):
+        stop(f'analyze_18.txt: {m.group(1)} tasks, the task list {len(t18)}')
+    m, line = s18.find(r'^1\. Runs per arm on the (\d+) tasks \(([\w, ]+): experiment 18', 'the arms of 18')
+    arms18 = [a.strip() for a in m.group(2).split(',')]
+    s18.record('table_populations', 'oracle: tasks; arms of 18', f'{m.group(1)}; {", ".join(arms18)}', line)
+    oracle = f'{len(t18)} of those tasks, {WORDS[len(arms18)]} arms'
+    p22 = Path(r22) if r22 else R22
+    if p22.exists():
+        s22 = Source(p22)
+        m, line = s22.find(r'^EXPERIMENT 22: .*, arms ([\w, ]+) \(', 'the arms of 22')
+        arms22 = [a.strip() for a in m.group(1).split(',')]
+        s22.record('table_populations', 'oracle: arms of 22 (second seed)', ', '.join(arms22), line)
+        oracle = (f'{len(t18)} of those tasks; {WORDS[len(arms18)]} arms with one seed, {WORDS[len(arms22)]} with a '
+                  'second')
+    return [
+        ('Steps paused after a file view that shows a function with graph neighbors',
+         f'{n_states} steps of {n_runs} public runs, {n_tasks} tasks', '3.1'),
+        ('Steps paused after the agent\'s own search', f'{n_search} steps; {n_cut} can also be cut one call earlier',
+         '3.2, 3.3'),
+        ('Public runs of the starter agent [2]',
+         f'{pub_tasks} tasks, {WORDS[pub_per]} runs with the skill and {WORDS[pub_per]} without', '4, 5'),
+        ('Our runs, harness as shipped (Oct 12)', f'the {ours} tasks our sandbox can score, one run each', '4, 5'),
+        ('Oracle runs', oracle, '6'),
+    ]
+
+
+def table_populations(out, r22):
+    rows = population_rows(r22)
+    with22 = (Path(r22) if r22 else R22).exists()
+    if TABLE2_MD.exists():     # the paper's rows: every size must be the one built from the stored files
+        md = []
+        for line in TABLE2_MD.read_text(encoding='utf-8').splitlines():
+            cells = [c.strip() for c in line.strip().strip('|').split('|')]
+            if len(cells) == 3 and cells[0] not in ('Population', '---'):
+                md.append(tuple(cells))
+        if len(md) != len(rows):
+            stop(f'table_populations: {len(md)} rows in the paper, {len(rows)} here')
+        for k, (mine, paper) in enumerate(zip(rows, md)):
+            if mine[0] != paper[0] or mine[2] != paper[2]:
+                stop(f'table_populations: the wording differs from the paper: {mine} / {paper}')
+            if mine[1] != paper[1] and not (with22 and k == len(rows) - 1):    # the oracle row changes with 22
+                stop(f'table_populations: "{mine[1]}" built from the stored files, the paper has "{paper[1]}"')
+    cols = ['Population', 'Size', 'Where']
+    fracs = [0.47, 0.42, 0.11]
+    W = W_IN * 72
+    body = []
+    for row in rows:
+        body.append(('row', [[[(line, TABLE_FS, 'normal', INK, 'normal')] for line in
+                               _wrap_pts(cell, W * fracs[i] - 10, TABLE_FS)] for i, cell in enumerate(row)]))
+    _draw_table(cols, fracs, body, None, out, 'table_populations')
+    return rows
+
+
 # ================================================================ main
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1202,6 +1318,7 @@ def main():
     fig_moves(out)
     with22 = fig_oracle(out, args.r22)
     against_paper = table_rules(out, args.r22)
+    table_populations(out, args.r22)
     w1 = max(len(r[0]) for r in PARSED)
     w2 = max(len(r[1]) for r in PARSED)
     w3 = max(len(r[2]) for r in PARSED)
@@ -1212,7 +1329,7 @@ def main():
     print('table_rules_v2, each estimate against the row of the paper (rounded half up to its decimals):')
     for line in against_paper:
         print(f'  {line}')
-    print(f'wrote fig_models, fig_asked_told, fig_graph, fig_moves, fig_oracle and table_rules_v2 (.png at {DPI} dpi, '
+    print(f'wrote fig_models, fig_asked_told, fig_graph, fig_moves, fig_oracle, table_rules_v2 and table_populations (.png at {DPI} dpi, '
           f'.svg) in {out}')
 
 
