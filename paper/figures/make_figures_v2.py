@@ -32,6 +32,7 @@ draws nothing from a fallback. The sources:
                                              the same count by a second script
   analysis/results/public/locality_null.txt  part 1, the true graph and three rewired graphs (fig_moves b), exploratory
   analysis/results/public/lexical_reach.txt  section 1-5, a text search by name (fig_moves b), exploratory
+  analysis/results/public/lexical_reach_both.txt  section 1, a name search in both directions (fig_moves b), exploratory
   analysis/results/explore_cluster_bootstrap.txt  its last line: addresses minus names by task (table_rules_v2)
   analysis/results/rederive_18.txt           pre-registration 18, shown every changed region (every call paired with
                                              its result)
@@ -508,10 +509,13 @@ def est_24(rule):
         if c['w1'] != c['n'] or len(ms) != c['n']:
             stop(f'analyze_24.txt: W1 is met on {c["w1"]} of {c["n"]}; the row says met on each')
         return [rng], 'met on each'
-    outcome = f'met on {n_less} of {c["n"]}; no detectable difference on {n_none}; no verdict on {n_nov}'
+    if len(ms) != n_less + n_none or n_nov != c['n'] - len(ms):
+        stop(f'analyze_24.txt: W2 models with a verdict {len(ms)}, verdicts {n_less} + {n_none}, no verdict {n_nov}')
+    outcome = (f'met on {n_less} of the {len(ms)} models with a verdict; no detectable difference on {n_none}; '
+               f'no verdict on {n_nov}')
     PARSED.append(('table_rules_v2', '24 W2: verdicts used less; no detectable difference; no verdict (lines 20-32)',
                    f'{n_less}; {n_none}; {n_nov}', rel(R24), '20-32'))
-    return [rng], outcome
+    return [f'{rng} over the {WORDS[len(ms)]} models with a verdict'], outcome
 
 
 def fig_asked_told(out):
@@ -760,7 +764,12 @@ NULLS = (('DEGREE', "keeping each node's degree"), ('SAME-DIRECTORY', 'keeping e
          ('SAME-FILE', "keeping each edge's two files"))
 # Typed, from the brief, only to check the parsed values (never drawn): true minus each null, and LEXICAL.
 TYPED_REACH = {'DEGREE': '+8.8 [1.8, 13.0]', 'SAME-DIRECTORY': '+4.9 [-0.7, 8.4]', 'SAME-FILE': '+1.9 [-2.9, 5.0]',
-               'LEXICAL': '315 of 1326'}
+               'LEXICAL': '315 of 1326', 'LEXICAL, NO DUNDER': '158 of 1326',
+               'EDGE minus LEXICAL': '-3.6 [-11.6, 1.2]', 'EDGE minus LEXICAL, NO DUNDER': '+8.2 [0.4, 13.3]',
+               'EITHER': '425 of 1326', 'EDGE minus EITHER': '-11.9 [-17.4, -5.9]', 'edge and either': 256,
+               'backward only': 211}
+# A search by name in both directions, uses only and without names such as __init__ (exploratory).
+BOTH = RES / 'public' / 'lexical_reach_both.txt'
 
 
 def parse_reach_public():
@@ -806,11 +815,73 @@ def parse_reach_public():
     v['lex'] = dict(k=int(m.group(1)), pct=m.group(3), lo=m.group(4), hi=m.group(5))
     x.record('fig_moves', '(b) LEXICAL of all pairs (share [95%])',
              f'{m.group(1)} of {m.group(2)} ({m.group(3)}% [{m.group(4)}, {m.group(5)}])', ll)
+    m, nl = x.find(r'^      LEXICAL, NO DUNDER (\d+) of (\d+) \(([\d.]+)% \[([\d.]+), ([\d.]+)\]\);',
+                   'LEXICAL, NO DUNDER of all pairs', ll, ll + 1)
+    if f'{m.group(1)} of {m.group(2)}' != TYPED_REACH['LEXICAL, NO DUNDER'] or int(m.group(2)) != n:
+        stop(f'lexical_reach.txt, line {nl}: LEXICAL, NO DUNDER {m.group(1)} of {m.group(2)}, the brief types '
+             f'{TYPED_REACH["LEXICAL, NO DUNDER"]}')
+    v['lexnd'] = dict(k=int(m.group(1)), pct=m.group(3), lo=m.group(4), hi=m.group(5))
+    x.record('fig_moves', '(b) LEXICAL, NO DUNDER of all pairs (share [95%])',
+             f'{m.group(1)} of {m.group(2)} ({m.group(3)}% [{m.group(4)}, {m.group(5)}])', nl)
     d0, _d = x.find(r'^   differences on all PAIRS', 'the differences of all pairs', lo, hi)
     m, dl = x.find(r'^      EDGE minus LEXICAL ([+-][\d.]+) points \[([+-][\d.]+), ([+-][\d.]+)\];',
                    'EDGE minus LEXICAL', _d, _d + 1)
     v['lex']['diff'] = interval_text(*m.groups())
+    if v['lex']['diff'] != num(TYPED_REACH['EDGE minus LEXICAL']):
+        stop(f'lexical_reach.txt, line {dl}: EDGE minus LEXICAL {v["lex"]["diff"]}, the brief types '
+             f'{TYPED_REACH["EDGE minus LEXICAL"]}')
     x.record('fig_moves', '(b) EDGE minus LEXICAL, all pairs [95%]', v['lex']['diff'], dl)
+    m, dl = x.find(r'^      EDGE minus LEXICAL, NO DUNDER ([+-][\d.]+) points \[([+-][\d.]+), ([+-][\d.]+)\];',
+                   'EDGE minus LEXICAL, NO DUNDER', dl, dl + 1)
+    v['lexnd']['diff'] = interval_text(*m.groups())
+    if v['lexnd']['diff'] != num(TYPED_REACH['EDGE minus LEXICAL, NO DUNDER']):
+        stop(f'lexical_reach.txt, line {dl}: EDGE minus LEXICAL, NO DUNDER {v["lexnd"]["diff"]}, the brief types '
+             f'{TYPED_REACH["EDGE minus LEXICAL, NO DUNDER"]}')
+    x.record('fig_moves', '(b) EDGE minus LEXICAL, NO DUNDER, all pairs [95%]', v['lexnd']['diff'], dl)
+    # the search in both directions (uses only, no names such as __init__): section 1 of lexical_reach_both.txt
+    b = Source(BOTH)
+    lo, hi = b.block(r'^1\. All PAIRS$', 'section 1 of lexical_reach_both.txt', end=r'^\d\. ')
+    m, ln = b.find(r'^   PAIRS (\d+) in (\d+) tasks;', 'the pairs of section 1', lo, hi)
+    if (int(m.group(1)), int(m.group(2))) != (n, tasks):
+        stop(f'lexical_reach_both.txt, line {ln}: {m.group(1)} pairs in {m.group(2)} tasks, locality_null.txt {n} in '
+             f'{tasks}')
+    _m, al = b.find(r'^   of all PAIRS:$', 'the shares of all pairs', lo, hi)
+    _m, ol = b.find(r'^   of the OPEN PAIRS:$', 'the end of the shares of all pairs', al, hi)
+    m, el = b.find(r'^      EDGE (\d+) of (\d+) \(', 'EDGE of all pairs', al, ol)
+    if (int(m.group(1)), int(m.group(2))) != (k, n):
+        stop(f'lexical_reach_both.txt, line {el}: EDGE {m.group(1)} of {m.group(2)}, the true graph {k} of {n}')
+    _m, ul = b.find(r'^      USE, NO DUNDER:$', 'the sub-block USE, NO DUNDER of all pairs', al, ol)
+    m, il = b.find(r'^         EITHER (\d+) of (\d+) \(([\d.]+)% \[([\d.]+), ([\d.]+)\]\); EDGE minus it ([+-][\d.]+) '
+                   r'points \[([+-][\d.]+), ([+-][\d.]+)\]$', 'EITHER under USE, NO DUNDER', ul, min(ul + 3, ol))
+    if f'{m.group(1)} of {m.group(2)}' != TYPED_REACH['EITHER'] or int(m.group(2)) != n:
+        stop(f'lexical_reach_both.txt, line {il}: EITHER {m.group(1)} of {m.group(2)}, the brief types '
+             f'{TYPED_REACH["EITHER"]}')
+    v['both'] = dict(k=int(m.group(1)), pct=m.group(3), lo=m.group(4), hi=m.group(5),
+                     diff=interval_text(*m.groups()[5:8]))
+    if v['both']['diff'] != num(TYPED_REACH['EDGE minus EITHER']):
+        stop(f'lexical_reach_both.txt, line {il}: EDGE minus EITHER {v["both"]["diff"]}, the brief types '
+             f'{TYPED_REACH["EDGE minus EITHER"]}')
+    b.record('fig_moves', '(b) USE, NO DUNDER: EITHER of all pairs (share [95%])',
+             f'{m.group(1)} of {m.group(2)} ({m.group(3)}% [{m.group(4)}, {m.group(5)}])', il)
+    b.record('fig_moves', '(b) USE, NO DUNDER: EDGE minus EITHER, all pairs [95%]', v['both']['diff'], il)
+    _m, cl = b.find(r'^   cross tables of the OPEN PAIRS:$', 'the cross tables', lo, hi)
+    m, xl = b.find(r'^      USE, NO DUNDER: edge and either (\d+); edge only (\d+);', 'cross table USE, NO DUNDER',
+                   cl, hi)
+    both_k, edge_only = int(m.group(1)), int(m.group(2))
+    m2, yl = b.find(r'^         of the (\d+) the EDGE reaches: forward only (\d+); backward only (\d+); both (\d+); '
+                    r'neither (\d+)$', 'the split of the edge under USE, NO DUNDER', xl, xl + 1)
+    of_k, fwd, bwd, bb, nei = (int(g) for g in m2.groups())
+    if not (both_k + edge_only == of_k == k and fwd + bwd + bb == both_k and nei == edge_only):
+        stop(f'lexical_reach_both.txt, lines {xl}-{yl}: edge and either {both_k} + edge only {edge_only} against '
+             f'{of_k} and the true graph {k}; forward {fwd} + backward {bwd} + both {bb}; neither {nei}')
+    if (both_k, bwd) != (TYPED_REACH['edge and either'], TYPED_REACH['backward only']):
+        stop(f'lexical_reach_both.txt, lines {xl}-{yl}: {both_k} and {bwd}, the brief types '
+             f'{TYPED_REACH["edge and either"]} and {TYPED_REACH["backward only"]}')
+    v['both'].update(edge_and=both_k, backward_only=bwd)
+    b.record('fig_moves', '(b) USE, NO DUNDER cross table: edge and either; edge only (sum = true graph)',
+             f'{both_k}; {edge_only} (= {of_k})', xl)
+    b.record('fig_moves', '(b) USE, NO DUNDER: of the edge reaches, forward only; backward only; both; neither',
+             f'{fwd}; {bwd}; {bb}; {nei}', yl)
     return v
 
 
@@ -870,8 +941,7 @@ def parse_files():
 def fig_moves(out):
     files = parse_files()['files']
     r = parse_reach_public()
-    TITLE = ('Runs miss the next file of a fix, and a call edge leads there no more often than a rewired one that stays '
-             'in the same files')
+    TITLE = 'Runs miss the rest of a fix, and a call edge leads there one time in five'
     title_lines = [TITLE] if _text_w(TITLE, 10.5) / 72 <= W_IN - 0.18 else \
         [TITLE[:TITLE.index(',') + 1], TITLE[TITLE.index(',') + 2:]]
     TOP = 0.42 + 0.20 * (len(title_lines) - 1)
@@ -879,8 +949,15 @@ def fig_moves(out):
     B_TOP = TOP + A_HEAD + A_H + A_AX + 0.30
     ROW, SUB, GAP = 0.25, 0.22, 0.16
     B_HEAD = 0.36
-    rows_b = ROW + SUB + ROW * len(NULLS) + GAP + ROW
-    h_in = B_TOP + B_HEAD + rows_b + 0.48 + 0.20 + 0.28
+    rows_b = ROW + SUB + ROW * len(NULLS) + GAP + 3 * ROW
+    # the note under the axis label on the search in both directions; one line if it fits, else two
+    bo = r['both']
+    note = (f'Of the {r["true"]["k"]} places a call edge reaches, {bo["edge_and"]} are also reached by the name search '
+            f'in both directions ({bo["backward_only"]} only backwards: the missed function uses a shown name).')
+    if _text_w(note, 7.2) / 72 > W_IN - 0.10 - 0.36:      # broken before the parenthesis
+        note = note.replace(' (', '\n(', 1)
+    NOTE_H = 0.15 * (note.count('\n') + 1)
+    h_in = B_TOP + B_HEAD + rows_b + 0.48 + NOTE_H + 0.20 + 0.28
     fig, page = page_of(h_in)
     for k, line in enumerate(title_lines):
         t = page.text(0.09, 0.07 + 0.20 * k, line, ha='left', va='top', fontsize=10.5, color=INK)
@@ -929,7 +1006,7 @@ def fig_moves(out):
     page.text(0.36, B_TOP + 0.005, 'Regions a run was never shown: within reach of code it was shown', ha='left',
               va='top', fontsize=9.0, color=INK)
     LAB_R, X0, X1, DIFF_R = 2.50, 2.62, 4.42, W_IN - 0.10
-    XMAX = 30
+    XMAX = 40
     y0 = B_TOP + B_HEAD
     ax = axes_at(fig, X0, X1, y0, y0 + rows_b)
     ax.set_xlim(0, XMAX)
@@ -937,13 +1014,30 @@ def fig_moves(out):
     for g in range(10, XMAX + 1, 10):
         ax.plot([g, g], [0.02, rows_b], color=GRID, lw=0.6, zorder=0)
     n = r['n']
+    room = (LAB_R - 0.09) * 72
 
     def bar(yc, share, color, label, value, diff=None, size=8.2):
+        if share > XMAX - 2:
+            stop(f'fig_moves: the bar "{label}" of panel (b) runs past the axis')
+        if _text_w(label, size) > room:
+            stop(f'fig_moves: the label "{label}" does not fit left of the bars')
+        # the value text must end left of the right column (with a small gap)
+        v_end = X0 + (share + 0.4) / XMAX * (X1 - X0) + _text_w(value, 7.6) / 72
+        d_start = DIFF_R - (_text_w(_display(diff), 7.2) / 72 if diff else 0)
+        if v_end > d_start - 0.08:
+            stop(f'fig_moves: the value "{value}" runs into the right column ({v_end:.2f} against {d_start:.2f} in)')
         ax.barh(yc, share, height=0.15, color=color, edgecolor=color, linewidth=0.6, zorder=2)
         ax.text(share + 0.4, yc, value, ha='left', va='center', fontsize=7.6, color=INK, zorder=3)
         page.text(LAB_R, y0 + yc, label, ha='right', va='center', fontsize=size, color=INK)
         if diff:
             page.text(DIFF_R, y0 + yc, diff, ha='right', va='center', fontsize=7.2, color=INK2)
+
+    def fitting(labels, size=8.2):
+        """The first label that fits left of the bars, or a stop."""
+        ok = next((s for s in labels if _text_w(s, size) <= room), None)
+        if ok is None:
+            stop(f'fig_moves: no label of {labels} fits left of the bars')
+        return ok
 
     t = r['true']
     bar(ROW / 2, float(t['pct']), BLUE, 'one call edge (the true graph)',
@@ -951,8 +1045,9 @@ def fig_moves(out):
     y = ROW
     page.text(LAB_R, y0 + y + SUB / 2 + 0.02, 'the same under a rewired graph', ha='right', va='center', fontsize=7.4,
               color=INK2, style='italic')
-    page.text(DIFF_R, y0 + y + SUB / 2 + 0.02, 'true graph minus this, points [95%]', ha='right', va='center',
-              fontsize=7.0, color=MUTED)
+    # the header of the right column stands above the first row, so that it heads the rewired and the search rows
+    page.text(DIFF_R, y0 - 0.07, 'true graph minus this, points [95%]', ha='right', va='center', fontsize=7.0,
+              color=MUTED)
     y += SUB
     for key, label in NULLS:
         nl = r['nulls'][key]
@@ -962,10 +1057,19 @@ def fig_moves(out):
     ax.plot([0, XMAX], [y + GAP / 2] * 2, color=HAIR, lw=0.6, zorder=1, clip_on=False)
     y += GAP
     lx = r['lex']
-    bar(y + ROW / 2, float(lx['pct']), GREY, "a text search for the function's name",
-        f'{lx["k"]} of {n:,} ({lx["pct"]}% [{lx["lo"]}, {lx["hi"]}])', lx['diff'])
-    if max(float(t['pct']), float(lx['pct'])) > XMAX - 2:
-        stop('fig_moves: a bar of panel (b) runs past the axis')
+    # three text searches, one family: forward by name, the same without dunder names, both directions (uses only)
+    lab_size = 8.2 if _text_w("the missed function's name in the shown code", 8.2) <= room else 7.8
+    bar(y + ROW / 2, float(lx['pct']), GREY, fitting(["the missed function's name in the shown code"], lab_size),
+        f'{lx["k"]} of {n:,} ({lx["pct"]}% [{lx["lo"]}, {lx["hi"]}])', lx['diff'], size=lab_size)
+    y += ROW
+    nd = r['lexnd']
+    bar(y + ROW / 2, float(nd['pct']), GREY,
+        fitting(['the same without names such as __init__', 'the same, without __init__ and its like'], lab_size),
+        f'{nd["k"]} of {n:,} ({nd["pct"]}% [{nd["lo"]}, {nd["hi"]}])', nd['diff'], size=lab_size)
+    y += ROW
+    bar(y + ROW / 2, float(bo['pct']), GREY,
+        fitting(['a name search in both directions (uses only)', 'a name search, both directions'], lab_size),
+        f'{bo["k"]} of {n:,} ({bo["pct"]}% [{bo["lo"]}, {bo["hi"]}])', bo['diff'], size=lab_size)
     ax.set_yticks([])
     ax.set_xticks(range(0, XMAX + 1, 10))
     ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f'{v:.0f}%'))
@@ -973,8 +1077,11 @@ def fig_moves(out):
     ax.tick_params(axis='x', labelsize=7.8, length=3)
     ax.set_xlabel(f'share of the {n:,} pairs of a run and a changed region it was never shown ({r["tasks"]} tasks)',
                   fontsize=7.8)
-    page.text(0.36, y0 + rows_b + 0.50, 'Public runs of the starter agent, both arms; exploratory.', ha='left',
-              va='top', fontsize=6.9, color=MUTED)
+    nt = page.text(0.36, y0 + rows_b + 0.50, note, ha='left', va='top', fontsize=7.2, color=INK2, linespacing=1.25)
+    if 0.36 + width_in(fig, nt) > W_IN - 0.10:
+        stop('fig_moves: the note under panel (b) does not fit')
+    page.text(0.36, y0 + rows_b + 0.52 + NOTE_H, 'Public runs of the starter agent, both arms; exploratory.',
+              ha='left', va='top', fontsize=6.9, color=MUTED)
     page.text(0.09, h_in - 0.07, 'Both panels are exploratory: counted on stored runs, with no registered rule; panel '
               '(a) recounted by a second script.', ha='left', va='bottom', fontsize=6.9, color=MUTED)
     save(fig, page, out, 'fig_moves')
