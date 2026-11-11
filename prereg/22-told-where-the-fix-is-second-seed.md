@@ -85,3 +85,13 @@ side and the pooled description, and says that the first seed did not repeat.
 
 The 62 tasks whose shipped run saw every region. One model, two repositories. The oracle is a bound, not a tool:
 nothing that reads a repository can know which lines a fix will change.
+
+## Notes added after the freeze
+
+- Nov 11, 2026, 2:45 AM EST, while the first shard is running and before any row of this run has been pulled or read:
+  three descriptive cuts are added to what will be reported, none with a rule, each labelled exploratory. They
+  follow from a reading of the runs of 18 that arrived after the freeze (names cost context: 13 of the 40 runs
+  with names ended on the context window, against 8 in the control and 7 with lines). (a) Per arm, the runs that
+  end on the context window. (b) Per arm, among the runs that do not end that way, the share whose final patch
+  overlaps a changed region and the share resolved. (c) Per arm and changed region: shown; edited by the final
+  patch; edited when shown. The rules L1 to L7 and their tests are unchanged.
