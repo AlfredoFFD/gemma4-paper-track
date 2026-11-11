@@ -1,19 +1,19 @@
-"""Regenerate Figures 2 to 4, the appendix figure and Tables 1 and 2 from the raw replay logs and the stored reports.
+"""Regenerate Figures 1 to 3, the appendix figure and Tables 1 and 2 from the raw replay logs and the stored reports.
 
 Usage (from the repo root):
     .venv/Scripts/python.exe -I -X utf8 paper/figures/make_figures.py [--out <dir>]
     .venv/Scripts/python.exe -I -X utf8 paper/figures/make_figures.py --run C <run_dir> --run E <run_dir>
 
 Writes, next to this script (or into --out):
-  fig_design.png/.svg      Figure 2, the method: one paused step, the one message that differs, the outcome
-  fig_results.png/.svg     Figure 3, opens a neighbor's file against reads a neighbor's code, by condition: the first
-                           experiment and the parts of the address (pre-registrations 02 to 04, 12 and, once it has
-                           run, 13)
-  fig_extensions.png/.svg  Figure 4, addresses against bare names in every setting registered (a forest)
+  fig_design.png/.svg      Figure 1, the method: one paused step, the one message that differs, the outcome
+  table_samples.png/.svg   Table 1, what each experiment built, analyzed and left out, from samples_table.json
+  fig_results.png/.svg     Figure 2, opens a neighbor's file against reads a neighbor's code, by what the list prints:
+                           the first experiment and the parts of the address (pre-registrations 02 to 04, 12 and, once
+                           it has run, 13)
+  fig_extensions.png/.svg  Figure 3, addresses against bare names in every registered variation (a forest)
+  table_rules.png/.svg     Table 2, the registered rules the argument rests on (a digest), from rules_main.json
   fig_appendix.png/.svg    appendix: the parts of an entry and a false entry; five-call replays
-  table_rules.png/.svg     Table 1, the registered rules, rendered from rules_table.json
-  table_samples.png/.svg   Table 2, the samples, rendered from samples_table.json
-(Figures 1 and 5 are make_fig_law.py and make_fig_runs.py.)
+(Figures 4 and 5 are make_fig_law.py and make_fig_runs.py.)
 
 Every plotted number is computed here from the raw per-replay rows with the registered code path of its experiment:
   B    the definitions of analysis/rederive_s5.py (hit, opens_file, invalid_kind; it imports the registered scorer),
@@ -34,15 +34,23 @@ script. Runs whose directory does not exist yet are skipped with a printed note 
 be rerun as the runs arrive. A run that exists but has no registered output yet is drawn and reported as UNCHECKED.
 The default run directories are in RUN_DIRS; --run TAG RUN_DIR overrides one (the checks still read the registered
 output file of that tag).
-The intervals clustered by task in Figure 4 are computed here with the same frozen bootstrap and checked against
+The intervals clustered by task in Figure 3 are computed here with the same frozen bootstrap and checked against
 analysis/results/explore_supplement.txt where that report prints them.
 
-The two tables are data files. Table 1 (rules_table.json): one row per question, one item per registered rule; an
-item's estimate is typed there and verified here, against the values this script computes ("check") or against a
-line of a stored report ("report": file, pattern, and the text the pattern's groups must give in the estimate); a
-mismatch stops the script, and numbers that nothing verifies are listed. The tally of outcomes in the note is counted
-from the items. Table 2 (samples_table.json): every number is a named value that is read from a stored report
-("file" and "pattern") or added up from other values, or is typed with a "source"; the typed ones are listed.
+The tables are data files. A table of rules holds one item per registered rule, and no estimate in it stands
+unverified. An estimate is typed and then verified, or left out and then built, from the values this script computes
+("check": the keys of contrasts) or from lines of stored reports ("report": file, pattern, and "expect", the text the
+pattern's groups give); a mismatch or a missing line stops the script, and numbers that nothing supplies are listed.
+An outcome is typed, or read from the verdict a stored report prints ("outcome": file, pattern, and "words", which
+turn the report's verdict into the table's word). A rule marked "pending": true may wait for its report: until that
+file exists both of its cells say "pending", and from then on they are read from it.
+  rules_table.json    every registered rule, counted as Appendix A counts them (a row labelled "Gate" there is a gate,
+                      every other row is a rule): checked and tallied here, drawn only with --full-table (the paper
+                      gives the full list as the markdown table of Appendix A);
+  rules_main.json     Table 2, the digest: a flat list of rules in four columns, with no typed estimate;
+  samples_table.json  Table 1: every number is a named value that is read from a stored report ("file" and "pattern",
+                      or "json" and "field"), worked out from other values, or typed with a "source"; the typed ones
+                      are listed.
 """
 import argparse
 import ast
@@ -81,8 +89,9 @@ C_STATES = ANALYSIS / 'fork_states_c' / 'states.jsonl'
 D_STATES = ANALYSIS / 'fork_states_d' / 'states.jsonl'
 K_POP = ANALYSIS / 'fork_states_k' / 'population.json'
 H_STATES = ANALYSIS / 'fork_states_h' / 'states.jsonl'      # optional: the search-hit condition (pre-registration 13)
-TABLE_JSON = FIG / 'rules_table.json'
-SAMPLES_JSON = FIG / 'samples_table.json'
+TABLE_JSON = FIG / 'rules_table.json'                       # every registered rule: checked and tallied
+DIGEST_JSON = FIG / 'rules_main.json'                       # Table 2, the digest of the rules
+SAMPLES_JSON = FIG / 'samples_table.json'                   # Table 1, the samples
 SUPPLEMENT_TXT = RES / 'explore_supplement.txt'             # the intervals clustered by task
 
 # Later runs: default run directory (the directory the registered script is given), the raw rows file inside it,
@@ -508,8 +517,8 @@ def _one_condition(mod, run_dir, ref_dir, new, complete_arms, arms):
 
 
 def exp_12(run_dir, ref_dir):
-    """analyze_12.py: a file without lines (condition EPATH) beside bare names (H), file and lines (EL) and the full
-    address (E, on the complete states where it is usable). Rules P1 and P2; the counts of P3."""
+    """analyze_12.py: a file without lines (condition EPATH) beside bare names (H), file and lines (EL) and addresses
+    (E, on the complete states where it is usable). Rules P1 and P2; the counts of P3."""
     new = A12.NEW
     e, reads, opens, _ranged = _one_condition(A12, run_dir, ref_dir, new, A12.RULE_ARMS, ['H', new, 'EL', 'E'])
     e['diffs'] = {'P1': d_pct(reads['EL'], reads[new]), 'P2': d_pct(opens[new], opens['H'])}
@@ -517,8 +526,8 @@ def exp_12(run_dir, ref_dir):
 
 
 def exp_13(run_dir, ref_dir, new='EG'):
-    """analyze_13.py: the address written as a search hit (condition EG) beside the full address as JSON (E); H and EL
-    on the complete states where they are usable. Rules X1 and X2."""
+    """analyze_13.py: the address written as a search hit (condition EG) beside addresses as JSON (E); H and EL on the
+    complete states where they are usable. Rules X1 and X2."""
     e, reads, _opens, ranged = _one_condition(A13, run_dir, ref_dir, new, ('E', new), ['H', 'EL', 'E', new])
     e['diffs'] = {'X1': d_pct(reads[new], reads['E']), 'X2': d_pct(ranged[new], ranged['E'])}
     e['new'] = new
@@ -858,7 +867,7 @@ def check_parts(tag, e, path, ck):
 
 
 def check_by_task(exps, ck):
-    """The task-clustered intervals of Figure 4 against explore_supplement.txt, where that report prints them."""
+    """The task-clustered intervals of Figure 3 against explore_supplement.txt, where that report prints them."""
     ck.lines.append('  intervals clustered by task (explore_supplement.txt):')
     if not SUPPLEMENT_TXT.exists():
         ck.lines.append(f'    no {SUPPLEMENT_TXT.relative_to(ROOT).as_posix()}: UNCHECKED')
@@ -947,26 +956,27 @@ def _nice(x, step):
     return (int(x / step) + 1) * step
 
 
-# ---------------------------------------------------------------- figure 3: file opened against code read
+# ---------------------------------------------------------------- Figure 2: file opened against code read
 # (condition, label, the list gives line numbers). First block: the first experiment (pre-registrations 02 and 03).
 FIRST_ROWS = [('A', 'no list', False), ('P', 'bare names, as the tool\'s own result', False),
               ('H', 'bare names, as a note', False), ('D', 'names with an instruction', False),
               ('E', 'addresses', True)]
-# Second block: the parts of the address (pre-registrations 04 and 12), every list a note.
+# Second block: the parts of the address (pre-registrations 04 and 12), every list a note. The condition with file,
+# lines and definition line carries one name in both blocks: addresses.
 PART_ROWS = [('H', 'bare names', False), ('EPATH', 'file only', False), ('EL', 'file and lines', True),
-             ('E', 'full address', True)]
+             ('E', 'addresses', True)]
 
 
 def result_blocks(exps):
     """[(block title, [(label, opens-file rate, reads-code rate, has line numbers[, a remark under the label])])] for
-    Figure 3."""
+    Figure 2."""
     b = exps['B']
     blocks = [(f'First experiment, {b["n_complete"]:,} paused steps',
                [(label, b['values'][(arm, 'opened')], b['values'][(arm, 's1')], lines)
                 for arm, label, lines in FIRST_ROWS])]
     p = exps.get('P')
     if p is None:
-        print('  not drawn: Figure 3, the block of the parts of the address: no run of pre-registration 12 yet')
+        print('  not drawn: Figure 2, the block of the parts of the address: no run of pre-registration 12 yet')
         return blocks
     rows = []
     for arm, label, lines in PART_ROWS:
@@ -978,8 +988,8 @@ def result_blocks(exps):
         new, label = x['new'], 'search hits'
         if x['n_arm'][new] != p['n_complete']:
             label += f' ({x["n_arm"][new]:,} steps)'
-        # its registered comparison is with the full address on the same steps, which are not the row above's
-        paired = f'full address on these steps: {_fmt(x["rates"][("E", "reads")].val)}%'
+        # its registered comparison is with addresses on the same steps, which are not the row above's
+        paired = f'addresses on these steps: {_fmt(x["rates"][("E", "reads")].val)}%'
         rows.append((label, x['rates'][(new, 'opens')], x['rates'][(new, 'reads')], True, paired))
     blocks.append((f'Parts of the address, {p["n_complete"]:,} paused steps', rows))
     return blocks
@@ -1053,7 +1063,7 @@ def fig_results(exps, out_dir):
     plt.close(fig)
 
 
-# ---------------------------------------------------------------- figure 4 (the forest) and the appendix figure
+# ---------------------------------------------------------------- Figure 3 (the forest) and the appendix figure
 EXP_NAME = {'B': 'experiment B', 'C': 'experiment C', 'D1': 'experiment D1', 'D2a': 'experiment D2a',
             'D2b': 'experiment D2b', 'E': 'experiment E', 'F': 'experiment F', 'S': 'experiment S (newest wheels)',
             'D2q': 'experiment D2q (another model family)', 'P': 'pre-registration 12 (a file without lines)',
@@ -1062,7 +1072,7 @@ EXP_NAME = {'B': 'experiment B', 'C': 'experiment C', 'D1': 'experiment D1', 'D2
 RUN_NAME = {'B': 'hosted run', 'C': 'rented GPU', 'D1': 'tool-channel run', 'D2a': 'second-model run',
             'D2b': 'second-model run', 'E': 'five-call run', 'F': 'rendering run', 'S': 'newest-wheels run',
             'D2q': 'other-family run'}
-# Figure 4: (source, contrast key, condition with addresses, condition with bare names, label)
+# Figure 3: (source, contrast key, condition with addresses, condition with bare names, label)
 FOREST = [
     ('B', 'B3', 'E', 'H', 'the first experiment'),
     ('C', 'G2', 'E', 'H', 'a second GPU platform'),
@@ -1075,7 +1085,7 @@ FOREST = [
 ]
 # Appendix, first panel, the run on the second GPU platform: (rate key, the list gives line numbers, label)
 PARTS = [('H', False, 'bare names'), ('ES', False, 'names with the first definition line'),
-         ('EL', True, 'file and lines'), ('E', True, 'full address')]
+         ('EL', True, 'file and lines'), ('E', True, 'addresses')]
 FALSE_ENTRY = [('swapped_E', 'legible', 'a true neighbor, with its address'),
                ('decoy_Ep', 'rewired', 'a false entry, written the same way')]
 # Appendix, second panel, the five-call replays: (condition, line color, marker, line style, label)
@@ -1125,8 +1135,8 @@ def _spread(ys, gap):
 
 
 def fig_extensions(exps, out_dir, which=('a', 'b', 'c'), name='fig_extensions'):
-    """Panels: a, addresses against bare names in every setting (Figure 4); b, the parts of an entry and a false
-    entry; c, the five-call replays. The main text uses panel a alone; the appendix figure holds b and c."""
+    """Panels: a, addresses against bare names in every registered variation (Figure 3); b, the parts of an entry and
+    a false entry; c, the five-call replays. The main text uses panel a alone; the appendix figure holds b and c."""
     panels = []   # (key, height in inches of the plot area, draw function)
     n_all = exps['B']['info'][0]      # the paused steps every run starts from
 
@@ -1136,11 +1146,11 @@ def fig_extensions(exps, out_dir, which=('a', 'b', 'c'), name='fig_extensions'):
         e = exps.get(src)
         if e is None:
             if 'a' in which:
-                print(f'  not drawn: Figure 4 row "{label}" ({RUN_NAME[src]}): no {EXP_NAME[src]} run yet')
+                print(f'  not drawn: Figure 3 row "{label}" ({RUN_NAME[src]}): no {EXP_NAME[src]} run yet')
             continue
         d = e['diffs'].get(key)
         if d is None:
-            print(f'  not drawn: Figure 4 row "{label}": {key} not estimable in the {EXP_NAME[src]} run')
+            print(f'  not drawn: Figure 3 row "{label}": {key} not estimable in the {EXP_NAME[src]} run')
             continue
         if e.get('n_states', n_all) != n_all:
             raise SystemExit(f'{EXP_NAME[src]} starts from {e["n_states"]} paused steps, not {n_all}')
@@ -1393,15 +1403,19 @@ def _wrap_pts(text, width_pt, size, weight='normal', style='normal'):
 
 
 NUM = r'[+\-−]?\d+\.\d+'
-# The only verdicts a rule may carry, in the order of the tally. "no difference detected" is for a rule that
-# registered both directions (its interval may exclude 0 either way) when the interval holds 0.
-OUTCOMES = ('met', 'not met', 'more often', 'less often', 'no difference detected', 'not tested', 'pending')
+# The verdicts a rule may carry unless its table names its own ("outcomes" in the data file), in the order of the
+# tally; they are the words of Appendix A. "no detectable difference" is for a rule that registered both directions
+# (its interval may exclude 0 either way) when the interval holds 0; "asked for less often" for one that found the
+# direction that is not a claim of the paper; "underpowered" for one whose own condition for being informative
+# failed. A gate (a row marked "gate": true) is "passed" or "failed" and is not counted among the rules.
+OUTCOMES = ('met', 'not met', 'no detectable difference', 'asked for less often', 'not tested', 'underpowered',
+            'pending')
+GATE_OUTCOMES = ('passed', 'failed')
 
 
 def _verdict(outcome):
     """An outcome as (its word, which the tally counts; the colon or comma after it; what follows): 'met',
-    'not met: no harm', 'less often, narrowly'. "more often" and "less often" are for a rule that registered both
-    directions and found one that is not a claim of the paper."""
+    'not met: no harm', 'asked for less often, narrowly'."""
     m = re.match(r'([^:,]*)([:,]?)(.*)', outcome.strip(), re.S)
     return m.group(1).strip(), m.group(2), m.group(3).strip()
 # The tables are read in a writeup that shows an image about 800 px wide. Their type is set so that a capital
@@ -1425,7 +1439,7 @@ POINT_KEYS = {'G1', 'F1'}   # a single value (no interval): compared with the fi
 
 
 def checkable(exps):
-    """Values the figure code computes, by the key a rule of Table 1 names in "check"."""
+    """Values the figure code computes, by the key a rule of a table names in "check"."""
     out = {}
     src = {'B1': ('B', 'B1'), 'B3': ('B', 'B3'), 'B4_D': ('B', 'B4_D'), 'B4_E': ('B', 'B4_E'), 'G2': ('C', 'G2'),
            'C1': ('C', 'C1'), 'C2_EL': ('C', 'C2_EL'), 'C2_ES': ('C', 'C2_ES'), 'E_EL_90': ('C', 'E_EL_90'),
@@ -1450,18 +1464,29 @@ def _plain(s):
 
 
 def _expected(template, groups):
-    """The text a report line must give in an estimate: {0} is a group as the report prints it, {0:u} the same
-    without a leading plus sign (the way the tables write the bounds of an interval)."""
-    return re.sub(r'\{(\d+)(:u)?\}', lambda m: groups[int(m.group(1))].lstrip('+') if m.group(2)
-                  else groups[int(m.group(1))], template)
+    """The text a report line gives in an estimate: {0} is a group as the report prints it, {0:u} the same without a
+    leading plus sign (the way the tables write the bounds of an interval), {0:n} a whole number with thousands
+    separators."""
+    def one(m):
+        g = groups[int(m.group(1))]
+        return g.lstrip('+') if m.group(2) == ':u' else f'{int(g):,}' if m.group(2) == ':n' else g
+    return re.sub(r'\{(\d+)(:[un])?\}', one, template)
+
+
+def _triple(d, key=''):
+    """A computed contrast as the tables write it, '+5.50 [3.44, 7.65]'; a key that ends in _90 names a 90% interval,
+    and the cell then says so: '+1.59, 90% [0.00, 3.17]'."""
+    return f'{d.val:+.2f}{", 90%" if key.endswith("_90") else ""} [{d.lo:.2f}, {d.hi:.2f}]'
 
 
 def read_values(spec, name):
     """The named values of a table: {name: number or text}, and the ones that are typed, with their sources.
 
     A value is read from a stored report ({"file", "pattern"}: the first group of the first match; with "count":
-    true the group is a list the report prints, such as [1, 2, 3], and the value is how many items it has) or from a
-    stored JSON file ({"json", "field"}), worked out from other values ({"sum": [names]}, {"minus": [name, names to
+    true the group is a list the report prints, such as [1, 2, 3], and the value is how many items it has; with
+    "count": a pattern, the value is how often that pattern occurs in the group) or from a stored JSON file ({"json",
+    "field"}; with "count": true the field is a list and the value is its length; with "count": a pattern, how many
+    of its items the pattern matches), worked out from other values ({"sum": [names]}, {"minus": [name, names to
     subtract]}, {"product": [names]}, {"min": [names]}, {"max": [names]}) or typed ({"value", "source"}). A JSON
     value may carry a typed "value" for the time its file is not in the repository yet: it is then listed as typed,
     and once the file exists the two must agree. "equals": name makes the script stop unless the value equals that
@@ -1484,7 +1509,9 @@ def read_values(spec, name):
             if m is None and not d.get('optional'):
                 raise SystemExit(f'{name}: value "{key}": no line for {d["pattern"]!r} in {d["file"]}')
             v = None if m is None else m.group(1)
-            if v is not None and d.get('count'):
+            if v is not None and isinstance(d.get('count'), str):
+                v = len(re.findall(d['count'], v))
+            elif v is not None and d.get('count'):
                 try:
                     items = ast.literal_eval(v)
                 except (ValueError, SyntaxError):
@@ -1500,6 +1527,10 @@ def read_values(spec, name):
                 v = json.loads(path.read_text(encoding='utf-8'))
                 for part in d['field'].split('.'):
                     v = v[part]
+                if d.get('count'):
+                    if not isinstance(v, list):
+                        raise SystemExit(f'{name}: value "{key}": {d["field"]} in {d["json"]} is not a list')
+                    v = len(v) if d['count'] is True else sum(1 for item in v if re.search(d['count'], str(item)))
                 if 'value' in d and d['value'] != v:
                     raise SystemExit(f'{name}: value "{key}" is typed as {d["value"]} and {d["json"]} gives {v}')
             elif 'value' in d:
@@ -1539,52 +1570,149 @@ def _fill(text, values, name):
 
 
 def rule_rows(spec):
-    """Every rule of a table of rules, with the title of its group."""
-    return [(g['title'], row) for g in spec.get('groups', []) for row in g['rows']]
+    """Every rule of a table of rules, with the title of its group ('' in a flat list, the form of the digest)."""
+    return ([(g['title'], row) for g in spec.get('groups', []) for row in g['rows']]
+            + [('', row) for row in spec.get('rules', [])])
 
 
-def tally(rows):
-    """How many registered rules carry each outcome. A row marked "count": false is a second reading of the rule
-    above it and is not counted."""
-    count = collections.Counter(_verdict(row['outcome'])[0] for row in rows if row.get('count', True))
-    return count, f'{sum(count.values())} rules: ' + ', '.join(f'{k} {count[k]}' for k in OUTCOMES if count[k])
+def _label(row):
+    """How the checks name a rule: its text, after its identifier where the table gives one."""
+    rule = ' '.join(row['rule'].split())        # a rule may fix where its text breaks in the table
+    return f'"{row["id"]}: {rule}"' if row.get('id') else f'"{rule}"'
 
 
-def prepare_table(spec, name):
-    """Check the form of a table's data, read its values and fill its texts. Returns (the filled spec, typed values).
-    A table of rules has "groups" (a title, its pre-registrations, its rules: rule, estimate, outcome); a table of
-    samples has "rows" of "cells"."""
+def tally(rows, outcomes=OUTCOMES):
+    """How many registered rules carry each outcome: (the counts, a line that states them). Not counted: a row marked
+    "count": false (a second reading of a rule that another row counts) and a row marked "gate": true (by the
+    convention of Appendix A a row labelled "Gate" there is a gate, and every other row is a rule)."""
+    rules = [row for row in rows if row.get('count', True) and not row.get('gate')]
+    count = collections.Counter(row['outcome'] if row.get('as_reported') else _verdict(row['outcome'])[0]
+                                for row in rules)
+    order = [k for k in outcomes if count[k]] + sorted(k for k in count if k not in outcomes)
+    gates = sum(1 for row in rows if row.get('gate'))
+    return count, (f'{len(rules)} rules: ' + ', '.join(f'{k} {count[k]}' for k in order)
+                   + (f'; gates listed and not counted: {gates}' if gates else ''))
+
+
+def _derive(row, comp, name, notes):
+    """Fill the cells that a rule does not type. An estimate that is left out is built from the rule's "check" keys
+    (the values computed here) and its "report" lines, in that order, joined by "join" (', ' unless given). An
+    outcome given as {"file", "pattern", "words"} is the verdict that the stored report prints (the pattern's first
+    group), turned into the table's word by "words"; a verdict that "words" does not hold is shown as the report
+    words it, and noted. A rule marked "pending": true may wait for its report: while a file it reads is missing,
+    both cells say "pending". Any other missing file or line stops the script."""
+    label = _label(row)
+    waiting = []
+
+    def text_of(file):
+        path = ROOT / file
+        if path.exists():
+            return path.read_text(encoding='utf-8')
+        if not row.get('pending'):
+            raise SystemExit(f'{name}, {label}: {file} does not exist')
+        waiting.append(file)
+        return None
+
+    if 'estimate' not in row:
+        pieces = []
+        for k in row.get('check') or []:
+            if k not in comp:
+                raise SystemExit(f'{name}, {label}: no computed value {k} (its run is not available)')
+            pieces.append(f'{100 * comp[k]:.2f}%' if k in POINT_KEYS else _triple(comp[k], k))
+        for r in row.get('report') or []:
+            text = text_of(r['file'])
+            if text is None:
+                continue
+            m = re.search(r['pattern'], text, re.M)
+            if m is None:
+                raise SystemExit(f'{name}, {label}: no line for {r["pattern"]!r} in {r["file"]}')
+            pieces.append(_expected(r['expect'], m.groups()))
+        if not pieces and not waiting:
+            raise SystemExit(f'{name}, {label}: no estimate, and no "check" or "report" to build one from')
+        row['estimate'] = 'pending' if waiting else row.get('join', ', ').join(pieces)
+    if isinstance(row['outcome'], dict):
+        said_by = row['outcome']
+        text = text_of(said_by['file'])
+        if text is None:
+            row['outcome'] = 'pending'
+        else:
+            m = re.search(said_by['pattern'], text, re.M)
+            if m is None:
+                raise SystemExit(f'{name}, {label}: no line for {said_by["pattern"]!r} in {said_by["file"]}')
+            said = m.group(1).strip()
+            row['outcome'] = said_by['words'].get(said, said)
+            if said not in said_by['words']:
+                row['as_reported'] = True
+                notes.append(f'{name}, {label}: the verdict "{said}" of {said_by["file"]} has no word among the '
+                             'outcomes of this table and is shown as the report words it')
+
+
+def prepare_table(spec, name, comp=None):
+    """Check the form of a table's data, read its values, build the cells that are not typed and fill its texts.
+    Returns (the filled spec, typed values, notes to print). A table of rules has "groups" (a title, its
+    pre-registrations, its rules: rule, estimate, outcome) or, as a flat list, "rules" (the same with an "id" before
+    each); a table of samples has "rows" of "cells". A table of rules may name the only outcomes it takes
+    ("outcomes"); otherwise the word before a colon or comma must be one of OUTCOMES. comp: the values computed
+    here, by the key a rule names in "check"."""
     values, typed = read_values(spec, name)
     out = json.loads(json.dumps(spec))
+    notes = []
     for row in out.get('rows', []):
         ready = row.pop('cells_when', None)
         if ready and (ROOT / ready['file']).exists():       # the row's final text, once its report exists
             row['cells'] = ready['cells']
         row['cells'] = [_fill(c, values, name) for c in row['cells']]
-    for title, row in rule_rows(out):
+    for _title, row in rule_rows(out):
+        _derive(row, comp or {}, name, notes)
         verdict = _verdict(row['outcome'])[0]
-        if verdict not in OUTCOMES:
-            raise SystemExit(f'{name}, "{row["rule"]}": outcome "{row["outcome"]}" is not one of {", ".join(OUTCOMES)}')
+        if row.get('gate'):
+            allowed, word = GATE_OUTCOMES, row['outcome']
+        elif 'outcomes' in out:                              # a table that names its outcomes takes exactly those
+            allowed, word = tuple(out['outcomes']), row['outcome']
+        else:
+            allowed, word = OUTCOMES, verdict
+        if word not in allowed and not row.get('as_reported'):
+            raise SystemExit(f'{name}, {_label(row)}: outcome "{row["outcome"]}" is not one of {", ".join(allowed)}')
         if (row['estimate'].strip().lower() == 'pending') != (verdict == 'pending'):
-            raise SystemExit(f'{name}, "{row["rule"]}": pending in one cell and not in the other')
+            raise SystemExit(f'{name}, {_label(row)}: pending in one cell and not in the other')
         row['estimate'] = _fill(row['estimate'], values, name)
         row['rule'] = _fill(row['rule'], values, name)
     fill = lambda text: _fill(text, {**values, 'tally': '{tally}'}, name)    # noqa: E731 (the tally: when drawn)
     out['note'] = fill(out.get('note', ''))
     out['note_split'] = [fill(text) for text in out.get('note_split', [])]
-    return out, typed
+    return out, typed, notes
 
 
-def check_table(spec, exps, ck, name='Table 1'):
+def _contradiction(outcome, text):
+    """What in an estimate contradicts its outcome, or None. Only an estimate with one interval is read, as the cell
+    prints it: "met" with a lower bound below 0, "not met" with a lower bound above 0, "no detectable difference"
+    with an interval that excludes 0. This is a necessary condition of the rules of the digest (each asks at least
+    for a lower bound above 0), not the rule itself, which the registered script applies; a bound printed as 0 is
+    taken either way."""
+    found = _estimates(text)
+    if len(found) != 1:
+        return None
+    lo, hi = (float(x.replace(MINUS, '-')) for x in found[0][1:])
+    word = _verdict(outcome)[0]
+    if (word == 'met' and lo < 0) or (word == 'not met' and lo > 0):
+        return f'a lower bound of {lo:g}'
+    if word == 'no detectable difference' and (lo > 0 or hi < 0):
+        return f'an interval [{lo:g}, {hi:g}] that excludes 0'
+    return None
+
+
+def check_table(spec, exps, ck, name):
     """Every estimate of a table of rules against the values computed here ("check") or a line of a stored report
-    ("report"); a pending rule prints what its run or report now gives, to be pasted in."""
+    ("report"), whether it was typed or built from them; a typed rule that is pending prints what its run or report
+    now gives, to be pasted in. In a table marked "check_outcomes": true an outcome may not contradict the interval
+    of its estimate."""
     comp = checkable(exps)
     ck.lines.append(f'  {name}, estimates against the computed values and the stored reports:')
     loose = []
     for _title, row in rule_rows(spec):
-        label = f'"{row["rule"]}"'
+        label = _label(row)
         text, pending = row['estimate'], row['estimate'].strip().lower() == 'pending'
-        covered = []
+        covered = ['90%'] if any(k.endswith('_90') for k in row.get('check') or []) and ', 90% [' in text else []
         found, k_found = _estimates(text), 0
         for k in row.get('check') or []:
             if k not in comp:
@@ -1597,8 +1725,11 @@ def check_table(spec, exps, ck, name='Table 1'):
                 continue
             if k in POINT_KEYS:
                 m = re.search(NUM, text)
-                ck.same(f'{label} {k}', comp[k], m.group(0).replace(MINUS, '-'), 100, 2) if m else ck.missing(
-                    f'{label} {k}')
+                if m:
+                    ck.same(f'{label} {k}', comp[k], m.group(0).replace(MINUS, '-'), 100, 2)
+                    covered.append(m.group(0).replace(MINUS, '-'))
+                else:
+                    ck.missing(f'{label} {k}')
                 continue
             if k_found >= len(found):
                 ck.missing(f'{label} {k} (no "[lo, hi]" left in the estimate)')
@@ -1637,21 +1768,36 @@ def check_table(spec, exps, ck, name='Table 1'):
             left = re.findall(r'(?<![\w.])[+-]?\d+(?:\.\d+)?%?', rest)
             if left:
                 loose.append(f'    {label}: typed and not verified: {", ".join(left)}')
+        if spec.get('check_outcomes') and not pending and len(found) == 1:
+            against = _contradiction(row['outcome'], text)
+            ck.lines.append(f'    {label}: outcome "{row["outcome"]}" beside its interval: '
+                            + (f'{against}: MISMATCH' if against else 'match'))
+            if against:
+                ck.bad.append(label)
     ck.lines += loose
 
 
 def table_lint(spec, name):
-    """Numbers written into the cells of a table of samples by hand (every other number is a named value)."""
+    """Numbers written by hand into the texts of a table: the cells of a table of samples (every other number there
+    is a named value), the wording of the rules of a flat list of rules (its estimates are verified apart), and the
+    note under either."""
+    def written(text):
+        rest = re.sub(r'\{\w+\}', ' ', text)
+        rest = re.sub(r'pre-registrations? \d+(?:(?:, | and | to )\d+)*', ' ', rest)
+        return re.findall(r'(?<![\w.\-])\d[\d,]*(?:\.\d+)?(?![\w\-])', rest)
+
     out = []
     for i, row in enumerate(spec.get('rows', []), 1):
         ready = (row.get('cells_when') or {}).get('cells', [])
         for j, cell in enumerate(row.get('cells', []) + ready):
-            rest = re.sub(r'\{\w+\}', ' ', cell)
-            rest = re.sub(r'pre-registrations? \d+(?:(?:, | and | to )\d+)*', ' ', rest)
-            left = re.findall(r'(?<![\w.\-])\d[\d,]*(?:\.\d+)?(?![\w\-])', rest)
-            if left:
+            if written(cell):
                 out.append(f'    {name}, row {i}, column {j % len(row["cells"]) + 1}: written in the text: '
-                           + ', '.join(left))
+                           + ', '.join(written(cell)))
+    for row in spec.get('rules', []):
+        if written(row['rule']):
+            out.append(f'    {name}, rule {row.get("id", "")}: written in the wording: ' + ', '.join(written(row['rule'])))
+    if ('rows' in spec or 'rules' in spec) and written(spec.get('note', '')):
+        out.append(f'    {name}, the note: written in the text: ' + ', '.join(written(spec['note'])))
     return out
 
 
@@ -1710,16 +1856,21 @@ def _draw_table(cols, fracs, body, note, out_dir, name):
     plt.close(fig)
 
 
-def _outcome_cell(outcome, width, counted=True):
-    """The outcome as it is written ('met', 'not met: no harm', 'less often, narrowly'), all of it in the style of
-    its verdict; when it does not fit on one line it breaks after the verdict. The verdict of a row that the tally
-    does not count (a second reading of a rule) is set in plain grey."""
+def _outcome_cell(outcome, width, counted=True, two_colors=False):
+    """The outcome as it is written ('met', 'not met: no harm', 'asked for less often, narrowly'), all of it in the
+    style of its verdict; when it does not fit on one line it breaks after the verdict. The verdict of a row that
+    the tally does not count (a second reading of a rule, or a gate) is set in plain grey. two_colors (the digest):
+    "met" in the accent, every other outcome in the color of the text."""
     fs = TABLE_FS
     verdict, sep, why = _verdict(outcome)
     plain = ('normal', INK, 'normal')
-    style = {'met': ('bold', COLORS['legible'], 'normal'), 'not met': ('bold', INK, 'normal'), 'more often': plain,
-             'less often': plain, 'no difference detected': plain, 'not tested': ('normal', INK2, 'normal'),
-             'pending': ('normal', MUTED, 'italic')}[verdict]
+    if two_colors:
+        style = ('bold', COLORS['legible'], 'normal') if outcome == 'met' else (
+            'normal', INK, 'italic' if outcome == 'pending' else 'normal')
+    else:
+        style = {'met': ('bold', COLORS['legible'], 'normal'), 'not met': ('bold', INK, 'normal'),
+                 'not tested': ('normal', INK2, 'normal'), 'underpowered': ('normal', INK2, 'normal'),
+                 'pending': ('normal', MUTED, 'italic')}.get(verdict, plain)
     if not counted:
         style = ('normal', INK2, 'normal')
     wrap = lambda text: _wrap_pts(text, width, fs, style[0], style[2])      # noqa: E731
@@ -1731,17 +1882,28 @@ def _outcome_cell(outcome, width, counted=True):
 def fig_table(spec, out_dir, name='table_rules'):
     """Render a prepared table and return the names of the images written.
 
-    A table of rules: three columns; each group is a band across the page (its question in bold, its
-    pre-registrations in grey) and each rule one row. With more than MAX_ROWS rows, or with "split": true in its
-    data, it is drawn as two images, the second starting at the group named in "split_before", each with the tally
-    of its own rules in its note ("note_split": the note of each part; without it both carry "note"). A table of
-    samples: rows of cells, the first cell bold."""
+    A table of rules in groups (the full list): three columns; each group is a band across the page (its question in
+    bold, its pre-registrations in grey) and each rule one row. With more than MAX_ROWS rows, or with "split": true
+    in its data, it is drawn as two images, the second starting at the group named in "split_before", each with the
+    tally of its own rules in its note ("note_split": the note of each part; without it both carry "note"). A flat
+    list of rules (the digest): four columns, the rule's identifier, its question, the estimate and the outcome, in
+    two colors ("met" in the accent, all else in the color of the text), no bands and no marks. A table of samples:
+    rows of cells, the first cell bold."""
     fs = TABLE_FS
     cols = spec['columns']
     fracs = spec.get('widths') or [1 / len(cols)] * len(cols)
     width = [W_IN * 72 * f - 10.0 for f in fracs]
     plain = lambda text, i, weight='normal', color=INK: [[(l, fs, weight, color, 'normal')]      # noqa: E731
                                                          for l in _wrap_pts(_display(text), width[i], fs, weight)]
+    if 'rules' in spec:
+        body = []
+        for row in spec['rules']:
+            slant = 'italic' if row['estimate'].strip().lower() == 'pending' else 'normal'
+            est = [[(l, fs, 'normal', INK, slant)] for l in _wrap_pts(_display(row['estimate']), width[2], fs)]
+            body.append(('row', [plain(row['id'], 0), plain(row['rule'], 1), est,
+                                 _outcome_cell(row['outcome'], width[3], two_colors=True)]))
+        _draw_table(cols, fracs, body, spec.get('note', ''), out_dir, name)
+        return [name]
     if 'groups' not in spec:
         body = [('row', [plain(c, i, 'bold' if i == 0 else 'normal') for i, c in enumerate(row['cells'])])
                 for row in spec['rows']]
@@ -1765,7 +1927,8 @@ def fig_table(spec, out_dir, name='table_rules'):
                     print(f'  {name}: the rule "{row["rule"]}" does not fit on one line')
                 est = [[(l, fs, 'normal', MUTED if pend else INK, 'italic' if pend else 'normal')]
                        for l in _wrap_pts(_display(row['estimate']), width[1], fs)]
-                body.append(('row', [rule, est, _outcome_cell(row['outcome'], width[2], row.get('count', True))]))
+                counted = row.get('count', True) and not row.get('gate')
+                body.append(('row', [rule, est, _outcome_cell(row['outcome'], width[2], counted)]))
         _count, line = tally([row for g in groups for row in g['rows']])
         names.append(name if k == 0 else f'{name}_{k + 1}')
         own = spec.get('note_split') or []
@@ -1774,7 +1937,18 @@ def fig_table(spec, out_dir, name='table_rules'):
     return names
 
 
-# ---------------------------------------------------------------- figure 2: design
+# ---------------------------------------------------------------- Figure 1: design
+def _new_file_gloss(tc):
+    """Three words under a write_file call of the history, so that it is not taken for an edit of the repository. A
+    paused step is cut before the agent has edited a repository file: analysis/fork_states.py stops at any edit_file
+    and at a write_file onto a file of the repository, so a write_file that the history shows made a new file. One
+    made at the top of the working directory, as a script that reproduces the issue is, is called a scratch file."""
+    if tc['function_name'] != 'write_file':
+        return None
+    path = str((tc.get('arguments') or {}).get('filepath') or '').replace('\\', '/')
+    return '(a scratch file)' if '/' not in path.strip('./') else '(a new file)'
+
+
 def _call_lines(tc, width):
     """One tool call of the history as one or more short monospace lines."""
     fn, a = tc['function_name'], tc.get('arguments') or {}
@@ -1908,8 +2082,11 @@ def fig_design(key, exps, out_dir):
             history.append(([f'… {len(calls) - 3} more calls'], MS, True, MUTED, 'normal', 'normal', 0.7))
             continue
         last = i == len(calls) - 1
+        gloss = _new_file_gloss(calls[i])
         history.append((_call_lines(calls[i], width), MS, True, INK if last else INK2, 'bold' if last else 'normal',
-                        'normal', 0.7))
+                        'normal', 0.1 if gloss else 0.7))
+        if gloss:
+            history.append((['    ' + gloss], MS, False, MUTED, 'normal', 'italic', 0.7))
     boxes = [
         ('1  A recorded run, paused', MUTED, 'white', history,
          (prose('This result shows file content: the run is paused here.', cols[0][1], style='italic'), BS, False, INK,
@@ -2041,8 +2218,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--run', nargs=2, action='append', default=[], metavar=('TAG', 'RUN_DIR'),
                     help=f'override the run directory of one later run; TAG is one of {", ".join(RUN_DIRS)}')
-    ap.add_argument('--table', default=str(TABLE_JSON), help='the data file of Table 1 (the registered rules)')
-    ap.add_argument('--samples', default=str(SAMPLES_JSON), help='the data file of Table 2 (the samples)')
+    ap.add_argument('--table', default=str(TABLE_JSON), help='the data file of every registered rule (checked and '
+                    'tallied; drawn only with --full-table)')
+    ap.add_argument('--digest', default=str(DIGEST_JSON), help='the data file of Table 2 (the digest of the rules)')
+    ap.add_argument('--samples', default=str(SAMPLES_JSON), help='the data file of Table 1 (the samples)')
+    ap.add_argument('--full-table', action='store_true', help='also draw every registered rule, as table_rules_full')
     ap.add_argument('--example', default=None, help='paused step for fig_design as task,run,fork (default: the first)')
     ap.add_argument('--out', default=str(FIG))
     ap.add_argument('--verbose', action='store_true', help='list every checked value, not only the summary')
@@ -2063,24 +2243,36 @@ def main():
         if tag in exps:
             check_later(tag, exps[tag], ck)
     check_by_task(exps, ck)
-    with open(args.table, encoding='utf-8') as f:
-        rules_raw = json.load(f)
-    with open(args.samples, encoding='utf-8') as f:
-        samples_raw = json.load(f)
-    rules, rules_typed = prepare_table(rules_raw, Path(args.table).name)
-    samples, samples_typed = prepare_table(samples_raw, Path(args.samples).name)
-    check_table(rules, exps, ck)
-    print('Checks (plotted values against the registered outputs):')
+    comp = checkable(exps)
+    raw, spec, typed, notes = {}, {}, [], []
+    names = {'full': Path(args.table).name, 'digest': Path(args.digest).name, 'samples': Path(args.samples).name}
+    for kind, path in (('full', args.table), ('digest', args.digest), ('samples', args.samples)):
+        with open(path, encoding='utf-8') as f:
+            raw[kind] = json.load(f)
+        spec[kind], typed_values, said = prepare_table(raw[kind], names[kind], comp)
+        typed += [(names[kind], *t) for t in typed_values]
+        notes += said
+    check_table(spec['full'], exps, ck, f'{names["full"]} (every registered rule)')
+    check_table(spec['digest'], exps, ck, f'{names["digest"]} (Table 2)')
+    print('Checks (plotted values and the estimates of the tables against the registered outputs):')
     n_ok = sum(1 for l in ck.lines if l.endswith(' match'))
     print('\n'.join(l for l in ck.lines if args.verbose or not l.endswith(' match')))
     print(f'  {n_ok} values match their registered output' + ('' if args.verbose else ' (--verbose lists each)'))
     if ck.bad:
         raise SystemExit(f'check failed for {ck.bad}; no figure saved')
     print('  all checks passed')
-    n_rows = sum(1 + len(g['rows']) for g in rules['groups'])
-    print(f'  Table 1: {n_rows} rows with the group headers; {tally([row for _t, row in rule_rows(rules)])[1]}')
-    typed = [(Path(args.table).name, *t) for t in rules_typed] + [(Path(args.samples).name, *t) for t in samples_typed]
-    lint = table_lint(samples_raw, 'Table 2')
+    count, line = tally([row for _t, row in rule_rows(spec['full'])])
+    print(f'  {names["full"]}, every registered rule, counted as Appendix A counts them: {line}')
+    in_digest = [row for _t, row in rule_rows(spec['digest'])]
+    print(f'  {names["digest"]}, Table 2: {tally(in_digest, tuple(spec["digest"].get("outcomes", OUTCOMES)))[1]}')
+    said_rules = re.search(r'(\d+) registered rules', spec['digest'].get('note', ''))
+    if said_rules and int(said_rules.group(1)) != sum(count.values()):      # the digest's note against the full list
+        raise SystemExit(f'the note of {names["digest"]} says {said_rules.group(1)} registered rules and '
+                         f'{names["full"]} counts {sum(count.values())}; no figure saved')
+    for note in notes:
+        print(f'  NOTE: {note}')
+    lint = (table_lint(raw['digest'], f'{names["digest"]} (Table 2)')
+            + table_lint(raw['samples'], f'{names["samples"]} (Table 1)'))
     if typed or lint:
         print('  Numbers of the tables that are typed, not read from a report:')
         for name, key, value, source in typed:
@@ -2090,9 +2282,12 @@ def main():
     fig_results(exps, out_dir)
     fig_extensions(exps, out_dir, which=('a',))
     fig_extensions(exps, out_dir, which=('b', 'c'), name='fig_appendix')
-    tables = fig_table(rules, out_dir, 'table_rules') + fig_table(samples, out_dir, 'table_samples')
-    if len(tables) > 2:
-        print(f'  Table 1 has more than {MAX_ROWS} rows and is drawn as two images: {tables[0]} and {tables[1]}')
+    tables = fig_table(spec['digest'], out_dir, 'table_rules') + fig_table(spec['samples'], out_dir, 'table_samples')
+    if args.full_table:
+        full = fig_table(spec['full'], out_dir, 'table_rules_full')
+        if len(full) > 1:
+            print(f'  the full list has more than {MAX_ROWS} rows and is drawn as two images: {full[0]} and {full[1]}')
+        tables += full
     key = None
     if args.example:
         t, r, f = args.example.split(',')

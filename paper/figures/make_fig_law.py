@@ -1,4 +1,4 @@
-"""Figure 1: how often a first read of a file asks for lines past line 1, by what the agent was shown just before.
+"""Figure 4: how often a first read of a file asks for lines past line 1, by what the agent was shown just before.
 
 Usage: py -I -X utf8 paper/figures/make_fig_law.py [--out <dir>]
 
@@ -16,12 +16,13 @@ Optional, drawn when the report exists and skipped silently when it does not:
 Three bars per row: the result just before the read showed no line number for the file; a line number within the
 lines a read from the top returns (in sight); a line number past them (out of sight). Each pair of blue bars splits
 one line of a report, and the script checks that the two parts add up to that line.
-Panel (a) is observational (the agent chose to search or to list). Panel (b) is randomized: the graph's answer,
-without and with line numbers (at paused steps the list is given to the agent; in fresh episodes it asked for it).
+Panel (a) is observational (the agent chose to search or to list). Panel (b) is controlled: we chose what the graph's
+answer prints, without and with line numbers, and every paused step and every task gets every condition, so nothing
+is assigned at random (at paused steps the list is given to the agent; in fresh episodes it asked for it).
 The public counts, the replay counts and the split by depth are exploratory; the fresh-episode row of panel (a) is
 the registered test (its two blue bars together are the registered count).
 The strings of the strip "What the agent is shown" are examples of the four ways of writing, not results: the first
-neighbor of the paused step that Figure 2 shows.
+neighbor of the paused step that Figure 1 shows.
 """
 import argparse
 import re
@@ -362,11 +363,11 @@ def main():
     frameworks = len({r['agent'] for r in observed})
     ours, graph = fresh_rows(window)
     observed.append(ours)
-    randomized = replay_rows() + [graph]
+    controlled = replay_rows() + [graph]
     panels = [('(a)', 'After the agent\'s own search or listing (observed: the agent chose)',
                f'{WORDS[families]} model families, {WORDS[frameworks]} agent frameworks', observed),
-              ('(b)', 'After a graph answer, as shipped and with line numbers added (randomized: we chose)', '',
-               randomized)]
+              ('(b)', 'After a graph answer, as shipped and with line numbers added (controlled: we chose what the '
+                      'list prints)', '', controlled)]
     draw(panels, window, notes, out)
     for _tag, title, _covers, rows in panels:
         print(title)
