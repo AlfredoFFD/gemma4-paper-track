@@ -9,6 +9,9 @@ Writes, next to this script (or into --out), each as .png (200 dpi) and .svg:
   fig_graph       what an edge of the code graph is
   fig_moves       where a file read starts, and how many places a fix has
   fig_oracle      told where the fix is (the number of tasks and seeds parsed)
+  table_rules_v2  the registered rules of the rebuilt paper: rule, estimate, outcome (the drawing of make_figures.py's
+                  table of rules, copied); the wording of the rules and outcomes is text in TABLE_ROWS, every estimate
+                  is read from the report its row names; private/table1-rows-nov11.md, when present, is only compared
 
 Every number drawn is parsed from a stored output; when a line cannot be found the script stops with an error and
 draws nothing from a fallback. The sources:
@@ -210,8 +213,12 @@ def rule_q1(path, label):
     return m.groups()
 
 
+VERDICTS = {}     # (model, 'left' or 'right') -> the verdict its report prints (filled by parse_models)
+
+
+@functools.lru_cache(maxsize=None)
 def parse_models():
-    """[(group label or None, [(model, left estimate, right estimate or None)])]"""
+    """[(group label or None, [(model, left estimate, right estimate or None)])]; read once (the table uses it too)"""
     s19 = Source(R19)
     _m, end = s19.find(r'^Per run, details', 'the end of the table of analyze_19.txt')
     rows = {}
@@ -227,6 +234,7 @@ def parse_models():
         if key in rows:
             stop(f'analyze_19.txt: two rows for {key}')
         rows[key] = dict(est=m.groups()[2:5], verdict=f'{m.group(6)} {m.group(7)}', line=i + 1, model=name)
+        VERDICTS[(short[0], 'left' if design == '10' else 'right')] = m.group(7)
     for lab, _tok in HOSTED:
         for design in ('10', '17'):
             if (lab, design) not in rows:
@@ -255,7 +263,10 @@ def parse_models():
             stop(f'{rel(path)}: the run directory is not named on its first line')
         m, line = s.find(r'^  M1 E - H 95%: ([+-][\d.]+) \[([+-][\d.]+), ([+-][\d.]+)\]: (\w+)', f'rule M1 ({lab})')
         s.record('fig_models', f'left: {lab}, rule M1 E - H ({m.group(4)})', interval_text(*m.groups()[:3]), line)
+        VERDICTS[(lab, 'left')] = 'met' if m.group(4) == 'PASS' else m.group(4)
         earlier.append((lab, m.groups()[:3], rule_q1(q_path, lab) if q_path else None))
+        if q_path:
+            VERDICTS[(lab, 'right')] = 'met'       # rule_q1 stops unless its report says "Q1 verdict: met"
     return [(None, [('Gemma-4-31B', b3, q1)]),
             ('registered earlier (rented GPU)', earlier),
             ('pre-registration 19 (hosted API)', [(lab, rows[(lab, '10')]['est'], rows[(lab, '17')]['est'])
@@ -814,6 +825,369 @@ def fig_oracle(out, r22):
     return seed3 is not None
 
 
+# ================================================================ table_rules_v2
+# The drawing of make_figures.py's table of rules (_draw_table and its helpers), copied here so that this script does
+# not import make_figures.py (whose import runs the registered loaders). Unchanged except that it takes the color of
+# the outcome cells from this script.
+from matplotlib.font_manager import FontProperties  # noqa: E402
+from matplotlib.textpath import text_to_path  # noqa: E402
+
+TABLE_FS = 10.6          # as make_figures.py: a capital about 12 px high in a writeup about 800 px wide
+RULE_LIGHT = '#e1e1e1'
+R02 = RES / 'explore_supplement.txt'     # what rules_main.json's row "02" points at
+R03B4 = RES / 'explore_b.txt'            # what rules_main.json's row "03 B4" points at
+R04 = RES / 'c' / 'analyze_c.txt'
+R12 = RES / '12' / 'analyze_12.txt'
+R14 = RES / '14' / 'analyze_14.txt'
+R16 = RES / '16' / 'analyze_16.txt'
+R17 = RES / '17' / 'analyze_17.txt'
+TABLE_MD = ROOT / 'private' / 'table1-rows-nov11.md'     # optional: the paper's rows, only to compare the numbers
+TABLE_NOTE = ('Estimates are differences in points with 95% bootstrap intervals unless marked. All registered rules: '
+              'Appendix A.')
+
+
+def _display(s):
+    """Typographic minus for negative numbers and for 'X - Y' between words; nothing else changes."""
+    s = re.sub(r'(?<![\w.])-(?=\d)', MINUS, s)
+    return re.sub(r'(?<=\w) - (?=\w)', f' {MINUS} ', s)
+
+
+def _text_w(s, size, weight='normal', style='normal'):
+    prop = FontProperties(family='sans-serif', size=size, weight=weight, style=style)
+    return text_to_path.get_text_width_height_descent(s, prop, ismath=False)[0]
+
+
+def _wrap_pts(text, width_pt, size, weight='normal', style='normal'):
+    out = []
+    for para in text.split('\n'):
+        line = ''
+        for word in para.split(' '):
+            cand = f'{line} {word}' if line else word
+            if line and _text_w(cand, size, weight, style) > width_pt:
+                out.append(line)
+                line = word
+            else:
+                line = cand
+        out.append(line)
+    return out
+
+
+def _draw_table(cols, fracs, body, note, out_dir, name):
+    """One table image (make_figures.py). body: ('row', [cell, ...]) where a cell is a list of lines and a line a list
+    of (text, size, weight, color, style) pieces set one after another."""
+    fs, lh = TABLE_FS, TABLE_FS * 1.30
+    pad_x, pad_y = 5.0, 3.4
+    W = W_IN * 72
+    xs = [W * sum(fracs[:i]) for i in range(len(fracs))]
+    head = [_wrap_pts(c, W * fracs[i] - 2 * pad_x, fs, 'bold') for i, c in enumerate(cols)]
+    head_h = max(len(h) for h in head) * lh + 2 * pad_y
+    heights = [max(len(c) for c in rest[0]) * lh + 2 * pad_y for _kind, *rest in body]
+    note_fs = fs - 2.4
+    note_lines = _wrap_pts(_display(note), W - 2 * pad_x, note_fs) if note else []
+    note_h = len(note_lines) * note_fs * 1.32 + (2 * pad_y if note_lines else 0)
+    H = head_h + sum(heights) + note_h + 4
+    fig = plt.figure(figsize=(W_IN, H / 72))
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.set_xlim(0, W)
+    ax.set_ylim(0, H)
+    ax.axis('off')
+    renderer = fig.canvas.get_renderer()
+
+    def put(x, y, pieces, limit):
+        for text, size, weight, color, style in pieces:
+            t = ax.text(x, y, text, ha='left', va='baseline', fontsize=size, fontweight=weight, color=color,
+                        style=style)
+            x += t.get_window_extent(renderer).width * 72 / fig.dpi + size * 0.28
+            if x - size * 0.28 > limit + 0.5:
+                stop(f'{name}: "{text}" runs past its column')
+
+    y = H - 2
+    ax.plot([0, W], [y, y], color=INK2, lw=0.9)
+    for i, h in enumerate(head):
+        for k, line in enumerate(h):
+            put(xs[i] + pad_x, y - pad_y - (k + 0.78) * lh, [(line, fs, 'bold', INK, 'normal')], W)
+    y -= head_h
+    ax.plot([0, W], [y, y], color=INK2, lw=0.6)
+    for (_kind, *rest), h in zip(body, heights):
+        for i, cell in enumerate(rest[0]):
+            right = W * sum(fracs[:i + 1])
+            for k, pieces in enumerate(cell):
+                put(xs[i] + pad_x, y - pad_y - (k + 0.78) * lh, pieces, right)
+        ax.plot([0, W], [y - h, y - h], color=RULE_LIGHT, lw=0.5)
+        y -= h
+    ax.plot([0, W], [y, y], color=INK2, lw=0.9)
+    for k, line in enumerate(note_lines):
+        ax.text(pad_x, y - pad_y - k * note_fs * 1.32, line, ha='left', va='top', fontsize=note_fs, color=INK2)
+    fig.canvas.draw()
+    check_fits(fig, ax, name)
+    for ext in ('png', 'svg'):
+        fig.savefig(out_dir / f'{name}.{ext}', dpi=DPI)
+    plt.close(fig)
+
+
+# The rows, in the paper's order: the wording of the first and third columns (text, not numbers) and how the second
+# is read. An estimate is a list of parts joined by "; "; each part is read from a stored output by a function below.
+def _pts(groups):
+    return interval_text(*groups)
+
+
+def est_02():
+    s = Source(R02)
+    _m, n = s.find(r'^  Following: P and H pooled minus A$', 'rule 02 (P and H pooled minus A)')
+    m, line = s.find(r'^\s+95% by state: ([+-][\d.]+) \[([+-][\d.]+), ([+-][\d.]+)\]', 'rule 02, by state', n, n + 1)
+    s.record('table_rules_v2', '02: P and H pooled minus A, by state', _pts(m.groups()), line)
+    return [_pts(m.groups())]
+
+
+def est_03_and_ten():
+    groups = parse_models()
+    b3 = groups[0][1][0][1]
+    others = [(lab, left) for _g, rows in groups[1:] for lab, left, _r in rows]
+    if len(others) != 10:
+        stop(f'table_rules_v2: {len(others)} other models for the name against the address, not ten')
+    bad = [lab for lab, _e in others if VERDICTS.get((lab, 'left')) != 'met']
+    if bad:
+        stop(f'table_rules_v2: not met on {bad}: the row cannot say "met on each"')
+    pts = sorted(others, key=lambda r: float(r[1][0]))
+    rng = f'{num(pts[0][1][0])} to {num(pts[-1][1][0])}'
+    PARSED.append(('table_rules_v2', f'03 B3; the ten others, lowest {pts[0][0]}, highest {pts[-1][0]} (each met)',
+                   f'{interval_text(*b3)}; {rng}', 'as fig_models', '-'))
+    return [interval_text(*b3), rng]
+
+
+def est_12():
+    s = Source(R12)
+    m, line = s.find(r'^  P1, .*?: ([+-][\d.]+) \[([+-][\d.]+), ([+-][\d.]+)\]', 'rule P1')
+    s.record('table_rules_v2', '12 P1', _pts(m.groups()), line)
+    return [_pts(m.groups())]
+
+
+def est_04():
+    s = Source(R04)
+    m, line = s.find(r'^  D_E 95%: .*\| swapped-out under E (\d+)/(\d+), decoy under Ep (\d+)/\2$', 'rule C1')
+    v = f'{int(m.group(1)):,} against {int(m.group(3)):,} of {int(m.group(2)):,}'
+    s.record('table_rules_v2', '04 C1: swapped-out under E against decoy under Ep', v, line)
+    return [v]
+
+
+def est_03_b4():
+    s = Source(R03B4)
+    m, line = s.find(r'^  E matched true - RE rewired, touch\s+([+-][\d.]+) \[ *([+-][\d.]+), +([+-][\d.]+)\]',
+                     'rule B4 (E matched true - RE rewired)')
+    s.record('table_rules_v2', '03 B4: E matched true - RE rewired, touch', _pts(m.groups()), line)
+    return [_pts(m.groups())]
+
+
+def est_15_and_eight():
+    groups = parse_models()
+    q1 = groups[0][1][0][2]
+    others = [(lab, right) for _g, rows in groups[1:] for lab, _l, right in rows if right is not None]
+    if len(others) != 8:
+        stop(f'table_rules_v2: {len(others)} other models for the search, not eight')
+    bad = [lab for lab, _e in others if VERDICTS.get((lab, 'right')) != 'met']
+    if bad:
+        stop(f'table_rules_v2: not met on {bad}: the row cannot say "met on each"')
+    pts = sorted(others, key=lambda r: float(r[1][0]))
+    rng = f'{num(pts[0][1][0])} to {num(pts[-1][1][0])}'
+    PARSED.append(('table_rules_v2', f'15 Q1; the eight others, lowest {pts[0][0]}, highest {pts[-1][0]} (each met)',
+                   f'{interval_text(*q1)}; {rng}', 'as fig_models', '-'))
+    return [interval_text(*q1), rng]
+
+
+def est_20(rule):
+    s = Source(R20)
+    if rule == 'T2':
+        m, line = s.find(r'^  T2, the ratio TOLD / ASKED on USES THE LINE: ([\d.]+) \[([\d.]+), ([\d.]+)\]', 'rule T2')
+        v = f'{m.group(1)} [{m.group(2)}, {m.group(3)}]'
+    else:
+        m, line = s.find(rf'^  {rule}, USES THE LINE under .*?: ([+-][\d.]+) \[([+-][\d.]+), ([+-][\d.]+)\]',
+                         f'rule {rule}')
+        v = _pts(m.groups())
+    s.record('table_rules_v2', f'20 {rule}', v, line)
+    return [v]
+
+
+def est_14():
+    s = Source(R14)
+    m, line = s.find(r'^   T1 resolved: ([+-][\d.]+) points \[([+-][\d.]+), ([+-][\d.]+)\]', 'rule T1 of 14')
+    s.record('table_rules_v2', '14 T1 resolved', _pts(m.groups()), line)
+    return [_pts(m.groups())]
+
+
+def est_16_wording():
+    """Rules W1 and W2 of pre-registration 16: the September wording of the tool lines against the current one, under
+    the current listing (W1, CS minus C) and under the September listing (W2, S minus SC). Drawn only when both are
+    met; returns (estimates, outcome) or None."""
+    s = Source(R16)
+    lo, hi = s.block(r'^1\. Rules', 'section 1 of analyze_16.txt', end=r'^\d\. ')
+    parts, verdicts = [], []
+    for rule, arms in (('W1', 'CS minus C'), ('W2', 'S minus SC')):
+        m, line = s.find(rf'^  {rule}, {arms} .*?: ([+-][\d.]+) \[([+-][\d.]+), ([+-][\d.]+)\]$', f'rule {rule}', lo, hi)
+        v, vline = s.find(rf'^  {rule} verdict: (.+?) \(', f'the verdict of {rule}', lo, hi)
+        s.record('table_rules_v2', f'16 {rule}, {arms} (verdict "{v.group(1)}", line {vline})', _pts(m.groups()), line)
+        parts.append(_pts(m.groups()))
+        verdicts.append(v.group(1))
+    return (parts, 'met') if verdicts == ['met', 'met'] else None
+
+
+def est_16_listing():
+    """Rule W3 of pre-registration 16: the September listing against the current one, under the current wording (SC
+    minus C) and under the September wording (S minus CS), with the verdict the report prints for each."""
+    s = Source(R16)
+    lo, hi = s.block(r'^1\. Rules', 'section 1 of analyze_16.txt', end=r'^\d\. ')
+    parts, verdicts = [], []
+    for arms, wording in (('SC minus C', 'current'), ('S minus CS', 'September')):
+        m, line = s.find(rf'^  W3, {arms} .*?: ([+-][\d.]+) \[([+-][\d.]+), ([+-][\d.]+)\]$', f'rule W3, {arms}', lo, hi)
+        v, vline = s.find(rf'^  W3 verdict, under the {wording} wording: (.+)$', f'the verdict of W3 ({wording})', lo, hi)
+        s.record('table_rules_v2', f'16 W3, {arms} (verdict "{v.group(1)}", line {vline})', _pts(m.groups()), line)
+        parts.append(_pts(m.groups()))
+        verdicts.append(v.group(1).strip())
+    if verdicts[0] != verdicts[1]:
+        stop(f'analyze_16.txt: W3 has two verdicts: {verdicts}')
+    return parts, verdicts[0]
+
+
+VERDICT_WORDS = {'more': 'more (met)'}     # the report's verdict, in the table's words
+
+
+def est_18(rules):
+    """Rules of pre-registration 18 with the verdict the report prints under each; returns (estimates, outcome)."""
+    s = Source(R18)
+    out, verdicts = [], []
+    for rule, a, b in rules:
+        m, line = s.find(rf'^   {rule} resolved, {a} against {b}: ([+-][\d.]+) points \[([+-][\d.]+), ([+-][\d.]+)\]',
+                         f'rule {rule} of 18')
+        v, _vline = s.find(r'^\s+verdict: (.+)$', f'the verdict of {rule}', line, line + 1)
+        s.record('table_rules_v2', f'18 {rule} resolved, {a} against {b} (verdict "{v.group(1)}")',
+                 _pts(m.groups()), line)
+        out.append(_pts(m.groups()))
+        verdicts.append(v.group(1).strip())
+    if len(set(verdicts)) != 1:
+        stop(f'analyze_18.txt: the rules {[r[0] for r in rules]} of one row have different verdicts {verdicts}')
+    return out, VERDICT_WORDS.get(verdicts[0], verdicts[0])
+
+
+TABLE_ROWS = (   # (first column, the estimates, the outcome: a string, or None when the function gives it)
+    ("Names against no list, reads a neighbor's code (02)", est_02, 'not met'),
+    ('Addresses against names (03); on ten other models (05, 10, 19)', est_03_and_ten, 'met; met on each'),
+    ('File and lines against file only (12)', est_12, 'met'),
+    ('True against false entry (04)', est_04, 'met'),
+    ('True against rewired list (03)', est_03_b4, 'not met'),
+    ('Search with against without line numbers (15); on eight other models (17, 19)', est_15_and_eight,
+     'met; met on each'),
+    ('Told against nothing (20)', lambda: est_20('T1'), 'met'),
+    ('Told as a share of asked, at least two thirds (20)', lambda: est_20('T2'), 'not met'),
+    ('Wanted against unwanted hits (20)', lambda: est_20('T3'), 'not met'),
+    ('Whole runs, both changes against as shipped, resolved (14)', est_14, 'no detectable difference'),
+    ('The September wording of the tool lines against the current one, under either listing (16)', est_16_wording,
+     None),
+    ('First call goes to a graph tool, the September file listing against the current one, under either wording of '
+     'the tool lines (16)', est_16_listing, None),
+    ('Oracle, lines against control, resolved (18)', lambda: est_18((('U1', 'OA', 'N'),)), None),
+    ('Oracle, names against control; lines against names (18)',
+     lambda: est_18((('U4', 'ON', 'N'), ('U2', 'OA', 'ON'))), None),
+)
+ARM_WORDS = {'N': 'control', 'ON': 'names', 'OF': 'functions with their line ranges', 'OA': 'lines'}
+
+
+def rows_22(path):
+    """The rules L1 to L7 of pre-registration 22, with the outcomes and verdicts its report prints, arms in words."""
+    s = Source(path)
+    lo, hi = s.block(r'^2\. Rules', 'section 2 of analyze_22.txt', end=r'^\d\. ')
+    out = []
+    for i in range(lo, hi):
+        m = re.match(r'^   (L\d) (.+?), (\w+) against (\w+): ([+-][\d.]+) points \[([+-][\d.]+), ([+-][\d.]+)\]',
+                     s.lines[i])
+        if not m:
+            continue
+        v = re.match(r'^\s+verdict: (.+)$', s.lines[i + 1]) if i + 1 < hi else None
+        if not v:
+            stop(f'{rel(path)}, line {i + 2}: no verdict under rule {m.group(1)}')
+        a, b = m.group(3), m.group(4)
+        if a not in ARM_WORDS or b not in ARM_WORDS:
+            stop(f'{rel(path)}, line {i + 1}: an arm with no words: {a}, {b}')
+        label = f'Oracle, {ARM_WORDS[a]} against {ARM_WORDS[b]}, {m.group(2)} (22)'
+        est = _pts(m.groups()[4:7])
+        s.record('table_rules_v2', f'22 {m.group(1)} {m.group(2)}, {a} against {b} (verdict "{v.group(1).strip()}")',
+                 est, i + 1)
+        out.append((label, [est], VERDICT_WORDS.get(v.group(1).strip(), v.group(1).strip())))
+    if not out:
+        stop(f'{rel(path)}: no rule L1 to L7 in section 2')
+    return out
+
+
+def _numbers(text):
+    return [Decimal(x.replace('−', '-').replace(',', '')) for x in re.findall(r'[+\-−]?\d[\d,]*(?:\.\d+)?', text)]
+
+
+def compare_markdown(rows):
+    """Each estimate against the paper's row (when the private file is there): every number, rounded half up to the
+    decimals the paper prints, must be the paper's number."""
+    if not TABLE_MD.exists():
+        return ['no private table file: the estimates were not compared with the paper']
+    md = {}
+    for line in TABLE_MD.read_text(encoding='utf-8').splitlines():
+        cells = [c.strip() for c in line.strip().strip('|').split('|')]
+        if len(cells) == 3 and cells[0] not in ('Rule (registration)', '---'):
+            md[cells[0]] = cells[1]
+    out = []
+    for label, parts, _o in rows:
+        mine = '; '.join(parts)
+        paper = md.get(label)
+        if paper is None:
+            out.append(f'{label}: not in the paper\'s table; drawn {mine}')
+            continue
+        want = re.findall(r'[+\-−]?\d[\d,]*(?:\.\d+)?', paper)
+        got = _numbers(mine)
+        verdict = 'match'
+        if len(want) != len(got):
+            verdict = 'MISMATCH (a different count of numbers)'
+        else:
+            for w, g in zip(want, got):
+                q = Decimal(1).scaleb(-len(w.split('.')[1])) if '.' in w else Decimal(1)
+                if g.quantize(q, rounding='ROUND_HALF_UP') != Decimal(w.replace('−', '-').replace(',', '')):
+                    verdict = f'MISMATCH ({g} rounds to {g.quantize(q, rounding="ROUND_HALF_UP")}, the paper has {w})'
+                    break
+        out.append(f'{label}: drawn {mine} | paper {paper} | {verdict}')
+    return out
+
+
+def table_rules(out, r22):
+    rows = []
+    for label, fn, outcome in TABLE_ROWS:
+        got = fn()
+        if got is None:          # a row drawn only when its rules are met (W1 and W2)
+            continue
+        rows.append((label, *got) if outcome is None else (label, got, outcome))
+    p22 = Path(r22) if r22 else R22
+    if p22.exists():
+        rows += rows_22(p22)
+    cols = ['Rule (registration)', 'Estimate', 'Outcome']
+    fracs = [0.575, 0.255, 0.170]
+    W = W_IN * 72
+    body = []
+    for label, parts, outcome in rows:
+        cell1 = [[(line, TABLE_FS, 'normal', INK, 'normal')] for line in
+                 _wrap_pts(_display(label), W * fracs[0] - 10, TABLE_FS)]
+        est_lines = []
+        for k, p in enumerate(parts):
+            est_lines += _wrap_pts(_display(p) + (';' if k < len(parts) - 1 else ''), W * fracs[1] - 10, TABLE_FS)
+        cell2 = [[(line, TABLE_FS, 'normal', INK, 'normal')] for line in est_lines]
+        # the met color for "met" and for a registered difference that was found ("more", "fewer", or the words a
+        # registration gives one, as W3's "more graph calls with ..."); neutral for "not met", no detectable difference
+        met = (outcome.split(';')[0].split(' (')[0] in ('met', 'more', 'fewer')
+               or outcome.startswith(('more graph calls', 'fewer graph calls')))
+        style = ('bold', BLUE, 'normal') if met else ('normal', INK, 'normal')
+        o_lines = []
+        for k, part in enumerate(outcome.split('; ')):
+            o_lines += _wrap_pts(part + (';' if k < len(outcome.split('; ')) - 1 else ''), W * fracs[2] - 10, TABLE_FS,
+                                 style[0])
+        cell3 = [[(line, TABLE_FS, *style)] for line in o_lines]
+        body.append(('row', [cell1, cell2, cell3]))
+    _draw_table(cols, fracs, body, TABLE_NOTE, out, 'table_rules_v2')
+    return compare_markdown(rows)
+
+
 # ================================================================ main
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -827,6 +1201,7 @@ def main():
     fig_graph(out)
     fig_moves(out)
     with22 = fig_oracle(out, args.r22)
+    against_paper = table_rules(out, args.r22)
     w1 = max(len(r[0]) for r in PARSED)
     w2 = max(len(r[1]) for r in PARSED)
     w3 = max(len(r[2]) for r in PARSED)
@@ -834,7 +1209,11 @@ def main():
     for figname, q, v, f, ln in PARSED:
         print(f'  {figname:<{w1}}  {q:<{w2}}  {v:<{w3}}  {f}:{ln}')
     print(f'fig_oracle: seed 3 (pre-registration 22) {"drawn" if with22 else "not drawn: no " + rel(R22)}')
-    print(f'wrote fig_models, fig_asked_told, fig_graph, fig_moves and fig_oracle (.png at {DPI} dpi, .svg) in {out}')
+    print('table_rules_v2, each estimate against the row of the paper (rounded half up to its decimals):')
+    for line in against_paper:
+        print(f'  {line}')
+    print(f'wrote fig_models, fig_asked_told, fig_graph, fig_moves, fig_oracle and table_rules_v2 (.png at {DPI} dpi, '
+          f'.svg) in {out}')
 
 
 if __name__ == '__main__':
