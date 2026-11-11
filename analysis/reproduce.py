@@ -200,6 +200,12 @@ JOBS = [
      ['analysis/rederive_20.py', '--no-write'], f'{R}/rederive_20.txt',
      [f'{R}/20/forks/results.jsonl', f'{R}/15/forks/results.jsonl', 'analysis/fork_states_t/states.jsonl',
       'analysis/fork_states_s/states.jsonl', 'data/snapshots']),
+    ('24 asked or told on seven hosted models: W1, W2, W3', 'registered',
+     ['analysis/analyze_24.py', '--no-write'], f'{R}/24/analyze_24.txt',
+     [f'{R}/24/zai-org__GLM-5.3-Flash/results.jsonl', f'{R}/20/forks/results.jsonl', 'analysis/fork_states_t/states.jsonl', 'analysis/fork_states_s/states.jsonl']),
+    ('24 asked or told on seven hosted models, independent', 'independent',
+     ['analysis/rederive_24.py', '--no-write'], f'{R}/rederive_24.txt',
+     [f'{R}/24/zai-org__GLM-5.3-Flash/results.jsonl', f'{R}/20/forks/results.jsonl', 'analysis/fork_states_t/states.jsonl', 'analysis/fork_states_s/states.jsonl']),
     ('19 the two one-call contrasts on seven hosted models: V1, V2', 'registered',
      ['analysis/analyze_19.py', '--no-write'], f'{R}/19/analyze_19.txt',
      [f'{R}/19/10', f'{R}/19/17', 'analysis/fork_states_d/states.jsonl', 'analysis/fork_states_s/states.jsonl']),
@@ -335,6 +341,8 @@ SNAP_INDEX = 'data/cache/snapshot_files'   # built by analysis/snapshot_index.py
 ORACLE_18 = 'data/cache/oracle_18'         # built by analysis/make_oracle_18.py from the competition data
 STATES_W = 'analysis/fork_states_w/first_call_states.jsonl'
 DATA = {
+    '24 asked or told on seven hosted models: W1, W2, W3': [SNAP],
+    '24 asked or told on seven hosted models, independent': [SNAP],
     'one-call contrasts of 03, 12, 15 and 20: intervals with tasks resampled instead of steps': [SNAP],
     '02 one step: following, discrimination, channel': [SNAP],
     '03 one step: force, encoding, structure': [SNAP],

@@ -148,3 +148,12 @@ steps from one of them. TOLDX on half of the steps.
   under NONE and TOLD can carry lines of their own.
   Both cuts are exploratory. Also to be said wherever the result is given: the seven models share one sample of 53
   steps from 26 tasks, so they are not seven independent tests.
+
+- Nov 11, 2026, 5:15 AM EST, after the registered analysis and a second script written without it
+  (`analysis/rederive_24.py`) had both run: the two agree on the reading across models (W1 met on seven of seven;
+  W1 and W2 both met on two, DeepSeek and MiniMax; needed six) and on every verdict of W1 and W2. They differ on W3
+  for one model: the registered script counts five models, the second four (Qwen3-30B: -5.8 [-12.2, -0.6] against
+  -0.6 [-3.8, 1.9]), because the two do not count the same commands as a search; the second script prints both
+  counts. For the same model the lower bound of W2's interval is exactly zero in the second script, which reads
+  "above zero" as strictly above; neither script calls it met. The second script also computed the two cuts of the
+  note above; they are exploratory and have one implementation.
