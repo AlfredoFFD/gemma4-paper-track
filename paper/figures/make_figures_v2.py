@@ -544,9 +544,13 @@ def fig_graph(out):
 CLASSES = (('TOP', 'from the top of a file', PALE), ('PAGING', 'continues or overlaps an earlier read', GREY),
            ('ADDRESSED', 'at a line an earlier result numbered', BLUE), ('SHELL VIEW', 'after a shell view', DARK),
            ('NO NUMBER', 'none of these', INK))
-BUCKETS = ('1', '2 or 3', '4 to 9', '10 or more')
+BUCKETS = ('2 or 3', '4 to 9', '10 or more')
 STARTER = r'^starter agent, public runs of September \(GraphLoc base arm\)'
-OURS = r'^our whole runs of pre-registration 14, condition N'
+INDEP = RES / 'explore_independence.txt'          # the count of the right panel (exploratory)
+INDEP2 = RES / 'rederive_independence.txt'        # the same count by a second script
+# Typed, from the coordinator's message, only to check the parsed values (never drawn): (read every file, shown every
+# region, resolved) of the runs, for fixes in one file and in several files (explore_independence.txt, first set).
+TYPED_FILES = {'one': (195, 166, 84, 225), 'several': (33, 18, 8, 90)}
 
 
 def parse_moves():
@@ -574,32 +578,80 @@ def parse_moves():
     m, ln = s.find(r'^all (\d+) sets: first READS of a file (\d+); of class NO NUMBER (\d+)', 'all sets', s1, e1)
     allsets = tuple(int(g) for g in m.groups())
     s.record('fig_moves', 'left: all sets; first reads; of them NO NUMBER', '; '.join(m.groups()), ln)
-    s3, e3 = s.block(r'^3\. Where the fix lies', 'section 3', end=r'^\d\. ')
+    return dict(runs=runs, tasks=tasks, classed=classed, counts=counts, allsets=allsets, **parse_files())
 
-    def by_regions(head, what, resolved=True):
-        b0, b1 = s.block(head, what, lo=s3, hi=e3)
-        c0, c1 = s.block(r'^\s+by the number of CHANGED REGIONS of the task$', f'{what}: by regions',
-                         end=r'^\s{3}\S', lo=b0, hi=b1)
-        res = {}
-        for b in BUCKETS:
-            m, ln = s.find(rf'^\s+{re.escape(b)}: tasks (\d+); runs shown every region (\d+) of (\d+) \([\d.]+%\); '
-                           r'resolved (\d+) of (\d+) \(', f'{what}, {b}', c0, c1)
-            t, k_s, n_s, k_r, n_r = (int(g) for g in m.groups())
-            if n_s != n_r:
-                stop(f'explore_read_starts.txt: {what}, {b}: {n_s} and {n_r} runs')
-            res[b] = dict(tasks=t, shown=k_s, resolved=k_r, n=n_s)
-            s.record('fig_moves', f'right: {what}, {b} region(s): tasks; shown every; resolved',
-                     f'{t}; {k_s} of {n_s}; {k_r} of {n_r}', ln)
-        return res
 
-    starter = by_regions(STARTER + r': runs of tasks with a CHANGED REGION', 'starter public runs')
-    m, ln = s.find(STARTER + r': runs of tasks with a CHANGED REGION (\d+), tasks (\d+)', 'section 3, starter', s3, e3)
-    s.record('fig_moves', 'right: starter, runs of tasks with a changed region; tasks', '; '.join(m.groups()), ln)
-    ours = by_regions(OURS + r': runs of tasks with a CHANGED REGION', 'our runs as shipped (N)')
-    m2, ln = s.find(OURS + r': runs of tasks with a CHANGED REGION (\d+), tasks (\d+)', 'section 3, ours', s3, e3)
-    s.record('fig_moves', 'right: ours (N), runs of tasks with a changed region; tasks', '; '.join(m2.groups()), ln)
-    return dict(runs=runs, tasks=tasks, classed=classed, counts=counts, allsets=allsets, starter=starter, ours=ours,
-                ours_runs=int(m2.group(1)), starter_runs=int(m.group(1)))
+def parse_files():
+    """The right panel: the first set of explore_independence.txt (the starter agent's public runs, base arm)."""
+    s = Source(INDEP)
+    b0, b1 = s.block(STARTER + r': runs of tasks with a CHANGED REGION \d+, tasks \d+$', 'the first set')
+    files = {}
+    m, ln = s.find(r'^   fixes whose regions lie in one file: tasks (\d+), runs (\d+); the run read the file (\d+) of '
+                   r'(\d+) \([\d.]+%\); SHOWN every region (\d+) of (\d+) \([\d.]+%\); resolved (\d+) of (\d+) \(',
+                   'fixes in one file', b0, b1)
+    t, n, rd, n1, sh, n2, rs, n3 = (int(g) for g in m.groups())
+    if not n == n1 == n2 == n3:
+        stop(f'explore_independence.txt, line {ln}: runs {n}, {n1}, {n2}, {n3}')
+    files['one'] = dict(tasks=t, n=n, read=rd, shown=sh, resolved=rs)
+    s.record('fig_moves', 'right: one file: tasks; read the file; shown every region; resolved',
+             f'{t}; {rd}, {sh}, {rs} of {n}', ln)
+    m, ln = s.find(r'^   fixes whose regions lie in several files: tasks (\d+), runs (\d+); .*; runs that read every '
+                   r'file of the fix (\d+) of (\d+) \(', 'fixes in several files', b0, b1)
+    t, n, rd, n1 = (int(g) for g in m.groups())
+    m2, ln2 = s.find(r'^      2 or more regions, several files: tasks (\d+), runs (\d+); .*; runs SHOWN every region '
+                     r'(\d+) of (\d+) \([\d.]+%\) \(CONSTANT RATE [\d.]+\); resolved (\d+) of (\d+) \(',
+                     '2 or more regions, several files', b0, b1)
+    t2, n2, sh, n3, rs, n4 = (int(g) for g in m2.groups())
+    if not (t == t2 and n == n1 == n2 == n3 == n4):
+        stop(f'explore_independence.txt, lines {ln} and {ln2}: tasks {t}, {t2}; runs {n}, {n1}, {n2}, {n3}, {n4}')
+    files['several'] = dict(tasks=t, n=n, read=rd, shown=sh, resolved=rs)
+    s.record('fig_moves', 'right: several files: tasks; read every file', f'{t}; {rd} of {n}', ln)
+    s.record('fig_moves', 'right: several files: shown every region; resolved', f'{sh}, {rs} of {n}', ln2)
+    for k, typed in TYPED_FILES.items():
+        got = (files[k]['read'], files[k]['shown'], files[k]['resolved'], files[k]['n'])
+        if got != typed:
+            stop(f'fig_moves: {k} file(s): the file prints {got}, the message types {typed}')
+    # by number of regions: runs shown every region, observed and as independent regions at the one-region rate
+    buckets = {}
+    for bk in BUCKETS:
+        h0, h1 = s.block(rf'^   fixes with {re.escape(bk)} CHANGED REGIONS: tasks \d+, runs \d+$', f'fixes with {bk}',
+                         end=r'^   \S', lo=b0, hi=b1)
+        m, ln = s.find(r'SHOWN every region (\d+) of (\d+) \(', f'{bk}: shown every region', h0, h1)
+        k, n = int(m.group(1)), int(m.group(2))
+        m2, ln2 = s.find(r'runs SHOWN every region if regions were independent: CONSTANT RATE ([\d.]+);',
+                         f'{bk}: CONSTANT RATE', h0, h1)
+        buckets[bk] = dict(k=k, n=n, expected=float(m2.group(1)))
+        s.record('fig_moves', f'right, note: {bk} regions: shown every region; CONSTANT RATE (line {ln2})',
+                 f'{k} of {n}; {m2.group(1)}', ln)
+    # the second script must agree on every count drawn that it prints
+    r = Source(INDEP2)
+    c0, c1 = r.block(r'^### 1\. public starter agent, base arm', 'the first set of the recount', end=r'^### ')
+    m, ln = r.find(r'^   tasks (\d+); runs (\d+); runs that READ the file (\d+)/(\d+) \([\d.]+%\); shown every region '
+                   r'(\d+)/(\d+)', 'recount: one file', c0, c1)
+    one = files['one']
+    if tuple(int(g) for g in m.groups()) != (one['tasks'], one['n'], one['read'], one['n'], one['shown'], one['n']):
+        stop(f'rederive_independence.txt, line {ln}: the recount differs for fixes in one file')
+    r.record('fig_moves', 'recount: one file: tasks; runs; read; shown every region', '; '.join(m.groups()), ln)
+    m, ln = r.find(r'^   tasks (\d+); runs (\d+); FILES OF THE FIX \d+; .*runs that READ every file (\d+)/(\d+)',
+                   'recount: several files', c0, c1)
+    sev = files['several']
+    if tuple(int(g) for g in m.groups()) != (sev['tasks'], sev['n'], sev['read'], sev['n']):
+        stop(f'rederive_independence.txt, line {ln}: the recount differs for fixes in several files')
+    r.record('fig_moves', 'recount: several files: tasks; runs; read every file', '; '.join(m.groups()), ln)
+    m, ln = r.find(r'^   2 or more  IN SEVERAL FILES tasks +(\d+); runs +(\d+); .*shown every region (\d+)/(\d+)',
+                   'recount: several files, shown every region', c0, c1)
+    if tuple(int(g) for g in m.groups()) != (sev['tasks'], sev['n'], sev['shown'], sev['n']):
+        stop(f'rederive_independence.txt, line {ln}: the recount differs for shown every region, several files')
+    r.record('fig_moves', 'recount: several files: shown every region', f'{m.group(3)} of {m.group(4)}', ln)
+    for bk in BUCKETS:
+        m, ln = r.find(rf'^   {re.escape(bk)}\s+tasks +\d+; runs +(\d+); .*shown every region (\d+)/(\d+) '
+                       r'\([\d.]+%\); expected if independent ([\d.]+)$', f'recount: {bk}', c0, c1)
+        x = buckets[bk]
+        if (int(m.group(2)), int(m.group(3)), float(m.group(4))) != (x['k'], x['n'], x['expected']):
+            stop(f'rederive_independence.txt, line {ln}: the recount differs for {bk} regions')
+        r.record('fig_moves', f'recount: {bk} regions: shown every region; expected', f'{m.group(2)} of {m.group(3)}; '
+                 f'{m.group(4)}', ln)
+    return dict(files=files, buckets=buckets)
 
 
 def fig_moves(out):
@@ -609,12 +661,13 @@ def fig_moves(out):
     rows_a = ROW * len(CLASSES)
     LAB_R, X0, X1 = 2.62, 2.74, 6.55
     B_TOP = TOP + A_HEAD + rows_a + 0.42 + 0.30 + 0.20
-    B_HEAD, B_H, B_AX = 0.58, 2.05, 0.50
-    h_in = B_TOP + B_HEAD + B_H + B_AX + 0.28
+    B_HEAD, B_H, B_AX = 0.46, 1.95, 0.42
+    NOTE_H = 0.40
+    h_in = B_TOP + B_HEAD + B_H + B_AX + NOTE_H + 0.28
     fig, page = page_of(h_in)
-    page.text(0.09, 0.07, 'Where a file read starts, and how many places a fix has', ha='left', va='top',
-              fontsize=10.5, color=INK)
-    # panel (a)
+    page.text(0.09, 0.07, 'Where a file read starts, and where a fix is lost', ha='left', va='top', fontsize=10.5,
+              color=INK)
+    # panel (a), unchanged
     page.text(0.09, TOP, '(a)', ha='left', va='top', fontsize=9.4, fontweight='bold', color=INK)
     page.text(0.36, TOP + 0.005, 'Where a file read starts', ha='left', va='top', fontsize=9.0, color=INK)
     page.text(W_IN - 0.10, TOP + 0.02, f'the starter agent\'s {d["runs"]} public runs of {d["tasks"]} tasks: '
@@ -643,32 +696,31 @@ def fig_moves(out):
     page.text(0.36, y0 + rows_a + 0.50, f'First reads of a file that start past line 1 with no line number in hand, '
               f'over all {WORDS.get(n_sets, n_sets)} sets of runs: {none:,} of {first:,}.', ha='left', va='top',
               fontsize=8.0, color=INK)
-    # panel (b)
+    # panel (b): a fix in one file, and a fix in several
+    files = d['files']
     page.text(0.09, B_TOP, '(b)', ha='left', va='top', fontsize=9.4, fontweight='bold', color=INK)
-    page.text(0.36, B_TOP + 0.005, 'Shown every place the fix changes, and resolved, by how many places it has',
-              ha='left', va='top', fontsize=9.0, color=INK)
-    page.text(0.36, B_TOP + 0.21, f'bars: the starter agent\'s public runs ({d["starter_runs"]} runs of tasks with a '
-              f'changed region); markers: our runs as shipped ({d["ours_runs"]} runs, one per task)', ha='left',
-              va='top', fontsize=7.6, color=INK2)
-    page.text(0.09, h_in - 0.07, 'Both panels are exploratory: counted on stored runs, with no registered rule.',
-              ha='left', va='bottom', fontsize=6.9, color=MUTED)
+    page.text(0.36, B_TOP + 0.005, 'A fix in one file, and a fix in several', ha='left', va='top', fontsize=9.0,
+              color=INK)
+    page.text(W_IN - 0.10, B_TOP + 0.02, f'the starter agent\'s public runs, without the skill: '
+              f'{files["one"]["n"] + files["several"]["n"]} runs', ha='right', va='top', fontsize=7.6, color=INK2)
     bx = axes_at(fig, 0.80, 6.90, B_TOP + B_HEAD, B_TOP + B_HEAD + B_H)
-    series = (('shown', 'shown every changed region', BLUE), ('resolved', 'resolved (the tests pass)', GREY))
-    bw = 0.34
-    for gi, b in enumerate(BUCKETS):
-        st, ou = d['starter'][b], d['ours'][b]
+    series = (('read', 'the run reads every file of the fix', LIGHT),
+              ('shown', 'is shown every changed region', BLUE),
+              ('resolved', 'resolves the task', GREY))
+    groups = (('one', 'fix in one file'), ('several', 'fix in several files'))
+    bw = 0.26
+    for gi, (gk, _gl) in enumerate(groups):
+        g = files[gk]
         for si, (key, _label, color) in enumerate(series):
-            x = gi + (si - 0.5) * (bw + 0.04)
-            share = 100 * st[key] / st['n']
+            x = gi + (si - 1) * (bw + 0.03)
+            share = 100 * g[key] / g['n']
             bx.bar(x, share, width=bw, color=color, edgecolor=color, linewidth=0.6, zorder=2)
-            mine = 100 * ou[key] / ou['n']
-            bx.plot(x, mine, marker='D', ms=5.0, mfc='white', mec=INK, mew=1.0, zorder=4)
-            bx.text(x, max(share, mine) + 3.6,f'{st[key]} of {st["n"]}', ha='center', va='bottom', fontsize=6.9,
-                    color=INK, zorder=5)
-    bx.set_xlim(-0.6, len(BUCKETS) - 0.4)
+            bx.text(x, share + 2.0, f'{g[key]} of {g["n"]}', ha='center', va='bottom', fontsize=7.4, color=INK,
+                    zorder=5)
+    bx.set_xlim(-0.55, len(groups) - 0.45 + 0.95)     # room on the right for the key
     bx.set_ylim(0, 100)
-    bx.set_xticks(range(len(BUCKETS)))
-    bx.set_xticklabels([f'{b} region{"" if b == "1" else "s"}\n{d["starter"][b]["tasks"]} tasks' for b in BUCKETS],
+    bx.set_xticks(range(len(groups)))
+    bx.set_xticklabels([f'{gl}\n{files[gk]["tasks"]} tasks, {files[gk]["n"]} runs' for gk, gl in groups],
                        fontsize=7.8)
     bx.set_yticks([0, 20, 40, 60, 80, 100])
     bx.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f'{v:.0f}%'))
@@ -676,17 +728,23 @@ def fig_moves(out):
     bx.set_axisbelow(True)
     bx.spines[['top', 'right']].set_visible(False)
     bx.tick_params(labelsize=7.8, length=3)
+    bx.tick_params(axis='x', length=0)
     bx.set_ylabel('share of runs', fontsize=8.0)
-    bx.set_xlabel('changed regions of the reference fix', fontsize=7.8)
-    # the key, top right inside the plot
-    kx, ky = 0.60, 0.95
+    kx, ky = 0.66, 0.90
     for key, label, color in series:
-        bx.add_patch(Rectangle((kx, ky - 0.025), 0.03, 0.05, transform=bx.transAxes, fc=color, ec='none', zorder=6))
-        bx.text(kx + 0.045, ky, label, transform=bx.transAxes, ha='left', va='center', fontsize=7.6, color=INK, zorder=6)
-        ky -= 0.075
-    bx.plot(kx + 0.015, ky, marker='D', ms=5.0, mfc='white', mec=INK, mew=1.0, transform=bx.transAxes, zorder=6)
-    bx.text(kx + 0.045, ky, 'our runs as shipped', transform=bx.transAxes, ha='left', va='center',
-            fontsize=7.6, color=INK, zorder=6)
+        bx.add_patch(Rectangle((kx, ky - 0.025), 0.025, 0.05, transform=bx.transAxes, fc=color, ec='none', zorder=6))
+        bx.text(kx + 0.04, ky, label, transform=bx.transAxes, ha='left', va='center', fontsize=7.6, color=INK, zorder=6)
+        ky -= 0.085
+    bk = d['buckets']
+    obs = ', '.join(f'{100 * bk[b]["k"] / bk[b]["n"]:.0f}%' for b in BUCKETS)
+    exp = ', '.join(f'{100 * bk[b]["expected"] / bk[b]["n"]:.0f}%' for b in BUCKETS)
+    note = wrap(f'By number of regions, runs shown every region: {obs} for 2 to 3, 4 to 9 and 10 or more; regions '
+                f'shown independently at the one-region rate would give {exp}.', 125)
+    yn = B_TOP + B_HEAD + B_H + B_AX
+    for i, line in enumerate(note):
+        page.text(0.36, yn + 0.14 * i, line, ha='left', va='top', fontsize=7.6, color=INK2)
+    page.text(0.09, h_in - 0.07, 'Both panels are exploratory: counted on stored runs, with no registered rule; panel '
+              '(b) recounted by a second script.', ha='left', va='bottom', fontsize=6.9, color=MUTED)
     save(fig, page, out, 'fig_moves')
 
 
