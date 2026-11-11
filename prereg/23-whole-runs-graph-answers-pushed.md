@@ -186,3 +186,14 @@ and resumes (finished sessions are not run twice). At about 3.3 to 3.8 dollars p
   two containers at 3:29:34 PM and 3:40:36 PM. No session with the model ran before those times, nothing was
   launched twice, and nothing in the design or the files changed. Written while both shards were running,
   before any stored row was read.
+- Nov 11, 2026, 5:05 PM EST. The container of shard 1/2 finished all its sessions at about 5:03 PM. The
+  container of shard 0/2 (started 3:40:36 PM) is slower (60 of its 104 sessions after 83 minutes) and will stop
+  starting sessions at its time budget of 1.9 hours with sessions left. Fixed now, before any stored row of 23 has
+  been pulled or read. (What has been read: at 3:47 PM, while looking for a progress line, six per-session lines of
+  the running logs, with arm, task, resolved and ending; since then only counts of finished sessions and the
+  timestamps of session lines.) (1) Shard 0/2 is launched again once, with the same command, to finish its
+  remaining sessions, as the registration provides; if the account's spending limit would be passed, it is not, and
+  the run is analysed on the tasks stored, with their number stated. (2) The second script and then the registered
+  analysis are run once on what is stored when shard 0/2 first stops, marked INTERIM, for a reading copy of the
+  paper. Nothing in the design, the scripts or the decision to finish the run depends on that interim output, and
+  the numbers reported are those of the run as finally stored.
