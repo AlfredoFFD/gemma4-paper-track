@@ -1,4 +1,4 @@
-# A name is not an address
+# A name is not an address, and an address is not enough
 
 What a code-graph answer changes in what a coding agent does.
 
