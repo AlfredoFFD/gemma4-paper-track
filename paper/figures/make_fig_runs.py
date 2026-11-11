@@ -1,4 +1,4 @@
-"""Figure 5: sooner, not more. What the two changes buy at each horizon, and a public experiment on whole runs.
+"""Figure 5: sooner, with no detectable gain in solved tasks. What the two changes buy at each horizon, and a public experiment on whole runs.
 
 Usage: py -I -X utf8 paper/figures/make_fig_runs.py [--out <dir>]
 
@@ -8,8 +8,8 @@ Every number is read from a stored report in this repository; the script fails i
   analysis/results/g/analyze_g.txt          pre-registration 08, rules G2 and G3: five-call replays with the repair
   analysis/results/09/analyze_09.txt        pre-registration 09, rules A1 and A2 and one contrast that it reports
                                             without a rule: fresh episodes of up to eight model calls
-  analysis/results/public/time_to_fix.txt   whole public runs of the starter agent with and without a skill that
-                                            prints addresses (exploratory; another team's runs)
+  analysis/results/public/time_to_fix.txt   whole public runs of the starter agent with and without GraphLoc's
+                                            skill (exploratory; another entry's runs)
 Optional. Its two rows are drawn when the report exists; until then their group says "whole runs: pending":
   analysis/results/14/analyze_14.txt        pre-registration 14, rules T2 and T1: our whole runs scored by tests
 
@@ -31,7 +31,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt  # noqa: E402
 
-TITLE = 'Sooner, not more'      # the title above both panels; set it here once the whole runs are in
+TITLE = 'Sooner, with no detectable gain in solved tasks'      # the title above both panels
 
 FIG = Path(__file__).resolve().parent
 RES = FIG.parents[1] / 'analysis' / 'results'
@@ -367,17 +367,16 @@ def main():
     draw_forest(fig, page, TOP_H + HEAD_H, groups, pending)
 
     top_b = TOP_H + HEAD_H + block_h + AXIS_H + GAP_H
-    panel_title(page, top_b, '(b)', 'A public experiment, whole runs')
+    panel_title(page, top_b, '(b)', 'Another entry\'s public runs, whole runs')
     b = fig.add_axes([B_L / W_IN, 1 - (top_b + HEAD_H + B_H) / h_in, (B_R - B_L) / W_IN, B_H / h_in])
     n = pub['n']
     style(b, len(pub['curves']['base']) + 0.5, f'tool calls ({n:,} whole public runs per condition)')
     top = whole_panel(
         b, dict(curves=[pub['curves']['base'], pub['curves']['skill']], ever=pub['ever'], gap_k=5,
                 gap_lines=[f'within 5 calls: {interval(pub["d5"])}']),
-        ('without the skill', 'with a skill that prints addresses'),
+        ('without the skill', 'with GraphLoc\'s skill (prints path:line name; also changes what is retrieved)'),
         [f'resolved (tests pass), of {n:,} each:',
-         f'{pub["resolved"]["base"]:,} without the skill, {pub["resolved"]["skill"]:,} with it'],
-        ['another team\'s runs; the skill also', 'changes what is retrieved'])
+         f'{pub["resolved"]["base"]:,} without the skill, {pub["resolved"]["skill"]:,} with it'])
     b.set_ylim(0, max(100.0, top))       # room for the label of the dashed line
     b.set_ylabel('shown a line the fix changes', fontsize=8.2)
 

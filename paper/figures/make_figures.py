@@ -1202,7 +1202,8 @@ def fig_extensions(exps, out_dir, which=('a', 'b', 'c'), name='fig_extensions'):
                 lambda v, _: '0' if abs(v) < 1e-9 else f'{v:+.0f}'.replace('-', MINUS)))
             ax.set_xlabel('addresses minus bare names, in percentage points of replays\nwhose next call reads a '
                           'neighbor\'s code', fontsize=8.2, linespacing=1.2)
-            return f'Addresses against bare names in every registered variation (the same {n_all:,} paused steps)'
+            return (f'Every registered variation replayed the same {n_all:,} paused steps; each row is on the steps '
+                    'complete for it')
         panels.append(('a', 0.50 * len(rows) + 0.34, draw_a, 0.14))
 
     # (b) the run on the second platform: which part of an entry, and a false entry
