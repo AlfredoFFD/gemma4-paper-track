@@ -181,4 +181,8 @@ and resumes (finished sessions are not run twice). At about 3.3 to 3.8 dollars p
 
 ## Notes added after the freeze
 
-(none yet)
+- Nov 11, 2026, 3:42 PM EST. The two calls of this launch (shards 0/2 and 1/2, arms PH and PE) were
+  enqueued at 3:06 PM and waited for a free GPU of the registered type (A100-80GB); the platform started the
+  two containers at 3:29:34 PM and 3:40:36 PM. No session with the model ran before those times, nothing was
+  launched twice, and nothing in the design or the files changed. Written while both shards were running,
+  before any stored row was read.
