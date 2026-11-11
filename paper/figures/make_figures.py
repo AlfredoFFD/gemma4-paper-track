@@ -1405,11 +1405,13 @@ def _wrap_pts(text, width_pt, size, weight='normal', style='normal'):
 NUM = r'[+\-−]?\d+\.\d+'
 # The verdicts a rule may carry unless its table names its own ("outcomes" in the data file), in the order of the
 # tally; they are the words of Appendix A. "no detectable difference" is for a rule that registered both directions
-# (its interval may exclude 0 either way) when the interval holds 0; "asked for less often" for one that found the
-# direction that is not a claim of the paper; "underpowered" for one whose own condition for being informative
-# failed. A gate (a row marked "gate": true) is "passed" or "failed" and is not counted among the rules.
-OUTCOMES = ('met', 'not met', 'no detectable difference', 'asked for less often', 'not tested', 'underpowered',
-            'pending')
+# (its interval may exclude 0 either way) when the interval holds 0; "asked for less often" (rule X2 of
+# pre-registration 13) and "more graph calls with the September listing" (rule W3 of pre-registration 16) for a rule
+# that registered both directions and found one, in the words of its registration; "underpowered" for one whose own
+# condition for being informative failed. A gate (a row marked "gate": true) is "passed" or "failed" and is not
+# counted among the rules.
+OUTCOMES = ('met', 'not met', 'no detectable difference', 'asked for less often',
+            'more graph calls with the September listing', 'not tested', 'underpowered', 'pending')
 GATE_OUTCOMES = ('passed', 'failed')
 
 

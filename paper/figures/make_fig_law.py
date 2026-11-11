@@ -10,6 +10,8 @@ Every count is read from a stored report in this repository; the script fails if
   analysis/results/explore_depth.txt         the same first reads, split by whether the named line lies within the
                                              lines a read without a range returns
   analysis/results/explore_first_reads.txt   the one-step replays, restated as first reads of a listed neighbor's file
+  analysis/results/15/analyze_15.txt         the agent's own search with its line numbers kept, stripped, and stripped
+                                             and handed back in a note (pre-registration 15; registered report)
 Optional, drawn when the report exists and skipped silently when it does not:
   analysis/results/13/analyze_13.txt         the same addresses written as search hits (pre-registration 13)
 
@@ -18,7 +20,11 @@ lines a read from the top returns (in sight); a line number past them (out of si
 one line of a report, and the script checks that the two parts add up to that line.
 Panel (a) is observational (the agent chose to search or to list). Panel (b) is controlled: we chose what the graph's
 answer prints, without and with line numbers, and every paused step and every task gets every condition, so nothing
-is assigned at random (at paused steps the list is given to the agent; in fresh episodes it asked for it).
+is assigned at random (at paused steps the list is given to the agent; in fresh episodes it asked for it). Its last
+three rows are the paused steps that follow the agent's own search (pre-registration 15): the result as recorded,
+the same with its line numbers stripped, and stripped with the numbers handed back in a note. Their value is C of the
+registered report, the share of the next call's reads of a hit file that ask past line 1, split by whether the file's
+nearest hit lies past the window (the report's split); the grey bar of the stripped result is not split.
 The public counts, the replay counts and the split by depth are exploratory; the fresh-episode row of panel (a) is
 the registered test (its two blue bars together are the registered count).
 The strings of the strip "What the agent is shown" are examples of the four ways of writing, not results: the first
@@ -43,6 +49,7 @@ FRESH = RES / '09' / 'analyze_11.txt'
 DEPTH = RES / 'explore_depth.txt'
 REPLAYS = RES / 'explore_first_reads.txt'
 HITS = RES / '13' / 'analyze_13.txt'      # optional
+OWN = RES / '15' / 'analyze_15.txt'       # pre-registration 15, the registered report
 
 INK, INK2, MUTED = '#222222', '#555555', '#8a8a8a'
 GREY, LIGHT, BLUE = '#8e8e8e', '#8fb5dc', '#1f6fb4'
@@ -217,18 +224,48 @@ def replay_rows():
     return rows
 
 
+def own_search_rows(window):
+    """Pre-registration 15: paused steps after the agent's own search. Per arm, C of the registered report (reads of
+    a hit file that ask past line 1, on the states complete for every rule), split by the file's nearest hit."""
+    t = text_of(OWN)
+    (complete,) = need(r'^\s+on the (\d+) states complete for every rule\n\s+arm S ', t, 'own search: complete states')
+    rates = t.split('\n2. ')[1].split('\n3. ')[0]
+    descr = t.split('\n3. ')[1]
+    out = {}
+    for arm in ('S', 'S0', 'S0N'):
+        total = need(rf'^\s+arm {arm}\s+Y1, .*; C, past line 1 among those reads: (\d+) of (\d+)', rates,
+                     f'own search, arm {arm}: C')
+        w1, k2, n2, w2, k1, n1 = need(rf'^\s+arm {arm}\s+Y1 by the nearest hit of the file read: past line (\d+), '
+                                      r'(\d+) of (\d+) reads ask past line 1; within the first (\d+) lines, (\d+) of '
+                                      r'(\d+)', descr, f'own search, arm {arm}: by the nearest hit')
+        if not w1 == w2 == window:
+            raise SystemExit(f'make_fig_law: analyze_15.txt splits at lines {w1} and {w2}, address.txt at {window}')
+        out[arm] = (total, *split_of(total, (k1, n1), (k2, n2), f'own search, arm {arm}'))
+    return [dict(label=f'After the agent\'s own search (pre-registration 15; {complete} paused steps)'),
+            dict(main='Line numbers kept', sub='the search result as recorded', none=None, near=out['S'][1],
+                 far=out['S'][2]),
+            dict(main='Line numbers stripped', grey='the same result without them', none=out['S0'][0]),
+            dict(main='Stripped, handed back in a note', sub='the numbers as a message after the result', none=None,
+                 near=out['S0N'][1], far=out['S0N'][2])]
+
+
 # ---------------------------------------------------------------- drawing
 W_IN = 7.0
 LEFT_IN, RIGHT_IN = 2.80, 0.10        # label column, right margin
 ROW_H, HEAD_H, GAP_H = 0.375, 0.27, 0.10
+LABEL_H = 0.21                        # a small label over a group of rows inside a panel
 BAR_H, BAR_PITCH = 0.088, 0.100
 TOP_H = 0.90                          # title and legend
 AXIS_H, NOTE_LINE, STRIP_H = 0.30, 0.125, 1.11
 
 
 def draw(panels, window, notes, out_dir):
-    """panels: [(tag, title, what the panel covers or '', rows)]."""
-    plot_h = sum(HEAD_H + ROW_H * len(rows) for *_t, rows in panels) + GAP_H * (len(panels) - 1)
+    """panels: [(tag, title, what the panel covers or '', rows)]; a row {'label': text} is a small label over the
+    rows that follow it."""
+    def row_h(row):
+        return LABEL_H if 'label' in row else ROW_H
+
+    plot_h = sum(HEAD_H + sum(row_h(r) for r in rows) for *_t, rows in panels) + GAP_H * (len(panels) - 1)
     # what a read from the top returns, where an agent's own window differs
     note = [f'A read without a line range returns lines 1 to {window} in this competition\'s harness.']
     for agent, lines, model in notes['other']:
@@ -279,11 +316,27 @@ def draw(panels, window, notes, out_dir):
         if covers:
             page.text(W_IN - 0.10, TOP_H + y + 0.092, covers, ha='right', va='top', fontsize=7.6, color=INK2)
         y += HEAD_H
-        top, bottom = y, y + ROW_H * len(rows)
-        for x in (25, 50, 75, 100):
-            ax.plot([x, x], [top + 0.03, bottom - 0.03], color=GRID, lw=0.6, zorder=0)
-        ax.plot([0, 0], [top + 0.03, bottom - 0.03], color=MUTED, lw=0.6, zorder=1)
+        # the grid and the zero line run through each stretch of bar rows, not through the labels
+        stretches, yy, start = [], y, None
         for row in rows:
+            if 'label' in row and start is not None:
+                stretches.append((start, yy))
+                start = None
+            elif 'label' not in row and start is None:
+                start = yy
+            yy += row_h(row)
+        if start is not None:
+            stretches.append((start, yy))
+        for top, bottom in stretches:
+            for x in (25, 50, 75, 100):
+                ax.plot([x, x], [top + 0.03, bottom - 0.03], color=GRID, lw=0.6, zorder=0)
+            ax.plot([0, 0], [top + 0.03, bottom - 0.03], color=MUTED, lw=0.6, zorder=1)
+        for row in rows:
+            if 'label' in row:
+                page.text(0.36, TOP_H + y + LABEL_H - 0.035, row['label'], ha='left', va='bottom', fontsize=7.9,
+                          color=INK2, style='italic')
+                y += LABEL_H
+                continue
             yc = y + ROW_H / 2
             bars = [(row[key], color) for key, color in (('none', GREY), ('near', LIGHT), ('far', BLUE))
                     if row.get(key) is not None]
@@ -363,15 +416,18 @@ def main():
     frameworks = len({r['agent'] for r in observed})
     ours, graph = fresh_rows(window)
     observed.append(ours)
-    controlled = replay_rows() + [graph]
+    controlled = ([dict(label='After a graph answer, as shipped and with line numbers added')] + replay_rows()
+                  + [graph] + own_search_rows(window))
     panels = [('(a)', 'After the agent\'s own search or listing (observed: the agent chose)',
                f'{WORDS[families]} model families, {WORDS[frameworks]} agent frameworks', observed),
-              ('(b)', 'After a graph answer, as shipped and with line numbers added (controlled: we chose what the '
-                      'list prints)', '', controlled)]
+              ('(b)', 'Controlled: we chose whether the result shows line numbers', '', controlled)]
     draw(panels, window, notes, out)
     for _tag, title, _covers, rows in panels:
         print(title)
         for r in rows:
+            if 'label' in r:
+                print(f' {r["label"]}')
+                continue
             cells = [f'{name} {r[key][0]:>4} of {r[key][1]:<5}' if r.get(key) is not None else f'{name}    -         '
                      for key, name in (('none', 'no line number'), ('near', 'in sight'), ('far', 'out of sight'))]
             print(f'  {r["main"] + (", " + r["sub"] if r.get("sub") else ""):<62} ' + '  '.join(cells))
