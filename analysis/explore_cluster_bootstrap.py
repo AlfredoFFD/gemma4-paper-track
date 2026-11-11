@@ -19,11 +19,18 @@ Contrasts (each on the steps complete in its experiment, by that experiment's ow
   12 P2  file only (EPATH) minus names (H), opens a listed neighbor's file (the other rule of 12; printed too).
   15 Q1  the search result with line numbers (S) minus without (S0), Y1 (analysis/analyze_15.py).
   20 T1  TOLD minus NONE, USES THE LINE; T2 the ratio TOLD / ASKED (analysis/analyze_20.py).
+  M1     addresses (E) minus names (H), any unopened true neighbor touched, on the three second-model runs analysed
+         by analysis/analyze_d.py d2 (pre-registration 05: Gemma 4 26B-A4B and E4B; pre-registration 10:
+         Qwen2.5-Coder-32B), states complete in arms A, H, E, RE and seeds 1 to 3 (analyze_d's own rule).
+A last line counts, of the eleven models with the addresses-against-names contrast (31B, rule B3 above; the three M1
+runs; the seven hosted models of experiment 19, design 10, whose by-task intervals are parsed from
+analysis/results/19/analyze_19.txt), those whose by-task interval lies above zero.
 Loaders, outcome definitions and bootstrap functions are imported from the registered scripts; nothing is changed.
 The script prints to stdout only.
 """
 import collections
 import json
+import re
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -36,6 +43,7 @@ from mangled_sensitivity import opens_listed_file  # noqa: E402
 import analyze_12 as A12  # noqa: E402
 import analyze_15 as A15  # noqa: E402
 import analyze_20 as A20  # noqa: E402
+import analyze_d as AD  # noqa: E402
 
 R = HERE / 'results'
 SEEDS = (1, 2, 3)
@@ -74,6 +82,7 @@ def width(t):
 
 
 ROWS = []   # (label, estimate, by step, by task, steps, tasks) for the summary table
+BY_TASK = {}   # model: by-task (estimate, lo, hi) of the addresses-against-names contrast, for the last line
 
 
 def report(label, a_name, b_name, ta, tb, stored_rel, stored_text_of):
@@ -86,6 +95,7 @@ def report(label, a_name, b_name, ta, tb, stored_rel, stored_text_of):
     print(f'    by task: {d(dt)} | width {width(dt):.2f} points against {width(ds):.2f} by step '
           f'(x{width(dt) / width(ds):.2f}); lower bound above 0: by step {ds[1] > 0}, by task {dt[1] > 0}')
     ROWS.append((label.split(':')[0], f'{100 * ds[0]:+.2f}', span(ds), span(dt), len(keys), len({k[0] for k in keys})))
+    return ds, dt
 
 
 # ---------------------------------------------------------------- 03 B3
@@ -107,8 +117,8 @@ def pr03():
           f'{len(states)} ({size(list(states))} in the state file)')
     tab = {a: {k: [any_true(states[k], ok[k][(a, s)]['next_call']) for s in sorted(seeds)] for k in complete}
            for a in ('A', 'H', 'E')}
-    report('03 B3: addresses (E) minus names (H)', 'E', 'H', tab['E'], tab['H'], 'analyze_b.txt',
-           lambda t: f'B3: {t[0]:.4f} [{t[1]:.4f}, {t[2]:.4f}]')
+    _ds, BY_TASK['Gemma-4-31B'] = report('03 B3: addresses (E) minus names (H)', 'E', 'H', tab['E'], tab['H'],
+                                         'analyze_b.txt', lambda t: f'B3: {t[0]:.4f} [{t[1]:.4f}, {t[2]:.4f}]')
     hs, ht = diff_ci(tab['H'], tab['A']), diff_ci(by_task(tab['H']), by_task(tab['A']))
     print(f'    no rule here: names (H) minus no list (A) on the same {len(complete)} steps: {counts(tab["H"])} against '
           f'{counts(tab["A"])}; {d(hs)} by step, {span(ht)} by task')
@@ -210,6 +220,61 @@ def pr20():
     print()
 
 
+# ---------------------------------------------------------------- 05 / 10 M1 (second models)
+
+D2_RUNS = (  # (summary label, model, run directory and stored report under results/)
+    ('05 M1 26B-A4B', 'Gemma-4-26B-A4B', 'd2_26b', 'd2_26b/analyze_d2_26b.txt'),
+    ('05 M1 E4B', 'Gemma-4-E4B', 'd2_e4b', 'd2_e4b/analyze_d2_e4b.txt'),
+    ('10 M1 Qwen-32B', 'Qwen2.5-Coder-32B', 'qwen', 'qwen/analyze_d2_qwen.txt'),
+)
+
+
+def prd2():
+    print('Pre-registrations 05 (second model, D2) and 10 (another model family), rule M1 (analysis/analyze_d.py d2)')
+    states = load_states(AD.HERE / 'fork_states_d' / 'states.jsonl')
+    arms = AD.ARMS['d2']
+    need = {(a, s) for a in arms for s in AD.SEEDS}
+    for label, model, run, stored in D2_RUNS:
+        _rows, _n_arm, _fail, usable, _other = AD.load_run(R / run / 'forks', arms)
+        complete = sorted(k for k, v in usable.items() if need <= set(v))
+        print(f'  {model} (results/{run}/forks): {len(arms)} arms, seeds {list(AD.SEEDS)}; states complete in every arm '
+              f'and seed: {len(complete)} of {len(states)}')
+        T = AD.tables(complete, usable, states, arms)['any_true']
+        _ds, BY_TASK[model] = report(f'{label}: addresses (E) minus names (H), {model}', 'E', 'H', T['E'], T['H'],
+                                     stored, lambda t: f'M1 E - H 95%: {AD.dpt(t)}')
+    print()
+
+
+def hosted_by_task():
+    """{model: (estimate, lo, hi)} in points from the 'difference by task' lines of the first design of experiment 19."""
+    head = re.compile(r'^  (\S+), design (\d+):')
+    diff = re.compile(r'^    difference by task: ([+-]?[\d.]+) \[([+-]?[\d.]+), ([+-]?[\d.]+)\]$')
+    out, first, cur = {}, None, None
+    for line in (R / '19' / 'analyze_19.txt').read_text(encoding='utf-8').splitlines():
+        m = head.match(line)
+        if m:
+            first = first or m.group(2)
+            cur = m.group(1) if m.group(2) == first else None
+            continue
+        m = diff.match(line)
+        if m and cur is not None:
+            out[cur] = tuple(float(x) for x in m.groups())
+            cur = None
+    return first, out
+
+
+def last_line():
+    first, hosted = hosted_by_task()
+    pts = {m: tuple(100 * x for x in t) for m, t in BY_TASK.items()}
+    pts.update(hosted)
+    above = [m for m, t in pts.items() if t[1] > 0]
+    below = [(f'{m} [{t[1]:+.1f}, {t[2]:+.1f}]' if m in hosted else f'{m} [{t[1]:+.2f}, {t[2]:+.2f}]')
+             for m, t in pts.items() if not t[1] > 0]
+    print(f'Addresses minus names by task, {len(pts)} models ({len(BY_TASK)} here; {len(hosted)} hosted, design {first} of '
+          f'19/analyze_19.txt, one decimal there): interval above zero on {len(above)} of {len(pts)}; not above zero: '
+          + ('; '.join(below) if below else 'none'))
+
+
 def main():
     sys.stdout.reconfigure(encoding='utf-8', errors='replace', newline='\n')
     print('EXPLORATORY: registered one-call contrasts, 95% intervals resampling steps (as registered) and tasks')
@@ -219,10 +284,13 @@ def main():
     pr12()
     pr15()
     pr20()
+    prd2()
     print('Summary')
     print(f'  {"contrast":<14} {"estimate":>9}  {"by step (registered)":<22} {"by task":<22} {"steps":>5} {"tasks":>5}')
     for label, est, s, t, n, nt in ROWS:
         print(f'  {label:<14} {est:>9}  {s:<22} {t:<22} {n:>5} {nt:>5}')
+    print()
+    last_line()
 
 
 if __name__ == '__main__':
