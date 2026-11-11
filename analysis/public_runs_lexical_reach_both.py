@@ -31,7 +31,10 @@ Intervals: 95% bootstrap over tasks, 2,000 resamples, seed 0 (analysis/public_ru
 of two counts is the difference of the per-task sums over the summed denominator, bootstrapped the same way.
 """
 import collections
+import hashlib
+import random
 import re
+import statistics
 import sys
 import time
 from pathlib import Path
@@ -51,6 +54,8 @@ VARIANTS = ('all', 'nd', 'u', 'use')
 VNAME = {'all': 'ALL', 'nd': 'NO DUNDER', 'u': 'UNIQUE', 'use': 'USE, NO DUNDER'}
 DIRS = ('fwd', 'bwd', 'eith')
 DNAME = {'fwd': 'FORWARD', 'bwd': 'BACKWARD', 'eith': 'EITHER'}
+SF_SEEDS = list(range(1, 21))      # the 20 seeds of analysis/public_runs_lexical_reach.py (its default --seeds 20)
+SF_KEYS = ('edge',) + tuple(f'{d}_{v}' for d in DIRS for v in VARIANTS)
 
 TRIPLE = re.compile(r'("""|\'\'\')[\s\S]*?\1')
 COMMENT = re.compile(r'#[^\n]*')
@@ -141,6 +146,29 @@ def main():
         shown_names = sorted({L.short(n) for n in shown})
         cg = L.call_graph(task_id, g)[0]
         front = M.reach(cg['nbr'], shown)[0]
+        pool = sorted(n for n in ent if n not in shown)
+        pool_by_file = collections.defaultdict(list)
+        for n in pool:
+            pool_by_file[ent[n][0]].append(n)
+
+        def measures(p):
+            """EDGE, FORWARD, BACKWARD and EITHER, every variant, with entity p in the place of the TARGET."""
+            pname = L.short(p)
+            out = {'edge': int(p in front)}
+            out.update({f'fwd_{v}': val for v, val in found(pname, words, uses, counts).items()})
+            pw = L.words_of(task_id, ent, p)
+            pu = use_words(target_text(task_id, ent, p))
+            for v in VARIANTS:
+                out[f'bwd_{v}'] = 0
+            for nm in shown_names:
+                if nm == pname:
+                    continue
+                for v, val in found(nm, pw, pu, counts).items():
+                    out[f'bwd_{v}'] |= val
+            for v in VARIANTS:
+                out[f'eith_{v}'] = int(out[f'fwd_{v}'] or out[f'bwd_{v}'])
+            return out
+
         for f, a, b in missed:
             cover = [(e0 - s0, -s0, nid) for s0, e0, nid in M.nodes_of_file(task_id, g, f) if not (e0 < a or s0 > b)]
             t = min(cover)[2] if cover else None
@@ -165,6 +193,20 @@ def main():
                 n_names.append(len(shown_names))
                 for v in VARIANTS:
                     row[f'eith_{v}'] = int(row[f'fwd_{v}'] or row[f'bwd_{v}'])
+                # SAME-FILE STAND-IN: the draws of analysis/public_runs_lexical_reach.py, reproduced seed by seed
+                cand_sf = [n for n in pool_by_file[ent[t][0]] if n != t]
+                row['has_same_file'] = int(bool(cand_sf))
+                row['self_check'] = int(measures(t) == {k: row[k] for k in SF_KEYS})
+                for k in SF_KEYS:
+                    row[f'sf_{k}_seeds'] = [0] * len(SF_SEEDS)
+                if cand_sf:
+                    for i, sd in enumerate(SF_SEEDS):
+                        h = hashlib.sha256(f'sf:{task_id}:{r["path"]}:{f}:{a}:{b}:{sd}'.encode()).hexdigest()
+                        pick = random.Random(int(h, 16)).choice(cand_sf)
+                        for k, val in measures(pick).items():
+                            row[f'sf_{k}_seeds'][i] = val
+                for k in SF_KEYS:
+                    row[f'sf_{k}'] = statistics.mean(row[f'sf_{k}_seeds'])
             rows.append(row)
 
     def by_task(sel):
@@ -250,6 +292,56 @@ def main():
           f'{sum(x["edge"] and x["eith_use"] for x in rows)} in the four variants, most of them by the backward '
           f'direction alone. The backward search looks for a median of {sn[len(sn) // 2]} names per region at once, '
           f'and no chance baseline is computed for it here.')
+
+    # 4. Against a stand-in from the TARGET's own file
+    open_all = [x for x in rows if x['open']]
+    sf = [x for x in open_all if x['has_same_file']]
+
+    def tot(k):
+        return round(sum(x[k] for x in sf), 4)
+
+    def sf_line(label, k):
+        n = len(sf)
+        sv = [sum(x[f'sf_{k}_seeds'][i] for x in sf) / n for i in range(len(SF_SEEDS))]
+        d = M.share(sf, k) - M.share(sf, f'sf_{k}')
+        lo, hi = M.boot(by_task(sf), lambda xs: M.share(xs, k) - M.share(xs, f'sf_{k}'))
+        return (f'{label}: true {tot(k):g} of {n} ({100 * tot(k) / n:.1f}%); stand-in {tot(f"sf_{k}"):g} '
+                f'({100 * tot(f"sf_{k}") / n:.1f}%, seeds {100 * min(sv):.1f} to {100 * max(sv):.1f}); '
+                f'true minus stand-in {100 * d:+.1f} points [{100 * lo:+.1f}, {100 * hi:+.1f}]')
+
+    print()
+    print('4. Against a SAME-FILE STAND-IN (the TARGET replaced by another ENTITY of its file that the run was not shown)')
+    print('   The draws of analysis/public_runs_lexical_reach.py reproduced, not imported (its draws sit inside its main):')
+    print('   the pool is the ENTITIES of the TARGET\'s file that are not SHOWN ENTITIES, the TARGET left out; for seeds')
+    print('   1 to 20 the pick is random.Random(int(sha256("sf:<task>:<run path>:<file>:<first line>:<last line>:<seed>"),')
+    print('   16)).choice(pool). Each measure is applied with the pick in the place of the TARGET (BACKWARD searches the')
+    print('   pick\'s own text, leaving out shown names equal to the pick\'s SHORT NAME); stand-in = mean over the 20 seeds.')
+    print(f'   OPEN PAIRS whose file holds another ENTITY not shown: {len(sf)} of {len(open_all)}; measures recomputed on '
+          f'the true TARGET agree with sections 1-2 on {sum(x["self_check"] for x in open_all)} of {len(open_all)} OPEN PAIRS')
+    got = tuple((tot(f'fwd_{v}'), tot(f'sf_fwd_{v}')) for v in ('all', 'nd', 'u'))
+    want = ((299, 252.95), (142, 175.8), (80, 71))
+    print(f'   Check: FORWARD ALL / NO DUNDER / UNIQUE true vs stand-in '
+          + ' / '.join(f'{a:g} vs {b:g}' for a, b in got)
+          + f' ({"reproduces" if got == want else "DOES NOT reproduce"} 299 vs 252.95, 142 vs 175.8, 80 vs 71 in '
+          'analysis/results/public/lexical_reach.txt)')
+    print('   ' + sf_line('EDGE', 'edge'))
+    for v in VARIANTS:
+        print(f'   {VNAME[v]}:')
+        for d in DIRS:
+            print('      ' + sf_line(DNAME[d], f'{d}_{v}'))
+
+    def dd(k):
+        return 100 * (M.share(sf, k) - M.share(sf, f'sf_{k}'))
+    print()
+    print('In plain words (section 4):')
+    print(f'   On the {len(sf)} open pairs, the call edge reaches the true missed function in {tot("edge"):g} and a '
+          f'function drawn from the same file in {tot("sf_edge"):g} on average ({dd("edge"):+.1f} points). For the '
+          f'name searches, true minus stand-in is, for ALL, NO DUNDER, UNIQUE and USE, NO DUNDER in turn: forward '
+          + ', '.join(f'{dd(f"fwd_{v}"):+.1f}' for v in VARIANTS) + '; backward '
+          + ', '.join(f'{dd(f"bwd_{v}"):+.1f}' for v in VARIANTS) + '; either '
+          + ', '.join(f'{dd(f"eith_{v}"):+.1f}' for v in VARIANTS)
+          + ' points. The intervals are printed above; a difference whose interval holds zero is not told apart '
+          'from the stand-in here.')
     print(f'(run time {time.time() - t0:.0f} s; not part of the comparison of two runs)', file=sys.stderr)
 
 

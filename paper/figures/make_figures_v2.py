@@ -767,7 +767,8 @@ TYPED_REACH = {'DEGREE': '+8.8 [1.8, 13.0]', 'SAME-DIRECTORY': '+4.9 [-0.7, 8.4]
                'LEXICAL': '315 of 1326', 'LEXICAL, NO DUNDER': '158 of 1326',
                'EDGE minus LEXICAL': '-3.6 [-11.6, 1.2]', 'EDGE minus LEXICAL, NO DUNDER': '+8.2 [0.4, 13.3]',
                'EITHER': '425 of 1326', 'EDGE minus EITHER': '-11.9 [-17.4, -5.9]', 'edge and either': 256,
-               'backward only': 211}
+               'backward only': 211, 'stand-in pairs': 829, 'EDGE minus stand-in': '+18.2 [7.6, 24.0]',
+               'EITHER minus stand-in': '+17.7 [8.3, 23.1]'}
 # A search by name in both directions, uses only and without names such as __init__ (exploratory).
 BOTH = RES / 'public' / 'lexical_reach_both.txt'
 
@@ -882,6 +883,34 @@ def parse_reach_public():
              f'{both_k}; {edge_only} (= {of_k})', xl)
     b.record('fig_moves', '(b) USE, NO DUNDER: of the edge reaches, forward only; backward only; both; neither',
              f'{fwd}; {bwd}; {bb}; {nei}', yl)
+    # section 4: the true missed function against another function of its file (a stand-in), on the open pairs
+    lo, hi = b.block(r'^4\. Against a SAME-FILE STAND-IN', 'section 4 of lexical_reach_both.txt', end=r'^\S')
+    m, pl = b.find(r'^   OPEN PAIRS whose file holds another ENTITY not shown: (\d+) of (\d+);', 'the pairs of section 4',
+                   lo, hi)
+    sf_n, sf_of = int(m.group(1)), m.group(2)
+    m, el = b.find(r'^   EDGE: true (\d+) of (\d+) \(([\d.]+)%\); stand-in [\d.]+ \(.*\); true minus stand-in ([+-][\d.]+) '
+                   r'points \[([+-][\d.]+), ([+-][\d.]+)\]$', 'EDGE against the stand-in', lo, hi)
+    if int(m.group(2)) != sf_n or sf_n != TYPED_REACH['stand-in pairs']:
+        stop(f'lexical_reach_both.txt, lines {pl} and {el}: {sf_n} and {m.group(2)} pairs, the brief types '
+             f'{TYPED_REACH["stand-in pairs"]}')
+    sf_edge = interval_text(*m.groups()[3:6])
+    if sf_edge != num(TYPED_REACH['EDGE minus stand-in']):
+        stop(f'lexical_reach_both.txt, line {el}: EDGE true minus stand-in {sf_edge}, the brief types '
+             f'{TYPED_REACH["EDGE minus stand-in"]}')
+    b.record('fig_moves', '(b) section 4: open pairs with a same-file stand-in', f'{sf_n} of {sf_of}', pl)
+    b.record('fig_moves', '(b) section 4: EDGE true minus stand-in [95%]', sf_edge, el)
+    _m, ul = b.find(r'^   USE, NO DUNDER:$', 'the sub-block USE, NO DUNDER of section 4', lo, hi)
+    m, il = b.find(r'^      EITHER: true (\d+) of (\d+) \(([\d.]+)%\); stand-in [\d.]+ \(.*\); true minus stand-in '
+                   r'([+-][\d.]+) points \[([+-][\d.]+), ([+-][\d.]+)\]$', 'EITHER against the stand-in, USE, NO DUNDER',
+                   ul, min(ul + 3, hi))
+    if int(m.group(2)) != sf_n:
+        stop(f'lexical_reach_both.txt, line {il}: {m.group(2)} pairs, line {pl} {sf_n}')
+    sf_either = interval_text(*m.groups()[3:6])
+    if sf_either != num(TYPED_REACH['EITHER minus stand-in']):
+        stop(f'lexical_reach_both.txt, line {il}: EITHER true minus stand-in {sf_either}, the brief types '
+             f'{TYPED_REACH["EITHER minus stand-in"]}')
+    b.record('fig_moves', '(b) section 4: USE, NO DUNDER EITHER true minus stand-in [95%]', sf_either, il)
+    v['both'].update(sf_n=sf_n, sf_edge=sf_edge, sf_either=sf_either)
     return v
 
 
@@ -953,9 +982,11 @@ def fig_moves(out):
     # the note under the axis label on the search in both directions; one line if it fits, else two
     bo = r['both']
     note = (f'Of the {r["true"]["k"]} places a call edge reaches, {bo["edge_and"]} are also reached by the name search '
-            f'in both directions ({bo["backward_only"]} only backwards: the missed function uses a shown name).')
-    if _text_w(note, 7.2) / 72 > W_IN - 0.10 - 0.36:      # broken before the parenthesis
-        note = note.replace(' (', '\n(', 1)
+            f'in either direction. Against another function of the same file as a stand-in for the missed one, the '
+            f'edge and that search pick out the true place about equally often ({bo["sf_edge"]} and {bo["sf_either"]} '
+            f'points; {bo["sf_n"]:,} pairs).')
+    # wrapped at 90% of the room: the drawn width runs some 6% over the width _text_w measures at this size
+    note = '\n'.join(_wrap_pts(note, 0.90 * (W_IN - 0.10 - 0.36) * 72, 7.2))
     NOTE_H = 0.15 * (note.count('\n') + 1)
     h_in = B_TOP + B_HEAD + rows_b + 0.48 + NOTE_H + 0.20 + 0.28
     fig, page = page_of(h_in)
@@ -1068,7 +1099,7 @@ def fig_moves(out):
         f'{nd["k"]} of {n:,} ({nd["pct"]}% [{nd["lo"]}, {nd["hi"]}])', nd['diff'], size=lab_size)
     y += ROW
     bar(y + ROW / 2, float(bo['pct']), GREY,
-        fitting(['a name search in both directions (uses only)', 'a name search, both directions'], lab_size),
+        fitting(['names in use, either direction (no __init__)', 'a name in use, either direction'], lab_size),
         f'{bo["k"]} of {n:,} ({bo["pct"]}% [{bo["lo"]}, {bo["hi"]}])', bo['diff'], size=lab_size)
     ax.set_yticks([])
     ax.set_xticks(range(0, XMAX + 1, 10))
@@ -1079,7 +1110,7 @@ def fig_moves(out):
                   fontsize=7.8)
     nt = page.text(0.36, y0 + rows_b + 0.50, note, ha='left', va='top', fontsize=7.2, color=INK2, linespacing=1.25)
     if 0.36 + width_in(fig, nt) > W_IN - 0.10:
-        stop('fig_moves: the note under panel (b) does not fit')
+        stop(f'fig_moves: the note under panel (b) does not fit ({width_in(fig, nt):.2f} in): {note!r}')
     page.text(0.36, y0 + rows_b + 0.52 + NOTE_H, 'Public runs of the starter agent, both arms; exploratory.',
               ha='left', va='top', fontsize=6.9, color=MUTED)
     page.text(0.09, h_in - 0.07, 'Both panels are exploratory: counted on stored runs, with no registered rule; panel '
