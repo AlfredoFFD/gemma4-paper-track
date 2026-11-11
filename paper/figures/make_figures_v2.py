@@ -196,9 +196,10 @@ def width_in(fig, t):
 
 # ================================================================ fig_models
 HOSTED = (  # short label, a token of the model's name in analyze_19.txt
-    ('Qwen3-30B', 'qwen3-30b-a3b'), ('Qwen3-235B', 'qwen3-235b-a22b'), ('gpt-oss-120B', 'gpt-oss-120b'),
-    ('DeepSeek-V4.1-Flash', 'deepseek-v4.1-flash'), ('GLM-5.3-Flash', 'glm-5.3-flash'),
-    ('MiniMax-M3.1-Flash', 'minimax-m3.1-flash'), ('Nemotron-3-Super-120B', 'nemotron-3-super-120b'),
+    # the same short names as fig_asked_told (HOSTED24)
+    ('Qwen3-30B', 'qwen3-30b-a3b'), ('Qwen3-235B', 'qwen3-235b-a22b'), ('gpt-oss-120b', 'gpt-oss-120b'),
+    ('DeepSeek-V4.1', 'deepseek-v4.1-flash'), ('GLM-5.3', 'glm-5.3-flash'),
+    ('MiniMax-M3.1', 'minimax-m3.1-flash'), ('Nemotron-3', 'nemotron-3-super-120b'),
 )
 # The models registered earlier, on a rented GPU: the report of rule M1 (addresses minus bare names) of each run, as
 # make_figures.py reads them for fig_extensions (its run tags D2a, D2b, D2q); the first line of each report names its
@@ -476,21 +477,34 @@ def parse_24():
 
 
 def est_24(rule):
-    """Rows of pre-registration 24: the smallest and largest difference over the seven models, and the outcome."""
+    """Rows of pre-registration 24: the smallest and largest difference over the models that have a verdict on the
+    rule (a model under the floor of complete steps has none), and the outcome."""
     d = parse_24()
-    ms = d['models']
     key = 'w1' if rule == 'W1' else 'w2'
+    ms = {k: x for k, x in d['models'].items() if not x[key + 'v'].startswith('no verdict')}
+    if rule == 'W2':      # the outcome: the verdicts counted, every model's verdict one of the three words
+        words = [x['w2v'].split(' (')[0] for x in d['models'].values()]
+        kinds = ('used less than asked', 'no detectable difference', 'no verdict')
+        if any(w not in kinds for w in words):
+            stop(f'analyze_24.txt: a W2 verdict outside {kinds}: {words}')
+        n_less, n_none, n_nov = (words.count(k) for k in kinds)
+        if n_less != d['counts']['both'] or n_less + n_none + n_nov != d['counts']['n']:
+            stop(f'analyze_24.txt: W2 verdicts {n_less}, {n_none}, {n_nov} against section 3')
     lo_m = min(ms, key=lambda k: Decimal(ms[k][key]))
     hi_m = max(ms, key=lambda k: Decimal(ms[k][key]))
     rng = f'{num(ms[lo_m][key])} to {num(ms[hi_m][key])}'
-    PARSED.append(('table_rules_v2', f'24 {rule}: smallest ({lo_m}, line {ms[lo_m]["rline"]}); largest ({hi_m}, line '
-                   f'{ms[hi_m]["rline"]})', rng, rel(R24), f'{ms[lo_m]["rline"]}, {ms[hi_m]["rline"]}'))
+    PARSED.append(('table_rules_v2', f'24 {rule}: over the {len(ms)} models with a verdict, smallest ({lo_m}, line '
+                   f'{ms[lo_m]["rline"]}); largest ({hi_m}, line {ms[hi_m]["rline"]})', rng, rel(R24),
+                   f'{ms[lo_m]["rline"]}, {ms[hi_m]["rline"]}'))
     c = d['counts']
     if rule == 'W1':
-        if c['w1'] != c['n']:
+        if c['w1'] != c['n'] or len(ms) != c['n']:
             stop(f'analyze_24.txt: W1 is met on {c["w1"]} of {c["n"]}; the row says met on each')
         return [rng], 'met on each'
-    return [rng], f'met on {c["both"]} of {c["n"]}: {c["reading"]}'
+    outcome = (f'note used less on {n_less} of {c["n"]}; no difference detected on {n_none}; no verdict on {n_nov}')
+    PARSED.append(('table_rules_v2', '24 W2: verdicts used less; no detectable difference; no verdict (lines 20-32)',
+                   f'{n_less}; {n_none}; {n_nov}', rel(R24), '20-32'))
+    return [rng], outcome
 
 
 def fig_asked_told(out):
@@ -585,6 +599,14 @@ def fig_asked_told(out):
                   style='italic' if lab.startswith('Gemma') else 'normal')
         if w2:
             page.plot(X1 + 0.16, RB0 + yc, marker='D', ms=4.0, mfc=INK, mec=INK, ls='none')
+        nov = re.match(r'no verdict \(below the floor: (\d+) complete steps', d24['models'].get(lab, {}).get('w2v', ''))
+        if nov:        # its dots are rates on different steps per arm; no registered result
+            page.text(W_IN - 0.08, RB0 + yc, f'no verdict ({nov.group(1)} complete steps)', ha='right', va='center',
+                      fontsize=6.8, color=MUTED, style='italic')
+            PARSED.append(('fig_asked_told', f'(b) {lab}: W2 no verdict, complete steps', nov.group(1), rel(R24),
+                           d24['models'][lab]['rline'] + 1))
+        elif lab in d24['models'] and d24['models'][lab]['w2v'].startswith('no verdict'):
+            stop(f'analyze_24.txt: the W2 verdict of {lab} does not parse: {d24["models"][lab]["w2v"]}')
     PARSED.append(('fig_asked_told', '(b) order (by TOLD); W2 met on', f'{", ".join(order)}; '
                    f'{", ".join(lab for lab, _r, w2, _y in rows if w2)}', rel(R24), 'section 2'))
     bx.plot([0, 100], [ROWB + GAP / 2] * 2, color=HAIR, lw=0.7, zorder=1)      # Gemma-4-31B set apart
@@ -1110,9 +1132,24 @@ def parse_same_tasks(n_ran, seed3):
         if sd == 3 and k != seed3[a]['resolved']:
             stop(f'rederive_22.txt, line {line}: {a} seed 3 resolved {k}, analyze_22.txt {seed3[a]["resolved"]}')
     out = {a: dict(resolved=got[(a, 2)][0], runs=n_ran) for a in ('N', 'ON', 'OA')}
+    # the first seed on the other tasks (those without a run of 22): one line, wrapped onto the lines under it
+    _m, ol = s.find(r'^  Seed 2 on the tasks without a run of 22 \(for comparison\):', 'part 6, the other tasks', lo, hi)
+    j = ol
+    while j < hi and s.lines[j].startswith('    '):
+        j += 1
+    text = ' '.join(x.strip() for x in s.lines[ol - 1:j])
+    other = {}
+    for a in ('N', 'ON', 'OA'):
+        mo = re.search(rf'(?:: |; ){a} resolved (\d+)/(\d+) \(', text)
+        if not mo:
+            stop(f'rederive_22.txt, lines {ol}-{j}: no resolved count for {a} on the other tasks')
+        other[a] = (int(mo.group(1)), int(mo.group(2)))
+    s.record('fig_oracle', '(a) note: first seed on the other tasks, resolved N; ON; OA',
+             '; '.join(f'{k} of {n}' for k, n in other.values()), f'{ol}-{j}')
+    out['_other'] = other
     s.record('fig_oracle', f'(a) first seed on the {n_ran} tasks of 22: resolved N; ON; OA (heads line {hl}, tasks '
              f'line {tl}; seed-3 columns equal analyze_22.txt)',
-             '; '.join(f'{out[a]["resolved"]} of {n_ran}' for a in out), line)
+             '; '.join(f'{out[a]["resolved"]} of {n_ran}' for a in ('N', 'ON', 'OA')), line)
     return out
 
 
@@ -1137,6 +1174,11 @@ def fig_oracle(out, r22):
     if not d22['no_verdict']:
         stop('fig_oracle: a rule of 22 has a verdict; the footnote says none has')
     same20 = parse_same_tasks(d22['ran'], d22['sec'])
+    other20 = same20.pop('_other')
+    for a in ('N', 'ON', 'OA'):        # the two halves of the first seed add up to its 40 tasks
+        if (same20[a]['resolved'] + other20[a][0], d22['ran'] + other20[a][1]) != (seed2[a]['resolved'], n18):
+            stop(f'fig_oracle: arm {a}: {same20[a]["resolved"]} + {other20[a][0]} resolved, not '
+                 f'{seed2[a]["resolved"]} of {n18}')
     words = dict((k, lab) for k, lab, _c in ARMS18)
     colors = dict((k, c) for k, _l, c in ARMS18)
     TITLE = ('Told where the fix is: the form of the note changes what the agent reads; resolved tasks do not '
@@ -1221,8 +1263,14 @@ def fig_oracle(out, r22):
     ax.tick_params(labelsize=7.4, length=3)
     ax.tick_params(axis='x', length=0)
     ax.set_ylabel('share of runs resolved', fontsize=7.6)
-    texts.append(page.text(XA[0], P1 + 0.50, f'second seed: {d22["ran"]} of {d22["total"]} tasks, no rule has a '
-                           'verdict', ha='left', va='center', fontsize=6.9, color=INK2, style='italic'))
+    n_other = {n for _k, n in other20.values()}
+    if len(n_other) != 1:
+        stop(f'rederive_22.txt: the other tasks differ by arm: {other20}')
+    note_a = (f'second seed: {d22["ran"]} of {d22["total"]} tasks, no rule has a verdict; on the other '
+              f'{n_other.pop()} tasks of the first seed: ' + ', '.join(str(other20[a][0]) for a in ('N', 'ON', 'OA')))
+    for k, line in enumerate(_wrap_pts(note_a, (XB[0] - 0.15 - XA[0]) * 72, 6.9, style='italic')):
+        texts.append(page.text(XA[0], P1 + 0.50 + 0.13 * k, line, ha='left', va='center', fontsize=6.9, color=INK2,
+                               style='italic'))
     # (b) and (c): one horizontal bar per arm, its label above it
     ROWS = len(arms22)
     row_h = (P1 - P0) / ROWS
@@ -1583,6 +1631,30 @@ def est_04():
     return [v]
 
 
+def est_05_t1():
+    """Rule T1 of pre-registration 05 (experiment D1): PE minus P, the entries legible inside the tool result."""
+    s = Source(RES / 'd1' / 'analyze_d1.txt')
+    m, line = s.find(r'^  T1 PE - P 95%: ([+-][\d.]+) \[([+-][\d.]+), ([+-][\d.]+)\]: (\w+)', 'rule T1 of 05')
+    if m.group(4) != 'PASS':
+        stop(f'analyze_d1.txt, line {line}: T1 is {m.group(4)}; the row says met')
+    s.record('table_rules_v2', f'05 T1, PE - P ({m.group(4)})', _pts(m.groups()[:3]), line)
+    return [_pts(m.groups()[:3])]
+
+
+def est_04_es():
+    """Rule C2 of pre-registration 04, its part ES (each entry with name and first definition line only, prereg/04
+    line 27) minus H: "raises following" if the lower 95% bound is above 0. Fractions in the report, turned into
+    points exactly."""
+    s = Source(R04)
+    m, line = s.find(r'^  ES minus H: (-?[\d.]+) \[(-?[\d.]+), (-?[\d.]+)\] \| ES \d+/\d+, H \d+/\d+$', 'C2, ES minus H')
+    pts = [f'{Decimal(g) * 100:.2f}' for g in m.groups()]
+    pts[0] = pts[0] if pts[0].startswith('-') else '+' + pts[0]
+    if Decimal(m.group(2)) > 0:
+        stop(f'analyze_c.txt, line {line}: ES minus H has its lower bound above 0; the row says not met')
+    s.record('table_rules_v2', '04 C2, ES minus H (fractions x 100)', interval_text(*pts), line)
+    return [interval_text(*pts)]
+
+
 def est_03_b4():
     s = Source(R03B4)
     m, line = s.find(r'^  E matched true - RE rewired, touch\s+([+-][\d.]+) \[ *([+-][\d.]+), +([+-][\d.]+)\]',
@@ -1703,15 +1775,17 @@ def est_18(rules):
 TABLE_ROWS = (   # (first column, the estimates, the outcome: a string, or None when the function gives it)
     (lambda: f"Names against no list, reads a neighbor's code, on {steps_02()} steps (02)", est_02, 'not met'),
     ('Addresses against names (03); on ten other models (05, 10, 19)', est_03_and_ten, 'met; met on each'),
+    ('Addresses against names inside a tool result (05)', est_05_t1, 'met'),
     ('File and lines against file only (12)', est_12, 'met'),
     ("File only against names, opens the neighbor's file (12)", est_12_p2, 'not met'),
+    ('Names with their definition line against names (04)', est_04_es, 'not met'),
     ('True against false entry (04)', est_04, 'met'),
     ('True against rewired list (03)', est_03_b4, 'not met'),
     ('Search with against without line numbers (15); on eight other models (17, 19)', est_15_and_eight,
      'met; met on each'),
     ('Told against nothing (20)', lambda: est_20('T1'), 'met'),
     ('Told as a share of asked; registered threshold two thirds (20)', lambda: est_20('T2'),
-     'not met: told is used less'),
+     'told is used less; the two-thirds rule is not met'),
     ('Next call is a search, told against nothing (20)', est_20_t4, None),
     (lambda: f'Told its own hits against those of another search, {states_t3()} steps (20)', lambda: est_20('T3'),
      'not met'),
@@ -1950,17 +2024,17 @@ def population_rows(r22):
         first = f'{n_states} steps of {n_runs} public runs, {n_tasks} tasks'      # the addition does not fit
     PARSED.append(('table_populations', 'first row, size as drawn', first, 'as parsed above', '-'))
     return [
-        (label, first, '3.1'),
+        (label, first, '4.1'),
         ('Steps paused after the agent\'s own search', f'{n_search} steps; {n_cut} can also be cut one call earlier',
-         '3.2'),
+         '4.2'),
         ('Public runs of the starter agent [2]',
          f'{all_tasks} tasks, {WORDS[pub_per]} runs with the skill and {WORDS[pub_per]} without ({all_runs} runs '
          f'each); counts of changed regions use the {pub_tasks} tasks whose fix changes an existing line '
-         f'({pub_per * pub_tasks} runs)', '4, 5'),
-        ('Our runs, harness as shipped (Oct 12)', f'the {ours} tasks our sandbox can score, one run each', '4, 5'),
+         f'({pub_per * pub_tasks} runs)', '5, 6'),
+        ('Our runs, harness as shipped (Oct 12)', f'the {ours} tasks our sandbox can score, one run each', '3, 5'),
         (f'First calls under {WORDS[p16["arms"]]} task prompts',
-         f'{p16["tasks"]} tasks, {WORDS[p16["seeds"]]} seeds, one model call each', '4'),
-        ('Oracle runs', oracle, '6'),
+         f'{p16["tasks"]} tasks, {WORDS[p16["seeds"]]} seeds, one model call each', '3'),
+        ('Oracle runs', oracle, '7'),
     ]
 
 
