@@ -113,3 +113,17 @@ model.
 The 62 tasks whose N run was shown every region are not run, so this says nothing about harm or gain there, and no
 estimate for all 103 tasks follows from it. One seed. One model. Two repositories. The oracle is an upper bound on
 what any tool that prints the fix's places could do, not a tool.
+
+## Notes added after the freeze
+
+- Nov 11, 2026, 1:21 AM EST, while the sessions are running and before any row of this run has been pulled or read:
+  four descriptive cuts are added to what will be reported, none with a rule, each labelled exploratory. They follow
+  from a count on other runs that arrived after the freeze (`analysis/results/explore_read_starts.txt`: tasks
+  whose fix is one changed region are resolved in about half of the public runs at any depth in the file, tasks
+  with 2 to 3, 4 to 9, and 10 or more regions in 22%, 12% and 0%). (a) Resolved and shown-every-region per arm,
+  split by the number of changed regions of the task (1; 2 or 3; 4 to 9; 10 or more). (b) Per arm, the share of a
+  task's changed regions that the run was shown, as a mean over tasks, beside the all-or-nothing count of U3.
+  (c) Per arm, where the run's file reads start (the top of a file; where the run has read; a line that a result or
+  the note printed; none of these), and for ON how a named place is reached (a search by the run, reading on, or a
+  jump with no number). (d) Per arm, the number of tool calls before the last changed region is first shown, in the
+  runs that are shown every region. The rules U1 to U4 and their tests are unchanged.
