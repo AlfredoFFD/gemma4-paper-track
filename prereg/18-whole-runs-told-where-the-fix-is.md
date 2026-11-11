@@ -127,3 +127,7 @@ what any tool that prints the fix's places could do, not a tool.
   the note printed; none of these), and for ON how a named place is reached (a search by the run, reading on, or a
   jump with no number). (d) Per arm, the number of tool calls before the last changed region is first shown, in the
   runs that are shown every region. The rules U1 to U4 and their tests are unchanged.
+
+- Nov 11, 2026, 2:25 AM EST, after the run: both shards ran to the end; all 120 sessions entered the analysis (no
+  infrastructure failure, no missing trace); the note stood once in the first user message of every ON and OA
+  session and in none of N.

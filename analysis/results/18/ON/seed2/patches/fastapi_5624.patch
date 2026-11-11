@@ -1,0 +1,80 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 1e92c1ba..763adbfc 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -250,7 +250,7 @@ def get_dependant(
+     if isinstance(call, SecurityBase):
+         use_scopes: List[str] = []
+         if isinstance(call, (OAuth2, OpenIdConnect)):
+-            use_scopes = security_scopes or use_scopes
++            use_scopes = list(security_scopes) if security_scopes is not None else use_scopes
+         security_requirement = SecurityRequirement(
+             security_scheme=call, scopes=use_scopes
+         )
+@@ -275,7 +275,7 @@ def get_dependant(
+                     f'The dependency "{dependant.call.__name__}" has a scope of '
+                     '"request", it cannot depend on dependencies with scope "function".'
+                 )
+-            use_security_scopes = security_scopes or []
++            use_security_scopes = list(security_scopes) if security_scopes is not None else []
+             if isinstance(param_details.depends, params.Security):
+                 if param_details.depends.scopes:
+                     use_security_scopes.extend(param_details.depends.scopes)
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..119d1a8b
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,52 @@
++from fastapi import FastAPI, Depends, Security
++from fastapi.dependencies.utils import get_dependant
++from fastapi.security import OAuth2PasswordBearer
++
++oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
++
++def dep_b():
++    return "b"
++
++def dep_c():
++    return "c"
++
++def dep_a(
++    b: str = Security(dep_b, scopes=["scope_b"]),
++    c: str = Security(dep_c, scopes=["scope_c"]),
++):
++    return "a"
++
++def test_security_scope_propagation():
++    # We simulate what FastAPI does when it builds the dependency graph
++    # For dep_a, we pass some initial scopes
++    initial_scopes = ["scope_a"]
++    dependant = get_dependant(
++        path="/test",
++        call=dep_a,
++        security_scopes=initial_scopes,
++    )
++    
++    # dependant.dependencies should contain dep_b and dep_c
++    # dep_b should have scopes: ["scope_a", "scope_b"]
++    # dep_c should have scopes: ["scope_a", "scope_c"]
++    
++    # Find dep_b and dep_c in dependant.dependencies
++    # They are added in the order they appear in the signature
++    dep_b_dependant = next(d for d in dependant.dependencies if d.call == dep_b)
++    dep_c_dependant = next(d for d in dependant.dependencies if d.call == dep_c)
++    
++    print(f"Initial scopes: {initial_scopes}")
++    print(f"Dep B scopes: {dep_b_dependant.security_scopes}")
++    print(f"Dep C scopes: {dep_c_dependant.security_scopes}")
++    
++    assert dep_b_dependant.security_scopes == ["scope_a", "scope_b"]
++    assert dep_c_dependant.security_scopes == ["scope_a", "scope_c"]
++
++if __name__ == "__main__":
++    try:
++        test_security_scope_propagation()
++        print("Test passed!")
++    except AssertionError as e:
++        print(f"Test failed!")
++        import traceback
++        traceback.print_exc()

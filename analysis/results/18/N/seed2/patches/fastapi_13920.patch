@@ -1,0 +1,123 @@
+diff --git a/fastapi/_compat/shared.py b/fastapi/_compat/shared.py
+index 68b9bbdf..9a08d291 100644
+--- a/fastapi/_compat/shared.py
++++ b/fastapi/_compat/shared.py
+@@ -17,6 +17,15 @@ from pydantic.version import VERSION as PYDANTIC_VERSION
+ from starlette.datastructures import UploadFile
+ from typing_extensions import get_args, get_origin
+ 
++try:
++    from typing import TypeAliasType
++except ImportError:
++    try:
++        from typing_extensions import TypeAliasType
++    except ImportError:
++        TypeAliasType = None
++
++
+ # Copy from Pydantic: pydantic/_internal/_typing_extra.py
+ if sys.version_info < (3, 10):
+     WithArgsTypes: tuple[Any, ...] = (typing._GenericAlias, types.GenericAlias)  # type: ignore[attr-defined]
+@@ -45,6 +54,16 @@ sequence_types = tuple(sequence_annotation_to_type.keys())
+ Url: type[Any]
+ 
+ 
++def is_typealiastype(annotation: Any) -> bool:
++    return isinstance(annotation, TypeAliasType) if TypeAliasType else False
++
++
++def unwrap_type_alias(annotation: Any) -> Any:
++    while is_typealiastype(annotation):
++        annotation = getattr(annotation, "__value__", None)
++    return annotation
++
++
+ # Copy of Pydantic: pydantic/_internal/_utils.py
+ def lenient_issubclass(
+     cls: Any, class_or_tuple: Union[type[Any], tuple[type[Any], ...], None]
+@@ -126,6 +145,7 @@ def field_annotation_is_scalar_sequence(annotation: Union[type[Any], None]) -> b
+ 
+ 
+ def is_bytes_or_nonable_bytes_annotation(annotation: Any) -> bool:
++    annotation = unwrap_type_alias(annotation)
+     if lenient_issubclass(annotation, bytes):
+         return True
+     origin = get_origin(annotation)
+@@ -137,6 +157,7 @@ def is_bytes_or_nonable_bytes_annotation(annotation: Any) -> bool:
+ 
+ 
+ def is_uploadfile_or_nonable_uploadfile_annotation(annotation: Any) -> bool:
++    annotation = unwrap_type_alias(annotation)
+     if lenient_issubclass(annotation, UploadFile):
+         return True
+     origin = get_origin(annotation)
+@@ -192,6 +213,7 @@ def is_pydantic_v1_model_class(cls: Any) -> bool:
+ 
+ 
+ def annotation_is_pydantic_v1(annotation: Any) -> bool:
++    annotation = unwrap_type_alias(annotation)
+     if is_pydantic_v1_model_class(annotation):
+         return True
+     origin = get_origin(annotation)
+diff --git a/verify_pep695.py b/verify_pep695.py
+new file mode 100644
+index 00000000..29badcd6
+--- /dev/null
++++ b/verify_pep695.py
+@@ -0,0 +1,56 @@
++
++import typing
++import typing_extensions
++from fastapi._compat.shared import (
++    is_bytes_or_nonable_bytes_annotation,
++    is_uploadfile_or_nonable_uploadfile_annotation,
++    annotation_is_pydantic_v1,
++    unwrap_type_alias,
++    is_typealiastype,
++)
++from fastapi import UploadFile
++try:
++    from typing import TypeAliasType
++except ImportError:
++    from typing_extensions import TypeAliasType
++
++print(f"TypeAliasType: {TypeAliasType}")
++
++# Test PEP 695 Type Alias
++# type MyBytes = bytes
++MyBytes = TypeAliasType("MyBytes", bytes)
++print(f"MyBytes: {MyBytes}, type: {type(MyBytes)}")
++print(f"is_typealiastype(MyBytes): {is_typealiastype(MyBytes)}")
++print(f"unwrap_type_alias(MyBytes): {unwrap_type_alias(MyBytes)}")
++
++print(f"Testing is_bytes_or_nonable_bytes_annotation with MyBytes: {is_bytes_or_nonable_bytes_annotation(MyBytes)}")
++
++# type MyUploadFile = UploadFile
++MyUploadFile = TypeAliasType("MyUploadFile", UploadFile)
++print(f"MyUploadFile: {MyUploadFile}, type: {type(MyUploadFile)}")
++print(f"is_typealiastype(MyUploadFile): {is_typealiastype(MyUploadFile)}")
++print(f"unwrap_type_alias(MyUploadFile): {unwrap_type_alias(MyUploadFile)}")
++print(f"Testing is_uploadfile_or_nonable_uploadfile_annotation with MyUploadFile: {is_uploadfile_or_nonable_uploadfile_annotation(MyUploadFile)}")
++
++# For annotation_is_pydantic_v1, we need a Pydantic v1 model.
++try:
++    from pydantic import BaseModel
++    class MyModel(BaseModel):
++        pass
++    
++    # type MyModelAlias = MyModel
++    MyModelAlias = TypeAliasType("MyModelAlias", MyModel)
++    print(f"MyModelAlias: {MyModelAlias}, type: {type(MyModelAlias)}")
++    print(f"is_typealiastype(MyModelAlias): {is_typealiastype(MyModelAlias)}")
++    print(f"unwrap_type_alias(MyModelAlias): {unwrap_type_alias(MyModelAlias)}")
++    print(f"Testing annotation_is_pydantic_v1 with MyModelAlias: {annotation_is_pydantic_v1(MyModelAlias)}")
++except Exception as e:
++    print(f"Pydantic test failed: {e}")
++
++# Test nested aliases
++# type NestedBytes = MyBytes
++NestedBytes = TypeAliasType("NestedBytes", MyBytes)
++print(f"NestedBytes: {NestedBytes}, type: {type(NestedBytes)}")
++print(f"is_typealiastype(NestedBytes): {is_typealiastype(NestedBytes)}")
++print(f"unwrap_type_alias(NestedBytes): {unwrap_type_alias(NestedBytes)}")
++print(f"Testing is_bytes_or_nonable_bytes_annotation with NestedBytes: {is_bytes_or_nonable_bytes_annotation(NestedBytes)}")

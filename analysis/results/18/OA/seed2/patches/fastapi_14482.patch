@@ -1,0 +1,71 @@
+diff --git a/fastapi/_compat/v2.py b/fastapi/_compat/v2.py
+index acd23d84..c034009f 100644
+--- a/fastapi/_compat/v2.py
++++ b/fastapi/_compat/v2.py
+@@ -18,7 +18,7 @@ from typing import (
+ from fastapi._compat import may_v1, shared
+ from fastapi.openapi.constants import REF_TEMPLATE
+ from fastapi.types import IncEx, ModelNameMap, UnionType
+-from pydantic import BaseModel, TypeAdapter, create_model
++from pydantic import BaseModel, TypeAdapter, create_model, ConfigDict
+ from pydantic import PydanticSchemaGenerationError as PydanticSchemaGenerationError
+ from pydantic import PydanticUndefinedAnnotation as PydanticUndefinedAnnotation
+ from pydantic import ValidationError as ValidationError
+@@ -64,6 +64,7 @@ class ModelField:
+     field_info: FieldInfo
+     name: str
+     mode: Literal["validation", "serialization"] = "validation"
++    arbitrary_types_allowed: bool = False
+ 
+     @property
+     def alias(self) -> str:
+@@ -95,7 +96,8 @@ class ModelField:
+                     "ignore", category=UnsupportedFieldAttributeWarning
+                 )
+             self._type_adapter: TypeAdapter[Any] = TypeAdapter(
+-                Annotated[self.field_info.annotation, self.field_info]
++                Annotated[self.field_info.annotation, self.field_info],
++                config={"arbitrary_types_allowed": self.arbitrary_types_allowed},
+             )
+ 
+     def get_default(self) -> Any:
+@@ -412,8 +414,11 @@ def create_body_model(
+ 
+ 
+ def get_model_fields(model: Type[BaseModel]) -> List[ModelField]:
++    arbitrary_types_allowed = model.model_config.get("arbitrary_types_allowed", False)
+     return [
+-        ModelField(field_info=field_info, name=name)
++        ModelField(
++            field_info=field_info, name=name, arbitrary_types_allowed=arbitrary_types_allowed
++        )
+         for name, field_info in model.model_fields.items()
+     ]
+ 
+diff --git a/fastapi/utils.py b/fastapi/utils.py
+index b3b89ed2..a047eb43 100644
+--- a/fastapi/utils.py
++++ b/fastapi/utils.py
+@@ -119,7 +119,21 @@ def create_model_field(
+         field_info = field_info or FieldInfo(
+             annotation=type_, default=default, alias=alias
+         )
+-        kwargs = {"mode": mode, "name": name, "field_info": field_info}
++        arbitrary_types_allowed = False
++        if model_config:
++            arbitrary_types_allowed = (
++                model_config.get("arbitrary_types_allowed", False)
++                if isinstance(model_config, dict)
++                else getattr(model_config, "arbitrary_types_allowed", False)
++            )
++        elif hasattr(type_, "model_config"):
++            arbitrary_types_allowed = type_.model_config.get("arbitrary_types_allowed", False)
++        kwargs = {
++            "mode": mode,
++            "name": name,
++            "field_info": field_info,
++            "arbitrary_types_allowed": arbitrary_types_allowed,
++        }
+         try:
+             return v2.ModelField(**kwargs)  # type: ignore[return-value,arg-type]
+         except PydanticSchemaGenerationError:

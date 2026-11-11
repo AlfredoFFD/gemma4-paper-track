@@ -1,0 +1,156 @@
+diff --git a/fastapi/dependencies/models.py b/fastapi/dependencies/models.py
+index 2a4d9a01..ab49b7f2 100644
+--- a/fastapi/dependencies/models.py
++++ b/fastapi/dependencies/models.py
+@@ -15,6 +15,95 @@ else:  # pragma: no cover
+     from asyncio import iscoroutinefunction
+ 
+ 
++def _get_unwrapped_call(call: Any) -> Any:
++    while True:
++        if isinstance(call, partial):
++            call = call.func
++        elif hasattr(call, "__wrapped__"):
++            call = call.__wrapped__
++        else:
++            break
++    return call
++
++
++def _is_async_callable(call: Any) -> bool:
++    curr = call
++    while True:
++        if iscoroutinefunction(curr):
++            return True
++        if isinstance(curr, partial):
++            curr = curr.func
++        elif hasattr(curr, "__wrapped__"):
++            curr = curr.__wrapped__
++        else:
++            break
++    return False
++
++
++def _is_coroutine_callable(call: Any) -> bool:
++    if call is None:
++        return False
++    if _is_async_callable(call):
++        return True
++    if not inspect.isclass(call):
++        dunder_call = getattr(call, "__call__", None)
++        if dunder_call:
++            return _is_async_callable(dunder_call)
++    return False
++
++
++def _is_gen_callable(call: Any) -> bool:
++    curr = call
++    while True:
++        if inspect.isgeneratorfunction(curr):
++            return True
++        if isinstance(curr, partial):
++            curr = curr.func
++        elif hasattr(curr, "__wrapped__"):
++            curr = curr.__wrapped__
++        else:
++            break
++    return False
++
++
++def _is_generator_callable(call: Any) -> bool:
++    if call is None:
++        return False
++    if _is_gen_callable(call):
++        return True
++    if not inspect.isclass(call):
++        dunder_call = getattr(call, "__call__", None)
++        if dunder_call:
++            return _is_gen_callable(dunder_call)
++    return False
++
++
++def _is_async_gen_callable(call: Any) -> bool:
++    curr = call
++    while True:
++        if inspect.isasyncgenfunction(curr):
++            return True
++        if isinstance(curr, partial):
++            curr = curr.func
++        elif hasattr(curr, "__wrapped__"):
++            curr = curr.__wrapped__
++        else:
++            break
++    return False
++
++
++def _is_async_generator_callable(call: Any) -> bool:
++    if call is None:
++        return False
++    if _is_async_gen_callable(call):
++        return True
++    if not inspect.isclass(call):
++        dunder_call = getattr(call, "__call__", None)
++        if dunder_call:
++            return _is_async_gen_callable(dunder_call)
++    return False
++
++
+ @dataclass
+ class SecurityRequirement:
+     security_scheme: SecurityBase
+@@ -79,33 +168,19 @@ class Dependant:
+     def _unwrapped_call(self) -> Any:
+         if self.call is None:
+             return self.call  # pragma: no cover
+-        unwrapped = inspect.unwrap(self.call)
+-        if isinstance(unwrapped, partial):
+-            unwrapped = unwrapped.func
+-        return unwrapped
++        return _get_unwrapped_call(self.call)
+ 
+     @cached_property
+     def is_gen_callable(self) -> bool:
+-        if inspect.isgeneratorfunction(self._unwrapped_call):
+-            return True
+-        dunder_call = getattr(self._unwrapped_call, "__call__", None)  # noqa: B004
+-        return inspect.isgeneratorfunction(dunder_call)
++        return _is_generator_callable(self.call)
+ 
+     @cached_property
+     def is_async_gen_callable(self) -> bool:
+-        if inspect.isasyncgenfunction(self._unwrapped_call):
+-            return True
+-        dunder_call = getattr(self._unwrapped_call, "__call__", None)  # noqa: B004
+-        return inspect.isasyncgenfunction(dunder_call)
++        return _is_async_generator_callable(self.call)
+ 
+     @cached_property
+     def is_coroutine_callable(self) -> bool:
+-        if inspect.isroutine(self._unwrapped_call):
+-            return iscoroutinefunction(self._unwrapped_call)
+-        if inspect.isclass(self._unwrapped_call):
+-            return False
+-        dunder_call = getattr(self._unwrapped_call, "__call__", None)  # noqa: B004
+-        return iscoroutinefunction(dunder_call)
++        return _is_coroutine_callable(self.call)
+ 
+     @cached_property
+     def computed_scope(self) -> Union[str, None]:
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 1a493a9f..d782b3de 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -549,9 +549,11 @@ async def _solve_generator(
+ ) -> Any:
+     assert dependant.call
+     if dependant.is_gen_callable:
+-        cm = contextmanager_in_threadpool(contextmanager(dependant.call)(**sub_values))
++        cm = contextmanager_in_threadpool(
++            contextmanager(lambda **kwargs: dependant.call(**kwargs))(**sub_values)
++        )
+     elif dependant.is_async_gen_callable:
+-        cm = asynccontextmanager(dependant.call)(**sub_values)
++        cm = asynccontextmanager(lambda **kwargs: dependant.call(**kwargs))(**sub_values)
+     return await stack.enter_async_context(cm)
+ 
+ 

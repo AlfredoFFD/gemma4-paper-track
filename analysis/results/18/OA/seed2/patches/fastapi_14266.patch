@@ -1,0 +1,95 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index d2d4e8b4..65d8d393 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -245,6 +245,14 @@ def get_dependant(
+         security_scopes=security_scopes,
+         use_cache=use_cache,
+     )
++    if isinstance(call, SecurityBase):
++        use_scopes: List[str] = []
++        if isinstance(call, (OAuth2, OpenIdConnect)):
++            use_scopes = security_scopes or []
++        security_requirement = SecurityRequirement(
++            security_scheme=call, scopes=use_scopes
++        )
++        dependant.security_requirements.append(security_requirement)
+     path_param_names = get_path_param_names(path)
+     endpoint_signature = get_typed_signature(call)
+     signature_params = endpoint_signature.parameters
+@@ -269,16 +277,6 @@ def get_dependant(
+                 security_scopes=use_security_scopes,
+                 use_cache=param_details.depends.use_cache,
+             )
+-            if isinstance(param_details.depends.dependency, SecurityBase):
+-                use_scopes: List[str] = []
+-                if isinstance(
+-                    param_details.depends.dependency, (OAuth2, OpenIdConnect)
+-                ):
+-                    use_scopes = use_security_scopes
+-                security_requirement = SecurityRequirement(
+-                    security_scheme=param_details.depends.dependency, scopes=use_scopes
+-                )
+-                sub_dependant.security_requirements.append(security_requirement)
+             dependant.dependencies.append(sub_dependant)
+             continue
+         if add_non_field_param_to_dependency(
+diff --git a/reproduce_bug.py b/reproduce_bug.py
+new file mode 100644
+index 00000000..b1e20c8a
+--- /dev/null
++++ b/reproduce_bug.py
+@@ -0,0 +1,21 @@
++from fastapi import FastAPI, Depends, Security
++from fastapi.security import OAuth2PasswordBearer
++from fastapi.openapi.utils import get_openapi
++
++app = FastAPI(dependencies=[Depends(OAuth2PasswordBearer(tokenUrl="token"))])
++
++@app.get("/")
++def root():
++    return {"message": "Hello World"}
++
++openapi_schema = get_openapi(app, app.title, app.version, app.description, app.routes)
++print(openapi_schema)
++
++# Verify that security requirements are present for the root endpoint
++root_endpoint = next(route for route in app.routes if route.path == "/")
++security = openapi_schema["paths"]["/"]["get"]["security"]
++print(f"Security for root: {security}")
++
++assert security is not None
++assert len(security) > 0
++print("Verification successful!")
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..de9cb7fe
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,26 @@
++from fastapi import FastAPI, Depends
++from fastapi.security import OAuth2PasswordBearer
++
++oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
++
++def test_security_top_level():
++    app = FastAPI(dependencies=[Depends(oauth2_scheme)])
++    
++    @app.get("/")
++    async def root():
++        return {"message": "Hello World"}
++    
++    openapi_schema = app.openapi()
++    paths = openapi_schema["paths"]
++    root_path = paths["/"]["get"]
++    
++    security = root_path.get("security")
++    print(f"Security requirements for root: {security}")
++    
++    if security is None:
++        print("FAILED: Security requirements not found in OpenAPI schema")
++    else:
++        print("PASSED: Security requirements found in OpenAPI schema")
++
++if __name__ == "__main__":
++    test_security_top_level()

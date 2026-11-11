@@ -1,0 +1,69 @@
+diff --git a/fastapi/_compat/v2.py b/fastapi/_compat/v2.py
+index eb5c06ed..2622b2e4 100644
+--- a/fastapi/_compat/v2.py
++++ b/fastapi/_compat/v2.py
+@@ -108,7 +108,12 @@ class ModelField:
+     @property
+     def alias(self) -> str:
+         a = self.field_info.alias
+-        return a if a is not None else self.name
++        if a is not None:
++            return a
++        va = getattr(self.field_info, "validation_alias", None)
++        if isinstance(va, str):
++            return va
++        return self.name
+ 
+     @property
+     def required(self) -> bool:
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..1342ca24
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,45 @@
++from fastapi import FastAPI, Query, Body, Depends
++from pydantic import BaseModel, Field
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.get("/query")
++async def read_query(q: str = Query(..., validation_alias="query_alias")):
++    return {"q": q}
++
++class BodyModel(BaseModel):
++    name: str = Field(..., validation_alias="name_alias")
++
++@app.post("/body")
++async def read_body(body: BodyModel = Body()):
++    return {"name": body.name}
++
++client = TestClient(app)
++
++def test_query_alias():
++    print("Testing query alias...")
++    response = client.get("/query", params={"query_alias": "hello"})
++    print(f"Response status: {response.status_code}")
++    print(f"Response json: {response.json()}")
++    assert response.status_code == 200
++    assert response.json() == {"q": "hello"}
++
++def test_body_alias():
++    print("Testing body alias...")
++    response = client.post("/body", json={"name_alias": "world"})
++    print(f"Response status: {response.status_code}")
++    print(f"Response json: {response.json()}")
++    assert response.status_code == 200
++    assert response.json() == {"name": "world"}
++
++if __name__ == "__main__":
++    try:
++        test_query_alias()
++        test_body_alias()
++        print("All tests passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        import traceback
++        traceback.print_exc()
++        exit(1)

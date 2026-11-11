@@ -1,0 +1,122 @@
+diff --git a/fastapi/params.py b/fastapi/params.py
+index 68f98708..10319db1 100644
+--- a/fastapi/params.py
++++ b/fastapi/params.py
+@@ -476,6 +476,7 @@ class Body(FieldInfo):  # type: ignore[misc]
+         annotation: Any | None = None,
+         embed: bool | None = None,
+         media_type: str = "application/json",
++        strict_content_type: bool = False,
+         alias: str | None = None,
+         alias_priority: int | None = _Unset,
+         validation_alias: str | AliasPath | AliasChoices | None = None,
+@@ -517,6 +518,7 @@ class Body(FieldInfo):  # type: ignore[misc]
+     ):
+         self.embed = embed
+         self.media_type = media_type
++        self.strict_content_type = strict_content_type
+         if example is not _Unset:
+             warnings.warn(
+                 "`example` has been deprecated, please use `examples` instead",
+diff --git a/fastapi/routing.py b/fastapi/routing.py
+index 528c9629..dcb2b14b 100644
+--- a/fastapi/routing.py
++++ b/fastapi/routing.py
+@@ -49,6 +49,7 @@ from fastapi.encoders import jsonable_encoder
+ from fastapi.exceptions import (
+     EndpointContext,
+     FastAPIError,
++    HTTPException,
+     RequestValidationError,
+     ResponseValidationError,
+     WebSocketRequestValidationError,
+@@ -369,8 +370,10 @@ def get_request_handler(
+                     if body_bytes:
+                         json_body: Any = Undefined
+                         content_type_value = request.headers.get("content-type")
++                        strict_content_type = body_field and getattr(body_field.field_info, "strict_content_type", False)
+                         if not content_type_value:
+-                            json_body = await request.json()
++                            if not strict_content_type:
++                                json_body = await request.json()
+                         else:
+                             message = email.message.Message()
+                             message["content-type"] = content_type_value
+@@ -381,6 +384,8 @@ def get_request_handler(
+                         if json_body != Undefined:
+                             body = json_body
+                         else:
++                            if strict_content_type:
++                                raise HTTPException(status_code=415, detail="Unsupported Media Type")
+                             body = body_bytes
+         except json.JSONDecodeError as e:
+             validation_error = RequestValidationError(
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..c1b32af7
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,63 @@
++from fastapi import FastAPI, Body
++from fastapi.testclient import TestClient
++import pytest
++
++app = FastAPI()
++
++@app.post("/test")
++async def test_endpoint(data: dict = Body(..., strict_content_type=False)):
++    return data
++
++@app.post("/test-strict")
++async def test_strict_endpoint(data: dict = Body(..., strict_content_type=True)):
++    return data
++
++client = TestClient(app)
++
++def test_non_strict_no_content_type():
++    # Should work even without content-type
++    response = client.post("/test", json={"foo": "bar"}, headers={"content-type": ""})
++    # Wait, if I pass json=..., TestClient sets content-type. 
++    # I should use content=... to avoid TestClient setting it.
++    import json
++    response = client.post("/test", content=json.dumps({"foo": "bar"}), headers={})
++    assert response.status_code == 200
++    assert response.json() == {"foo": "bar"}
++
++def test_strict_no_content_type():
++    # Should fail with 415
++    import json
++    response = client.post("/test-strict", content=json.dumps({"foo": "bar"}), headers={})
++    print(f"Status Code: {response.status_code}, Body: {response.text}")
++    assert response.status_code == 415
++    assert response.json()["detail"] == "Unsupported Media Type"
++
++def test_non_strict_wrong_content_type():
++    # Should work (falls back to body_bytes, but then Pydantic might fail if it expects a dict)
++    # Actually, if it falls back to body_bytes, and the endpoint expects a dict, 
++    # Pydantic will try to validate the bytes as a dict, which will fail with 422.
++    import json
++    response = client.post("/test", content=json.dumps({"foo": "bar"}), headers={"content-type": "text/plain"})
++    assert response.status_code == 422
++
++def test_strict_wrong_content_type():
++    # Should fail with 415
++    import json
++    response = client.post("/test-strict", content=json.dumps({"foo": "bar"}), headers={"content-type": "text/plain"})
++    assert response.status_code == 415
++    assert response.json()["detail"] == "Unsupported Media Type"
++
++def test_strict_correct_content_type():
++    # Should work
++    import json
++    response = client.post("/test-strict", content=json.dumps({"foo": "bar"}), headers={"content-type": "application/json"})
++    assert response.status_code == 200
++    assert response.json() == {"foo": "bar"}
++
++if __name__ == "__main__":
++    test_non_strict_no_content_type()
++    test_strict_no_content_type()
++    test_non_strict_wrong_content_type()
++    test_strict_wrong_content_type()
++    test_strict_correct_content_type()
++    print("All tests passed!")

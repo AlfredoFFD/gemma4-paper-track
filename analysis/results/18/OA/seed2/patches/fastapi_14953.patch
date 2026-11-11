@@ -1,0 +1,70 @@
+diff --git a/fastapi/_compat/v2.py b/fastapi/_compat/v2.py
+index b83bc1b5..3531aac0 100644
+--- a/fastapi/_compat/v2.py
++++ b/fastapi/_compat/v2.py
+@@ -226,6 +226,19 @@ def get_schema_from_model_field(
+     return json_schema
+ 
+ 
++def replace_binary_format(schema: Any) -> Any:
++    if isinstance(schema, dict):
++        if schema.get("format") == "binary":
++            schema.pop("format", None)
++            schema["contentMediaType"] = "application/octet-stream"
++        for value in schema.values():
++            replace_binary_format(value)
++    elif isinstance(schema, list):
++        for item in schema:
++            replace_binary_format(item)
++    return schema
++
++
+ def get_definitions(
+     *,
+     fields: Sequence[ModelField],
+@@ -278,6 +291,10 @@ def get_definitions(
+         for field in list(fields) + list(unique_flat_model_fields)
+     ]
+     field_mapping, definitions = schema_generator.generate_definitions(inputs=inputs)
++    for schema in field_mapping.values():
++        replace_binary_format(schema)
++    for schema in definitions.values():
++        replace_binary_format(schema)
+     for item_def in cast(dict[str, dict[str, Any]], definitions).values():
+         if "description" in item_def:
+             item_description = cast(str, item_def["description"]).split("\f")[0]
+diff --git a/fastapi/datastructures.py b/fastapi/datastructures.py
+index c04b5f0f..479e1a7c 100644
+--- a/fastapi/datastructures.py
++++ b/fastapi/datastructures.py
+@@ -139,7 +139,7 @@ class UploadFile(StarletteUploadFile):
+     def __get_pydantic_json_schema__(
+         cls, core_schema: Mapping[str, Any], handler: GetJsonSchemaHandler
+     ) -> dict[str, Any]:
+-        return {"type": "string", "format": "binary"}
++        return {"type": "string", "contentMediaType": "application/octet-stream"}
+ 
+     @classmethod
+     def __get_pydantic_core_schema__(
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..595f2659
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,16 @@
++from fastapi import FastAPI, UploadFile
++from pydantic import BaseModel
++import json
++
++app = FastAPI()
++
++class Item(BaseModel):
++    data: bytes
++    file: UploadFile
++
++@app.post("/upload")
++async def upload(item: Item):
++    return {"status": "ok"}
++
++openapi_schema = app.openapi()
++print(json.dumps(openapi_schema, indent=2))

@@ -1,0 +1,162 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 0ba93524..a9fefa7f 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -1,6 +1,7 @@
+ import dataclasses
+ import inspect
+ import sys
++import warnings
+ from collections.abc import Coroutine, Mapping, Sequence
+ from contextlib import AsyncExitStack, contextmanager
+ from copy import copy, deepcopy
+@@ -325,6 +326,12 @@ def get_dependant(
+         if isinstance(
+             param_details.field.field_info, (params.Body, temp_pydantic_v1_params.Body)
+         ):
++            if isinstance(param_details.field.field_info, temp_pydantic_v1_params.Body):
++                warnings.warn(
++                    "Pydantic v1 is deprecated, please use Pydantic v2",
++                    DeprecationWarning,
++                    stacklevel=2,
++                )
+             dependant.body_params.append(param_details.field)
+         else:
+             add_param_to_fields(field=param_details.field, dependant=dependant)
+@@ -385,9 +392,8 @@ def analyze_param(
+             for arg in annotated_args[1:]
+             if isinstance(arg, (FieldInfo, may_v1.FieldInfo, params.Depends))
+         ]
+-        fastapi_specific_annotations = [
+-            arg
+-            for arg in fastapi_annotations
++        fastapi_specific_annotations = []
++        for arg in fastapi_annotations:
+             if isinstance(
+                 arg,
+                 (
+@@ -397,8 +403,14 @@ def analyze_param(
+                     temp_pydantic_v1_params.Body,
+                     params.Depends,
+                 ),
+-            )
+-        ]
++            ):
++                if isinstance(arg, (temp_pydantic_v1_params.Param, temp_pydantic_v1_params.Body)):
++                    warnings.warn(
++                        "Pydantic v1 is deprecated, please use Pydantic v2",
++                        DeprecationWarning,
++                        stacklevel=2,
++                    )
++                fastapi_specific_annotations.append(arg)
+         if fastapi_specific_annotations:
+             fastapi_annotation: Union[
+                 FieldInfo, may_v1.FieldInfo, params.Depends, None
+diff --git a/fastapi/routing.py b/fastapi/routing.py
+index a1f2e44b..0fc00ebf 100644
+--- a/fastapi/routing.py
++++ b/fastapi/routing.py
+@@ -2,6 +2,7 @@ import email.message
+ import functools
+ import inspect
+ import json
++import warnings
+ from collections.abc import (
+     AsyncIterator,
+     Awaitable,
+@@ -329,9 +330,17 @@ def get_request_handler(
+ ) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+     assert dependant.call is not None, "dependant.call must be a function"
+     is_coroutine = dependant.is_coroutine_callable
+-    is_body_form = body_field and isinstance(
++    is_body_form = False
++    if body_field and isinstance(
+         body_field.field_info, (params.Form, temp_pydantic_v1_params.Form)
+-    )
++    ):
++        if isinstance(body_field.field_info, temp_pydantic_v1_params.Form):
++            warnings.warn(
++                "Pydantic v1 is deprecated, please use Pydantic v2",
++                DeprecationWarning,
++                stacklevel=2,
++            )
++        is_body_form = True
+     if isinstance(response_class, DefaultPlaceholder):
+         actual_response_class: type[Response] = response_class.value
+     else:
+diff --git a/repro_warnings.py b/repro_warnings.py
+new file mode 100644
+index 00000000..f3f1ac30
+--- /dev/null
++++ b/repro_warnings.py
+@@ -0,0 +1,70 @@
++
++import warnings
++from fastapi import FastAPI, Body, Form
++from fastapi.dependencies.utils import analyze_param
++from fastapi.routing import APIRoute, get_request_handler
++from fastapi.dependencies.models import Dependant
++from fastapi import params
++from fastapi import temp_pydantic_v1_params
++import inspect
++
++def test_analyze_param_warning():
++    print("Testing analyze_param warning...")
++    with warnings.catch_warnings(record=True) as w:
++        warnings.simplefilter("always")
++        # Use temp_pydantic_v1_params.Body
++        analyze_param(
++            param_name="test",
++            annotation=None, # Not used for this test
++            value=temp_pydantic_v1_params.Body(),
++            is_path_param=False,
++        )
++        # Wait, analyze_param expects annotation to be Annotated for the logic I changed.
++        # Let's use Annotated.
++        from typing import Annotated
++        analyze_param(
++            param_name="test",
++            annotation=Annotated[int, temp_pydantic_v1_params.Body()],
++            value=None,
++            is_path_param=False,
++        )
++        
++        # Check if warning was triggered
++        found = any("Pydantic v1 is deprecated" in str(warn.message) for warn in w)
++        print(f"Warning found: {found}")
++        assert found
++
++def test_get_dependant_warning():
++    print("Testing get_dependant warning...")
++    # This is harder to trigger manually without a full setup.
++    # But we can try to mock the param_details.
++    pass
++
++def test_get_request_handler_warning():
++    print("Testing get_request_handler warning...")
++    # Mocking Dependant and body_field
++    class MockField:
++        def __init__(self, field_info):
++            self.field_info = field_info
++            
++    dependant = Dependant(call=lambda: None, name="test", path="/test", scope="function")
++    body_field = MockField(temp_pydantic_v1_params.Form())
++    
++    with warnings.catch_warnings(record=True) as w:
++        warnings.simplefilter("always")
++        get_request_handler(dependant=dependant, body_field=body_field)
++        
++        found = any("Pydantic v1 is deprecated" in str(warn.message) for warn in w)
++        print(f"Warning found: {found}")
++        assert found
++
++if __name__ == "__main__":
++    try:
++        test_analyze_param_warning()
++        test_get_request_handler_warning()
++        print("All tests passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        import traceback
++        traceback.print_exc()
++        exit(1)

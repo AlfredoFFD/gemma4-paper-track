@@ -1,0 +1,112 @@
+diff --git a/fastapi/_compat/__init__.py b/fastapi/_compat/__init__.py
+index 3dfaf9b7..c7921fc9 100644
+--- a/fastapi/_compat/__init__.py
++++ b/fastapi/_compat/__init__.py
+@@ -4,6 +4,7 @@ from .shared import annotation_is_pydantic_v1 as annotation_is_pydantic_v1
+ from .shared import field_annotation_is_scalar as field_annotation_is_scalar
+ from .shared import is_pydantic_v1_model_class as is_pydantic_v1_model_class
+ from .shared import is_pydantic_v1_model_instance as is_pydantic_v1_model_instance
++from .shared import is_typealiastype as is_typealiastype
+ from .shared import (
+     is_uploadfile_or_nonable_uploadfile_annotation as is_uploadfile_or_nonable_uploadfile_annotation,
+ )
+diff --git a/fastapi/_compat/shared.py b/fastapi/_compat/shared.py
+index 68b9bbdf..4d3c1252 100644
+--- a/fastapi/_compat/shared.py
++++ b/fastapi/_compat/shared.py
+@@ -79,6 +79,18 @@ def value_is_sequence(value: Any) -> bool:
+     return isinstance(value, sequence_types) and not isinstance(value, (str, bytes))
+ 
+ 
++def is_typealiastype(annotation: Any) -> bool:
++    try:
++        from types import TypeAliasType
++        return isinstance(annotation, TypeAliasType)
++    except ImportError:
++        try:
++            from typing import TypeAliasType
++            return isinstance(annotation, TypeAliasType)
++        except ImportError:
++            return False
++
++
+ def _annotation_is_complex(annotation: Union[type[Any], None]) -> bool:
+     return (
+         lenient_issubclass(annotation, (BaseModel, Mapping, UploadFile))
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 3037b233..2366bae0 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -33,6 +33,7 @@ from fastapi._compat import (
+     is_scalar_field,
+     is_scalar_sequence_field,
+     is_sequence_field,
++    is_typealiastype,
+     is_uploadfile_or_nonable_uploadfile_annotation,
+     is_uploadfile_sequence_annotation,
+     lenient_issubclass,
+@@ -421,6 +422,13 @@ def analyze_param(
+         # Get Annotated Depends
+         elif isinstance(fastapi_annotation, params.Depends):
+             depends = fastapi_annotation
++
++    # Resolve TypeAliasType
++    while is_typealiastype(type_annotation):
++        type_annotation = getattr(type_annotation, "__value__", Any)
++    while is_typealiastype(use_annotation):
++        use_annotation = getattr(use_annotation, "__value__", Any)
++
+     # Get Depends from default value
+     if isinstance(value, params.Depends):
+         assert depends is None, (
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..6b6454ed
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,45 @@
++from typing import Annotated, Any
++try:
++    from types import TypeAliasType
++except ImportError:
++    from typing import TypeAliasType
++from fastapi.dependencies.utils import analyze_param
++import inspect
++from pydantic import Field
++
++# Define a type alias using PEP 695
++MyAlias = TypeAliasType("MyAlias", int)
++
++def test_type_alias():
++    # Case 1: Simple TypeAliasType
++    details = analyze_param(
++        param_name="p1",
++        annotation=MyAlias,
++        value=inspect.Signature.empty,
++        is_path_param=False,
++    )
++    print(f"Case 1: {details.type_annotation} == int: {details.type_annotation is int}")
++
++    # Case 2: Annotated[TypeAliasType, ...]
++    AnnotatedAlias = Annotated[MyAlias, Field(description="test")]
++    details = analyze_param(
++        param_name="p2",
++        annotation=AnnotatedAlias,
++        value=inspect.Signature.empty,
++        is_path_param=False,
++    )
++    print(f"Case 2: {details.type_annotation} == int: {details.type_annotation is int}")
++
++    # Case 3: Nested TypeAliasType
++    Alias1 = TypeAliasType("Alias1", int)
++    Alias2 = TypeAliasType("Alias2", Alias1)
++    details = analyze_param(
++        param_name="p3",
++        annotation=Alias2,
++        value=inspect.Signature.empty,
++        is_path_param=False,
++    )
++    print(f"Case 3: {details.type_annotation} == int: {details.type_annotation is int}")
++
++if __name__ == "__main__":
++    test_type_alias()
