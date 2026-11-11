@@ -1,0 +1,143 @@
+diff --git a/fastapi/dependencies/models.py b/fastapi/dependencies/models.py
+index 13486dd1..8a34a522 100644
+--- a/fastapi/dependencies/models.py
++++ b/fastapi/dependencies/models.py
+@@ -1,5 +1,6 @@
+ import inspect
+ import sys
++import functools
+ from dataclasses import dataclass, field
+ from functools import cached_property
+ from typing import Any, Callable, List, Optional, Sequence, Union
+@@ -79,7 +80,10 @@ class Dependant:
+     def _unwrapped_call(self) -> Any:
+         if self.call is None:
+             return self.call  # pragma: no cover
+-        return inspect.unwrap(self.call)
++        call = self.call
++        while isinstance(call, functools.partial):
++            call = call.func
++        return inspect.unwrap(call)
+ 
+     @cached_property
+     def is_gen_callable(self) -> bool:
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 1a493a9f..8fa41aef 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -273,7 +273,7 @@ def get_dependant(
+             ):
+                 assert dependant.call
+                 raise DependencyScopeError(
+-                    f'The dependency "{dependant.call.__name__}" has a scope of '
++                    f'The dependency "{getattr(dependant._unwrapped_call, "__name__", str(dependant._unwrapped_call))}" has a scope of '
+                     '"request", it cannot depend on dependencies with scope "function".'
+                 )
+             sub_own_oauth_scopes: List[str] = []
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..a109c1c8
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,73 @@
++
++import functools
++from fastapi import FastAPI, Depends
++from fastapi.dependencies.models import Dependant
++from fastapi.dependencies.utils import get_dependant
++import inspect
++
++def test_partial_gen():
++    def gen_dep():
++        yield "ok"
++    
++    partial_gen = functools.partial(gen_dep)
++    dependant = get_dependant(path="/test", call=partial_gen)
++    print(f"is_gen_callable: {dependant.is_gen_callable}")
++    assert dependant.is_gen_callable is True
++
++async def test_partial_async_gen():
++    async def async_gen_dep():
++        yield "ok"
++    
++    partial_async_gen = functools.partial(async_gen_dep)
++    dependant = get_dependant(path="/test", call=partial_async_gen)
++    print(f"is_async_gen_callable: {dependant.is_async_gen_callable}")
++    assert dependant.is_async_gen_callable is True
++
++async def test_partial_coroutine():
++    async def coroutine_dep():
++        return "ok"
++    
++    partial_coroutine = functools.partial(coroutine_dep)
++    dependant = get_dependant(path="/test", call=partial_coroutine)
++    print(f"is_coroutine_callable: {dependant.is_coroutine_callable}")
++    assert dependant.is_coroutine_callable is True
++
++class CallableClass:
++    def __call__(self):
++        return "ok"
++
++def test_partial_callable_class():
++    cc = CallableClass()
++    partial_cc = functools.partial(cc)
++    dependant = get_dependant(path="/test", call=partial_cc)
++    print(f"is_coroutine_callable: {dependant.is_coroutine_callable}")
++    # CallableClass is not a coroutine, so this should be False
++    assert dependant.is_coroutine_callable is False
++
++if __name__ == "__main__":
++    try:
++        test_partial_gen()
++        print("test_partial_gen passed")
++    except Exception as e:
++        print(f"test_partial_gen failed: {e}")
++
++    try:
++        # We need to run async tests with an event loop
++        import asyncio
++        asyncio.run(test_partial_async_gen())
++        print("test_partial_async_gen passed")
++    except Exception as e:
++        print(f"test_partial_async_gen failed: {e}")
++
++    try:
++        import asyncio
++        asyncio.run(test_partial_coroutine())
++        print("test_partial_coroutine passed")
++    except Exception as e:
++        print(f"test_partial_coroutine failed: {e}")
++
++    try:
++        test_partial_callable_class()
++        print("test_partial_callable_class passed")
++    except Exception as e:
++        print(f"test_partial_callable_class failed: {e}")
+diff --git a/repro2.py b/repro2.py
+new file mode 100644
+index 00000000..370d54e8
+--- /dev/null
++++ b/repro2.py
+@@ -0,0 +1,22 @@
++
++import functools
++import asyncio
++import inspect
++from fastapi.dependencies.models import Dependant
++
++async def coroutine_dep():
++    return "ok"
++
++def test_partial_coroutine():
++    partial_coroutine = functools.partial(coroutine_dep)
++    dependant = Dependant(call=partial_coroutine)
++    print(f"unwrapped_call: {dependant._unwrapped_call}")
++    print(f"is_coroutine_callable: {dependant.is_coroutine_callable}")
++    assert dependant.is_coroutine_callable is True
++
++if __name__ == "__main__":
++    try:
++        test_partial_coroutine()
++        print("test_partial_coroutine passed")
++    except Exception as e:
++        print(f"test_partial_coroutine failed: {e}")

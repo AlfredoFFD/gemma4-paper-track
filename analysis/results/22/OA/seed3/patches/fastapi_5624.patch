@@ -1,0 +1,101 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 1e92c1ba..e21e1cb5 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -275,7 +275,7 @@ def get_dependant(
+                     f'The dependency "{dependant.call.__name__}" has a scope of '
+                     '"request", it cannot depend on dependencies with scope "function".'
+                 )
+-            use_security_scopes = security_scopes or []
++            use_security_scopes = list(security_scopes) if security_scopes is not None else []
+             if isinstance(param_details.depends, params.Security):
+                 if param_details.depends.scopes:
+                     use_security_scopes.extend(param_details.depends.scopes)
+diff --git a/repro_bug.py b/repro_bug.py
+new file mode 100644
+index 00000000..9b0cdf51
+--- /dev/null
++++ b/repro_bug.py
+@@ -0,0 +1,82 @@
++import pytest
++from fastapi import FastAPI, Depends, Security
++from fastapi.dependencies.utils import get_dependant
++from fastapi.security import OAuth2PasswordBearer
++from typing import List, Optional
++
++# Mock security scheme
++oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
++
++def root():
++    return "root"
++
++# Inner 1 depends on root with scope "inner1"
++def inner1(r=Security(root, scopes=["inner1"])):
++    return "inner1"
++
++# Inner 2 depends on root with scope "inner2"
++def inner2(r=Security(root, scopes=["inner2"])):
++    return "inner2"
++
++# Main depends on inner1 and inner2, and has scope "root"
++def main(i1=Depends(inner1), i2=Depends(inner2)):
++    return "main"
++
++def test_hierarchical_security_scope_propagation():
++    # We want to see if security scopes are correctly propagated and isolated
++    # when multiple dependencies share a common dependency.
++    
++    main_dependant = get_dependant(
++        call=main,
++        path="/",
++        security_scopes=["root"]
++    )
++    
++    # Find inner1 and inner2 dependants
++    dep_inner1_dependant = None
++    dep_inner2_dependant = None
++    for dep in main_dependant.dependencies:
++        if dep.call == inner1:
++            dep_inner1_dependant = dep
++        elif dep.call == inner2:
++            dep_inner2_dependant = dep
++            
++    print(f"Inner 1 scopes: {dep_inner1_dependant.security_scopes}")
++    print(f"Inner 2 scopes: {dep_inner2_dependant.security_scopes}")
++    
++    # These should be the scopes passed from main
++    assert dep_inner1_dependant.security_scopes == ["root"]
++    assert dep_inner2_dependant.security_scopes == ["root"]
++    
++    # Now find root dependants
++    root_dependants = []
++    def find_root(dep):
++        if dep.call == root:
++            root_dependants.append(dep)
++        for sub in dep.dependencies:
++            find_root(sub)
++    
++    find_root(main_dependant)
++    
++    print(f"Found {len(root_dependants)} root dependants")
++    for i, root_dep in enumerate(root_dependants):
++        print(f"Root {i+1} scopes: {root_dep.security_scopes}")
++        
++    # We expect root to be a dependency of both inner1 and inner2
++    # and to have different scopes in each case.
++    assert len(root_dependants) == 2
++    
++    # Root 1 should have scopes from main + inner1
++    # Root 2 should have scopes from main + inner2
++    # Note: the order in root_dependants depends on the order of dependencies in main
++    # which is [inner1, inner2]
++    assert root_dependants[0].security_scopes == ["root", "inner1"]
++    assert root_dependants[1].security_scopes == ["root", "inner2"]
++
++if __name__ == "__main__":
++    try:
++        test_hierarchical_security_scope_propagation()
++        print("Test passed!")
++    except Exception as e:
++        print("Test failed!")
++        raise e

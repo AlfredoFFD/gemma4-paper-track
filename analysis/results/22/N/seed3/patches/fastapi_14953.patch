@@ -1,0 +1,104 @@
+diff --git a/check_pydantic_bytes.py b/check_pydantic_bytes.py
+new file mode 100644
+index 00000000..67aaf60b
+--- /dev/null
++++ b/check_pydantic_bytes.py
+@@ -0,0 +1,5 @@
++from pydantic import TypeAdapter
++import json
++
++ta = TypeAdapter(bytes)
++print(json.dumps(ta.json_schema(), indent=2))
+diff --git a/fastapi/_compat/v2.py b/fastapi/_compat/v2.py
+index b83bc1b5..72ed6d71 100644
+--- a/fastapi/_compat/v2.py
++++ b/fastapi/_compat/v2.py
+@@ -278,10 +278,26 @@ def get_definitions(
+         for field in list(fields) + list(unique_flat_model_fields)
+     ]
+     field_mapping, definitions = schema_generator.generate_definitions(inputs=inputs)
++
++    def replace_binary_format(schema: Any) -> None:
++        if isinstance(schema, dict):
++            if schema.get("type") == "string" and schema.get("format") == "binary":
++                schema.pop("format", None)
++                schema["contentMediaType"] = "application/octet-stream"
++            for value in schema.values():
++                replace_binary_format(value)
++        elif isinstance(schema, list):
++            for item in schema:
++                replace_binary_format(item)
++
++    for schema in field_mapping.values():
++        replace_binary_format(schema)
++
+     for item_def in cast(dict[str, dict[str, Any]], definitions).values():
+         if "description" in item_def:
+             item_description = cast(str, item_def["description"]).split("\f")[0]
+             item_def["description"] = item_description
++        replace_binary_format(item_def)
+     # definitions: dict[DefsRef, dict[str, Any]]
+     # but mypy complains about general str in other places that are not declared as
+     # DefsRef, although DefsRef is just str:
+diff --git a/fastapi/datastructures.py b/fastapi/datastructures.py
+index c04b5f0f..479e1a7c 100644
+--- a/fastapi/datastructures.py
++++ b/fastapi/datastructures.py
+@@ -139,7 +139,7 @@ class UploadFile(StarletteUploadFile):
+     def __get_pydantic_json_schema__(
+         cls, core_schema: Mapping[str, Any], handler: GetJsonSchemaHandler
+     ) -> dict[str, Any]:
+-        return {"type": "string", "format": "binary"}
++        return {"type": "string", "contentMediaType": "application/octet-stream"}
+ 
+     @classmethod
+     def __get_pydantic_core_schema__(
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..68af4f0f
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,43 @@
++from fastapi import FastAPI, File, UploadFile
++from fastapi.openapi.utils import get_openapi
++from fastapi.routing import APIRoute
++from pydantic import BaseModel
++
++app = FastAPI()
++
++class Item(BaseModel):
++    file: bytes
++    upload_file: UploadFile
++
++@app.post("/upload")
++async def upload(item: Item):
++    return {"status": "ok"}
++
++# Mocking the routes for get_openapi
++routes = [
++    # We need to simulate how APIRoute is used in get_openapi
++    # For simplicity, let's just use the app's routes
++]
++for route in app.routes:
++    routes.append(route)
++
++openapi_schema = get_openapi(
++    title="Test API",
++    version="1.0.0",
++    routes=routes,
++)
++
++import json
++print(json.dumps(openapi_schema, indent=2))
++
++# Check if "format": "binary" exists
++schema_str = json.dumps(openapi_schema)
++if '"format": "binary"' in schema_str:
++    print("FAILURE: 'format': 'binary' still exists in schema")
++    exit(1)
++elif '"contentMediaType": "application/octet-stream"' in schema_str:
++    print("SUCCESS: 'contentMediaType': 'application/octet-stream' found")
++    exit(0)
++else:
++    print("FAILURE: 'contentMediaType' not found")
++    exit(1)

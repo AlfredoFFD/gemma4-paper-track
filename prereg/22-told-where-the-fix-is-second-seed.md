@@ -95,3 +95,16 @@ nothing that reads a repository can know which lines a fix will change.
   end on the context window. (b) Per arm, among the runs that do not end that way, the share whose final patch
   overlaps a changed region and the share resolved. (c) Per arm and changed region: shown; edited by the final
   patch; edited when shown. The rules L1 to L7 and their tests are unchanged.
+
+- Nov 11, 2026, 4:12 AM EST: the first of the two shards ran (20 of the 40 tasks, those at odd positions of the task
+  list; 80 sessions, all entered; harness of Oct 12, versions in `versions_22_shard0of2.json` beside the runs) and
+  was stored and analysed at about 4:05 AM. The second shard has not been launched: the compute credit that is
+  left does not cover it. With 20 tasks no rule L1 to L7 reaches the floor of 34 tasks, so none has a verdict; the
+  script prints the numbers, and the paper reports this as half a run. If the second shard runs later, the same
+  script analyses all 40 tasks unchanged. The second script (`analysis/rederive_22.py`, written without the first)
+  agrees with the registered one on every count of the four arms; its bootstrap intervals differ by up to 5
+  points at this size (another resampling code), and it pairs every tool call with its own result, which changes
+  one count (the runs with lines shown every changed region: 17, against 16 by the registered loader). Three
+  exploratory scripts written on the runs of 18 were then run on these runs, with one change to two of them (the
+  per-run table of 22 names its column `experiment`, that of 18 `launch`): `analysis/explore_endings_18.py`,
+  `analysis/explore_cost_18.py` and `analysis/explore_reach_22.py`. They carry no rule.

@@ -228,11 +228,15 @@ def messages_of(trace):
     return out
 
 
-def analyse(trace, g, prompt, places=None, arm=None):
+def analyse(trace, g, prompt, places=None, arm=None, note=None):
     """(reads, regions, files read from the top, {'after', 'places'}) of one run. g: the task's CHANGED REGIONS by
-    file; prompt: the task text; places and arm: the PLACES of the task's note and the run's arm (pre-registration 18)."""
+    file; prompt: the task text; places and arm: the PLACES of the task's note and the run's arm (pre-registration 18);
+    note: the line ranges the run's note gave it, as dicts with file, start and end, whose lines count as NAMED LINES
+    with the SOURCE NOTE (when not given: the PLACES in arm OA, nothing in the other arms)."""
     calls = calls_of(trace)
-    files = set(g) | {norm(x['file']) for x in places or ()}
+    if note is None:
+        note = places if arm == 'OA' else ()
+    files = set(g) | {norm(x['file']) for x in places or ()} | {norm(x['file']) for x in note or ()}
     for call, _t, parsed in calls:
         if is_read(call):
             ok = isinstance(parsed, dict) and parsed.get('status') == 'ok'
@@ -249,11 +253,10 @@ def analyse(trace, g, prompt, places=None, arm=None):
             if ln:
                 named[f].append((0, ln))
                 kinds[f].append((0, ln, 'TASK TEXT'))
-    if arm == 'OA':
-        for x in places or ():
-            ln = set(range(x['start'], x['end'] + 1))
-            named[norm(x['file'])].append((0, ln))
-            kinds[norm(x['file'])].append((0, ln, 'NOTE'))
+    for x in note or ():
+        ln = set(range(x['start'], x['end'] + 1))
+        named[norm(x['file'])].append((0, ln))
+        kinds[norm(x['file'])].append((0, ln, 'NOTE'))
     for i, (call, text, parsed) in enumerate(calls, 1):
         name = call.get('function_name')
         cmd = command_of(call)
@@ -511,7 +514,13 @@ def part1(label, rows, note=False):
 
 
 def median(v):
-    return sorted(v)[len(v) // 2] if v else float('nan')
+    """The median; for an even count the mean of the two middle values (printed without a trailing .0)."""
+    if not v:
+        return float('nan')
+    w = sorted(v)
+    n = len(w)
+    m = w[n // 2] if n % 2 else (w[n // 2 - 1] + w[n // 2]) / 2
+    return int(m) if isinstance(m, float) and m == int(m) else m
 
 
 def part1b(label, files):

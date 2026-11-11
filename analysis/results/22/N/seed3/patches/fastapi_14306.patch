@@ -1,0 +1,102 @@
+diff --git a/fastapi/dependencies/models.py b/fastapi/dependencies/models.py
+index 6c4bf18b..4bacf612 100644
+--- a/fastapi/dependencies/models.py
++++ b/fastapi/dependencies/models.py
+@@ -49,6 +49,7 @@ class Dependant:
+     use_cache: bool = True
+     path: Optional[str] = None
+     scope: Union[Literal["function", "request"], None] = None
++    route: Any = None
+ 
+     @cached_property
+     def oauth_scopes(self) -> List[str]:
+@@ -102,6 +103,24 @@ class Dependant:
+         security_deps = [dep for dep in self.dependencies if dep._is_security_scheme]
+         return security_deps
+ 
++    @cached_property
++    def endpoint_metadata(self) -> Optional[str]:
++        if self.route is None:
++            return None
++        call = _unwrapped_call(self.call)
++        try:
++            source_file = inspect.getsourcefile(call)
++            _, start_line = inspect.getsourcelines(call)
++        except (TypeError, OSError):
++            source_file = "unknown"
++            start_line = 0
++        func_name = getattr(call, "__name__", "unknown")
++        method = "UNKNOWN"
++        if hasattr(self.route, "methods") and self.route.methods:
++            method = " / ".join(sorted(self.route.methods))
++        route_path = getattr(self.route, "path", "unknown")
++        return f"File {source_file}, line {start_line}, in {func_name} ({method} {route_path})"
++
+     @cached_property
+     def is_gen_callable(self) -> bool:
+         if self.call is None:
+diff --git a/fastapi/exceptions.py b/fastapi/exceptions.py
+index 0620428b..a70e7aea 100644
+--- a/fastapi/exceptions.py
++++ b/fastapi/exceptions.py
+@@ -155,30 +155,36 @@ class DependencyScopeError(FastAPIError):
+ 
+ 
+ class ValidationException(Exception):
+-    def __init__(self, errors: Sequence[Any]) -> None:
++    def __init__(self, errors: Sequence[Any], dependant: Any = None) -> None:
+         self._errors = errors
++        self.dependant = dependant
+ 
+     def errors(self) -> Sequence[Any]:
+         return self._errors
+ 
++    def __str__(self) -> str:
++        message = f"{len(self._errors)} validation errors:\n"
++        for err in self._errors:
++            message += f"  {err}\n"
++        if self.dependant and hasattr(self.dependant, "endpoint_metadata"):
++            metadata = self.dependant.endpoint_metadata
++            if metadata:
++                message += f"Location: {metadata}\n"
++        return message.strip()
++
+ 
+ class RequestValidationError(ValidationException):
+-    def __init__(self, errors: Sequence[Any], *, body: Any = None) -> None:
+-        super().__init__(errors)
++    def __init__(self, errors: Sequence[Any], *, body: Any = None, dependant: Any = None) -> None:
++        super().__init__(errors, dependant=dependant)
+         self.body = body
+ 
+ 
+ class WebSocketRequestValidationError(ValidationException):
+-    pass
++    def __init__(self, errors: Sequence[Any], dependant: Any = None) -> None:
++        super().__init__(errors, dependant=dependant)
+ 
+ 
+ class ResponseValidationError(ValidationException):
+-    def __init__(self, errors: Sequence[Any], *, body: Any = None) -> None:
+-        super().__init__(errors)
++    def __init__(self, errors: Sequence[Any], *, body: Any = None, dependant: Any = None) -> None:
++        super().__init__(errors, dependant=dependant)
+         self.body = body
+-
+-    def __str__(self) -> str:
+-        message = f"{len(self._errors)} validation errors:\n"
+-        for err in self._errors:
+-            message += f"  {err}\n"
+-        return message
+diff --git a/fastapi/routing.py b/fastapi/routing.py
+index c10175b1..38e8b74c 100644
+--- a/fastapi/routing.py
++++ b/fastapi/routing.py
+@@ -630,6 +630,7 @@ class APIRoute(routing.Route):
+         self.dependant = get_dependant(
+             path=self.path_format, call=self.endpoint, scope="function"
+         )
++        self.dependant.route = self
+         for depends in self.dependencies[::-1]:
+             self.dependant.dependencies.insert(
+                 0,

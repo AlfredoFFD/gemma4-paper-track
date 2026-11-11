@@ -1,0 +1,154 @@
+diff --git a/fastapi/exceptions.py b/fastapi/exceptions.py
+index 0620428b..8fc46f96 100644
+--- a/fastapi/exceptions.py
++++ b/fastapi/exceptions.py
+@@ -155,30 +155,63 @@ class DependencyScopeError(FastAPIError):
+ 
+ 
+ class ValidationException(Exception):
+-    def __init__(self, errors: Sequence[Any]) -> None:
++    def __init__(
++        self,
++        errors: Sequence[Any],
++        *,
++        endpoint_context: Optional[Dict[str, Any]] = None,
++    ) -> None:
+         self._errors = errors
++        self.endpoint_context = endpoint_context
+ 
+     def errors(self) -> Sequence[Any]:
+         return self._errors
+ 
++    def __str__(self) -> str:
++        message = f"{len(self._errors)} validation errors:\n"
++        for err in self._errors:
++            message += f"  {err}\n"
++
++        if self.endpoint_context:
++            ctx = self.endpoint_context
++            message += f"\n  File \"{ctx['filepath']}\", line {ctx['line_number']}, in {ctx['function_name']}\n"
++            message += f"    {ctx['method']} {ctx['route']}\n"
++
++        return message
++
+ 
+ class RequestValidationError(ValidationException):
+-    def __init__(self, errors: Sequence[Any], *, body: Any = None) -> None:
+-        super().__init__(errors)
++    def __init__(
++        self,
++        errors: Sequence[Any],
++        *,
++        body: Any = None,
++        endpoint_context: Optional[Dict[str, Any]] = None,
++    ) -> None:
++        super().__init__(errors, endpoint_context=endpoint_context)
+         self.body = body
+ 
+ 
+ class WebSocketRequestValidationError(ValidationException):
+-    pass
++    def __init__(
++        self,
++        errors: Sequence[Any],
++        *,
++        endpoint_context: Optional[Dict[str, Any]] = None,
++    ) -> None:
++        super().__init__(errors, endpoint_context=endpoint_context)
+ 
+ 
+ class ResponseValidationError(ValidationException):
+-    def __init__(self, errors: Sequence[Any], *, body: Any = None) -> None:
+-        super().__init__(errors)
++    def __init__(
++        self,
++        errors: Sequence[Any],
++        *,
++        body: Any = None,
++        endpoint_context: Optional[Dict[str, Any]] = None,
++    ) -> None:
++        super().__init__(errors, endpoint_context=endpoint_context)
+         self.body = body
+ 
+     def __str__(self) -> str:
+-        message = f"{len(self._errors)} validation errors:\n"
+-        for err in self._errors:
+-            message += f"  {err}\n"
+-        return message
++        return super().__str__()
+diff --git a/fastapi/routing.py b/fastapi/routing.py
+index c10175b1..00c06be5 100644
+--- a/fastapi/routing.py
++++ b/fastapi/routing.py
+@@ -223,6 +223,7 @@ async def serialize_response(
+     exclude_defaults: bool = False,
+     exclude_none: bool = False,
+     is_coroutine: bool = True,
++    endpoint_context: Optional[Dict[str, Any]] = None,
+ ) -> Any:
+     if field:
+         errors = []
+@@ -246,7 +247,9 @@ async def serialize_response(
+             errors.append(errors_)
+         if errors:
+             raise ResponseValidationError(
+-                errors=_normalize_errors(errors), body=response_content
++                errors=_normalize_errors(errors),
++                body=response_content,
++                endpoint_context=endpoint_context,
+             )
+ 
+         if hasattr(field, "serialize"):
+@@ -300,8 +303,26 @@ def get_request_handler(
+     response_model_exclude_none: bool = False,
+     dependency_overrides_provider: Optional[Any] = None,
+     embed_body_fields: bool = False,
++    method: Optional[str] = None,
++    route: Optional[str] = None,
+ ) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+     assert dependant.call is not None, "dependant.call must be a function"
++    # Extract endpoint context
++    endpoint_context = None
++    if dependant.call:
++        try:
++            source_file = inspect.getfile(dependant.call)
++            _, start_line = inspect.getsourcelines(dependant.call)
++            endpoint_context = {
++                "filepath": source_file,
++                "line_number": start_line,
++                "function_name": dependant.call.__name__,
++                "method": method,
++                "route": route,
++            }
++        except (TypeError, OSError):
++            pass
++
+     is_coroutine = dependant.is_coroutine_callable
+     is_body_form = body_field and isinstance(
+         body_field.field_info, (params.Form, temp_pydantic_v1_params.Form)
+@@ -436,7 +457,25 @@ def get_websocket_app(
+     dependant: Dependant,
+     dependency_overrides_provider: Optional[Any] = None,
+     embed_body_fields: bool = False,
++    method: Optional[str] = None,
++    route: Optional[str] = None,
+ ) -> Callable[[WebSocket], Coroutine[Any, Any, Any]]:
++    # Extract endpoint context
++    endpoint_context = None
++    if dependant.call:
++        try:
++            source_file = inspect.getfile(dependant.call)
++            _, start_line = inspect.getsourcelines(dependant.call)
++            endpoint_context = {
++                "filepath": source_file,
++                "line_number": start_line,
++                "function_name": dependant.call.__name__,
++                "method": method,
++                "route": route,
++            }
++        except (TypeError, OSError):
++            pass
++
+     async def app(websocket: WebSocket) -> None:
+         async_exit_stack = websocket.scope.get("fastapi_inner_astack")
+         assert isinstance(async_exit_stack, AsyncExitStack), (
