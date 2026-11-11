@@ -1,0 +1,99 @@
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..2bc7ed14
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,25 @@
++
++import os
++from rich.console import Console
++from rich.live import Live
++from rich.panel import Panel
++import time
++
++def test_interactive():
++    console = Console()
++    print(f"is_terminal: {console.is_terminal}, is_interactive: {console.is_interactive}")
++    with Live(Panel("Starting..."), console=console) as live:
++        time.sleep(0.1)
++        live.update(Panel("Running..."))
++        time.sleep(0.1)
++        live.update(Panel("Finished!"))
++    print("Done.")
++
++if __name__ == "__main__":
++    print("--- Testing with TTY_INTERACTIVE=1 ---")
++    os.environ["TTY_INTERACTIVE"] = "1"
++    test_interactive()
++
++    print("\n--- Testing with TTY_INTERACTIVE=0 ---")
++    os.environ["TTY_INTERACTIVE"] = "0"
++    test_interactive()
+diff --git a/rich/console.py b/rich/console.py
+index 5929fb1c..f3f050c2 100644
+--- a/rich/console.py
++++ b/rich/console.py
+@@ -968,6 +968,26 @@ class Console:
+         except ValueError:
+             # in some situation (at the end of a pytest run for example) isatty() can raise
+             # ValueError: I/O operation on closed file
++            return False
++
++    @property
++    def is_interactive(self) -> bool:
++        """Check if the console is interactive.
++
++        Returns:
++            bool: True if the console is interactive, otherwise False.
++        """
++        environ = self._environ
++
++        tty_interactive = environ.get("TTY_INTERACTIVE", "")
++        # 0 indicates device is not interactive
++        if tty_interactive == "0":
++            return False
++        # 1 indicates device is interactive
++        if tty_interactive == "1":
++            return True
++
++        return self.is_terminal
+             # return False because we aren't in a terminal anymore
+             return False
+ 
+diff --git a/rich/live.py b/rich/live.py
+index 85faca80..e8c42f42 100644
+--- a/rich/live.py
++++ b/rich/live.py
+@@ -113,6 +113,10 @@ class Live(JupyterMixin, RenderHook):
+                 return
+             self._started = True
+ 
++            if not self.console.is_interactive:
++                self._nested = True
++                return
++
+             if not self.console.set_live(self):
+                 self._nested = True
+                 return
+@@ -142,6 +146,12 @@ class Live(JupyterMixin, RenderHook):
+             if not self._started:
+                 return
+             self._started = False
++
++            if not self.console.is_interactive:
++                if not self.transient:
++                    self.console.print(self.renderable)
++                return
++
+             self.console.clear_live()
+             if self._nested:
+                 if not self.transient:
+@@ -235,6 +245,8 @@ class Live(JupyterMixin, RenderHook):
+         """Update the display of the Live Render."""
+         with self._lock:
+             self._live_render.set_renderable(self.renderable)
++            if not self.console.is_interactive:
++                return
+             if self._nested:
+                 if self.console._live_stack:
+                     self.console._live_stack[0].refresh()

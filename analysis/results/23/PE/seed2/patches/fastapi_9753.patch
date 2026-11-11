@@ -1,0 +1,93 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 1a493a9f..c1c9d4ad 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -1,4 +1,5 @@
+ import dataclasses
++import functools
+ import inspect
+ from contextlib import AsyncExitStack, contextmanager
+ from copy import copy, deepcopy
+@@ -190,10 +191,19 @@ def get_flat_params(dependant: Dependant) -> List[ModelField]:
+     return path_params + query_params + header_params + cookie_params
+ 
+ 
++def get_call_globals(call: Any) -> Dict[str, Any]:
++    while isinstance(call, functools.partial):
++        call = call.func
++    call = inspect.unwrap(call)
++    module = inspect.getmodule(call)
++    if module:
++        return module.__dict__
++    return getattr(call, "__globals__", {})
++
++
+ def get_typed_signature(call: Callable[..., Any]) -> inspect.Signature:
+     signature = inspect.signature(call)
+-    unwrapped = inspect.unwrap(call)
+-    globalns = getattr(unwrapped, "__globals__", {})
++    globalns = get_call_globals(call)
+     typed_params = [
+         inspect.Parameter(
+             name=param.name,
+@@ -218,13 +228,12 @@ def get_typed_annotation(annotation: Any, globalns: Dict[str, Any]) -> Any:
+ 
+ def get_typed_return_annotation(call: Callable[..., Any]) -> Any:
+     signature = inspect.signature(call)
+-    unwrapped = inspect.unwrap(call)
+     annotation = signature.return_annotation
+ 
+     if annotation is inspect.Signature.empty:
+         return None
+ 
+-    globalns = getattr(unwrapped, "__globals__", {})
++    globalns = get_call_globals(call)
+     return get_typed_annotation(annotation, globalns)
+ 
+ 
+diff --git a/repro_partial.py b/repro_partial.py
+new file mode 100644
+index 00000000..ed06c402
+--- /dev/null
++++ b/repro_partial.py
+@@ -0,0 +1,40 @@
++import functools
++from typing import ForwardRef, Any
++from fastapi import FastAPI, Depends
++from fastapi.dependencies.utils import get_typed_signature, get_typed_return_annotation
++
++# Define a type that will be used as a forward reference
++class MyType:
++    pass
++
++def my_dependency(a: "MyType") -> "MyType":
++    return a
++
++# Create a partial of the dependency
++partial_dependency = functools.partial(my_dependency)
++
++def test_get_typed_signature():
++    print("Testing get_typed_signature...")
++    sig = get_typed_signature(partial_dependency)
++    param = list(sig.parameters.values())[0]
++    print(f"Param annotation: {param.annotation}")
++    assert param.annotation is MyType, f"Expected MyType, got {param.annotation}"
++    print("get_typed_signature passed!")
++
++def test_get_typed_return_annotation():
++    print("Testing get_typed_return_annotation...")
++    ret_ann = get_typed_return_annotation(partial_dependency)
++    print(f"Return annotation: {ret_ann}")
++    assert ret_ann is MyType, f"Expected MyType, got {ret_ann}"
++    print("get_typed_return_annotation passed!")
++
++if __name__ == "__main__":
++    try:
++        test_get_typed_signature()
++        test_get_typed_return_annotation()
++        print("\nAll tests passed!")
++    except Exception as e:
++        print(f"\nTest failed: {e}")
++        import traceback
++        traceback.print_exc()
++        exit(1)

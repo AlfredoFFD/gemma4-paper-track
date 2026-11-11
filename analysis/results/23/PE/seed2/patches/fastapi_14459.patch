@@ -1,0 +1,152 @@
+diff --git a/check_type.py b/check_type.py
+new file mode 100644
+index 00000000..92e0d9eb
+--- /dev/null
++++ b/check_type.py
+@@ -0,0 +1,6 @@
++from fastapi import FastAPI
++app = FastAPI()
++@app.get("/")
++def root():
++    return {}
++print(type(app.routes[0]))
+diff --git a/fastapi/dependencies/models.py b/fastapi/dependencies/models.py
+index 9b545e4e..978d603e 100644
+--- a/fastapi/dependencies/models.py
++++ b/fastapi/dependencies/models.py
+@@ -68,9 +68,7 @@ class Dependant:
+ 
+     @cached_property
+     def cache_key(self) -> DependencyCacheKey:
+-        scopes_for_cache = (
+-            tuple(sorted(set(self.oauth_scopes or []))) if self._uses_scopes else ()
+-        )
++        scopes_for_cache = tuple(sorted(set(self.oauth_scopes or [])))
+         return (
+             self.call,
+             scopes_for_cache,
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..6e7077ed
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,38 @@
++from fastapi import FastAPI, Depends, Security
++from fastapi.security import OAuth2PasswordBearer
++from fastapi.routing import APIRoute
++import json
++
++oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
++
++def dep_a():
++    return "a"
++
++def dep_b(token: str = Security(oauth2_scheme, scopes=["scope1"])):
++    return "b"
++
++def dep_c(token: str = Security(oauth2_scheme, scopes=["scope2"])):
++    return "c"
++
++def common_dep(a: str = Depends(dep_a)):
++    return "common"
++
++app = FastAPI()
++
++@app.get("/test1", dependencies=[Depends(dep_b), Depends(common_dep)])
++async def test1():
++    return {"message": "test1"}
++
++@app.get("/test2", dependencies=[Depends(dep_c), Depends(common_dep)])
++async def test2():
++    return {"message": "test2"}
++
++# Let's inspect the routes
++for route in app.routes:
++    print(f"Route: {route.path}, Type: {type(route)}")
++    if isinstance(route, APIRoute):
++        print(f"  Dependants: {route.dependant}")
++
++# Now let's see what OpenAPI says
++openapi_schema = app.openapi()
++print(json.dumps(openapi_schema, indent=2))
+diff --git a/repro_scopes.py b/repro_scopes.py
+new file mode 100644
+index 00000000..4cb400cd
+--- /dev/null
++++ b/repro_scopes.py
+@@ -0,0 +1,23 @@
++from fastapi import FastAPI, Depends, Security
++from fastapi.security import OAuth2PasswordBearer
++import json
++
++oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
++
++def common_dep(token: str = Security(oauth2_scheme)):
++    return token
++
++def dep_a(common: str = Security(common_dep, scopes=["scope1"])):
++    return "a"
++
++def dep_b(common: str = Security(common_dep, scopes=["scope2"])):
++    return "b"
++
++app = FastAPI()
++
++@app.get("/test", dependencies=[Depends(dep_a), Depends(dep_b)])
++async def test():
++    return {"message": "test"}
++
++openapi_schema = app.openapi()
++print(json.dumps(openapi_schema, indent=2))
+diff --git a/reproduce_bug.py b/reproduce_bug.py
+new file mode 100644
+index 00000000..273bfac4
+--- /dev/null
++++ b/reproduce_bug.py
+@@ -0,0 +1,46 @@
++from fastapi import FastAPI, Depends, Security
++from fastapi.security import OAuth2PasswordBearer
++from fastapi.dependencies.utils import get_flat_dependant
++from fastapi.openapi.utils import get_openapi_security_definitions
++from pprint import pprint
++
++app = FastAPI()
++oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
++
++# Dep 3 is the security scheme. It doesn't have its own scopes.
++# It will be used by Dep 1 and Dep 2.
++def dep3():
++    pass
++
++# Dep 1 uses Dep 3 with scope "a"
++def dep1(s=Security(oauth2_scheme, scopes=["a"])):
++    return s
++
++# Dep 2 uses Dep 3 with scope "b"
++def dep2(s=Security(oauth2_scheme, scopes=["b"])):
++    return s
++
++@app.get("/")
++def root(d1=Depends(dep1), d2=Depends(dep2)):
++    return {"hello": "world"}
++
++route = app.routes[0]
++# We use skip_repeats=True to trigger the bug
++flat_dependant = get_flat_dependant(route.dependant, skip_repeats=True)
++security_definitions, operation_security = get_openapi_security_definitions(flat_dependant)
++
++print("Operation Security Requirements:")
++pprint(operation_security)
++
++# Expected: Both scopes "a" and "b" should be present for the oauth2_scheme.
++# Actual (if bug exists): Only one of them (likely "a") will be present.
++
++# Check if both scopes are present
++found_a = any("a" in req.get("oauth2_scheme", []) for req in operation_security)
++found_b = any("b" in req.get("oauth2_scheme", []) for req in operation_security)
++
++if found_a and found_b:
++    print("\nSUCCESS: Both scopes found.")
++else:
++    print(f"\nFAILURE: Scope 'a' found: {found_a}, Scope 'b' found: {found_b}")
++    exit(1)

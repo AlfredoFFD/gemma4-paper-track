@@ -1,0 +1,86 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 4b69e39a..cf186f97 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -1,7 +1,7 @@
+ import inspect
+ from contextlib import AsyncExitStack, contextmanager
+ from copy import copy, deepcopy
+-from dataclasses import dataclass
++from dataclasses import dataclass, replace
+ from typing import (
+     Any,
+     Callable,
+@@ -426,9 +426,7 @@ def analyze_param(
+ 
+     # Get Depends from type annotation
+     if depends is not None and depends.dependency is None:
+-        # Copy `depends` before mutating it
+-        depends = copy(depends)
+-        depends.dependency = type_annotation
++        depends = replace(depends, dependency=type_annotation)
+ 
+     # Handle non-param type annotations like Request
+     if lenient_issubclass(
+diff --git a/fastapi/params.py b/fastapi/params.py
+index 6a58d580..0425dd64 100644
+--- a/fastapi/params.py
++++ b/fastapi/params.py
+@@ -762,13 +762,18 @@ class File(Form):  # type: ignore[misc]
+         )
+ 
+ 
+-@dataclass
++@dataclass(frozen=True)
+ class Depends:
+     dependency: Optional[Callable[..., Any]] = None
+     use_cache: bool = True
+     scope: Union[Literal["function", "request"], None] = None
+ 
+ 
+-@dataclass
++@dataclass(frozen=True)
+ class Security(Depends):
+     scopes: Optional[Sequence[str]] = None
++
++    def __post_init__(self):
++        if self.scopes is not None:
++            object.__setattr__(self, "scopes", tuple(self.scopes))
++
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..cc9a3468
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,31 @@
++from fastapi.params import Depends, Security
++
++d1 = Depends(dependency=lambda: 1)
++d2 = Depends(dependency=lambda: 1)
++s1 = Security(dependency=lambda: 1, scopes=["read"])
++s2 = Security(dependency=lambda: 1, scopes=["read"])
++
++try:
++    hash(d1)
++    print("Depends is hashable")
++except TypeError as e:
++    print(f"Depends is not hashable: {e}")
++
++try:
++    hash(s1)
++    print("Security is hashable")
++except TypeError as e:
++    print(f"Security is not hashable: {e}")
++
++# Also check if they can be used as dictionary keys
++try:
++    {d1: "value"}
++    print("Depends can be a dict key")
++except TypeError as e:
++    print(f"Depends cannot be a dict key: {e}")
++
++try:
++    {s1: "value"}
++    print("Security can be a dict key")
++except TypeError as e:
++    print(f"Security cannot be a dict key: {e}")

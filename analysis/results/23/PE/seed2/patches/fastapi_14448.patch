@@ -1,0 +1,202 @@
+diff --git a/fastapi/dependencies/models.py b/fastapi/dependencies/models.py
+index 2a4d9a01..ad19140c 100644
+--- a/fastapi/dependencies/models.py
++++ b/fastapi/dependencies/models.py
+@@ -21,6 +21,24 @@ class SecurityRequirement:
+     scopes: Optional[Sequence[str]] = None
+ 
+ 
++def _is_async_callable(call: Any, check_fn: Callable[[Any], bool]) -> bool:
++    if call is None:
++        return False
++    if inspect.isclass(call):
++        return False
++    if check_fn(call):
++        return True
++    if isinstance(call, partial):
++        return _is_async_callable(call.func, check_fn)
++    if hasattr(call, "__wrapped__"):
++        return _is_async_callable(call.__wrapped__, check_fn)
++    if not inspect.isroutine(call):
++        dunder_call = getattr(call, "__call__", None)
++        if dunder_call is not None:
++            return _is_async_callable(dunder_call, check_fn)
++    return False
++
++
+ @dataclass
+ class Dependant:
+     path_params: List[ModelField] = field(default_factory=list)
+@@ -75,37 +93,17 @@ class Dependant:
+                 return True
+         return False
+ 
+-    @cached_property
+-    def _unwrapped_call(self) -> Any:
+-        if self.call is None:
+-            return self.call  # pragma: no cover
+-        unwrapped = inspect.unwrap(self.call)
+-        if isinstance(unwrapped, partial):
+-            unwrapped = unwrapped.func
+-        return unwrapped
+-
+     @cached_property
+     def is_gen_callable(self) -> bool:
+-        if inspect.isgeneratorfunction(self._unwrapped_call):
+-            return True
+-        dunder_call = getattr(self._unwrapped_call, "__call__", None)  # noqa: B004
+-        return inspect.isgeneratorfunction(dunder_call)
++        return _is_async_callable(self.call, inspect.isgeneratorfunction)
+ 
+     @cached_property
+     def is_async_gen_callable(self) -> bool:
+-        if inspect.isasyncgenfunction(self._unwrapped_call):
+-            return True
+-        dunder_call = getattr(self._unwrapped_call, "__call__", None)  # noqa: B004
+-        return inspect.isasyncgenfunction(dunder_call)
++        return _is_async_callable(self.call, inspect.isasyncgenfunction)
+ 
+     @cached_property
+     def is_coroutine_callable(self) -> bool:
+-        if inspect.isroutine(self._unwrapped_call):
+-            return iscoroutinefunction(self._unwrapped_call)
+-        if inspect.isclass(self._unwrapped_call):
+-            return False
+-        dunder_call = getattr(self._unwrapped_call, "__call__", None)  # noqa: B004
+-        return iscoroutinefunction(dunder_call)
++        return _is_async_callable(self.call, iscoroutinefunction)
+ 
+     @cached_property
+     def computed_scope(self) -> Union[str, None]:
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..972633d9
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,126 @@
++import asyncio
++import functools
++import inspect
++from fastapi.dependencies.models import Dependant
++from typing import Any, Callable
++
++# Mocking iscoroutinefunction since it's imported in fastapi.dependencies.models
++from asyncio import iscoroutinefunction
++
++def test_async_detection():
++    async def async_fn():
++        pass
++
++    def sync_fn():
++        pass
++
++    async def async_gen_fn():
++        yield 1
++
++    def sync_gen_fn():
++        yield 1
++
++    # --- Coroutine Tests ---
++    print("\n--- Coroutine Tests ---")
++    # Case 1: Simple async function
++    dep1 = Dependant(call=async_fn, dependencies=[])
++    print(f"Case 1 (async_fn): is_coroutine_callable={dep1.is_coroutine_callable} (Expected: True)")
++
++    # Case 2: Simple sync function
++    dep2 = Dependant(call=sync_fn, dependencies=[])
++    print(f"Case 2 (sync_fn): is_coroutine_callable={dep2.is_coroutine_callable} (Expected: False)")
++
++    # Case 3: functools.wraps(async_fn)
++    @functools.wraps(async_fn)
++    def wrapped_async():
++        return async_fn()
++    dep3 = Dependant(call=wrapped_async, dependencies=[])
++    print(f"Case 3 (wrapped_async): is_coroutine_callable={dep3.is_coroutine_callable} (Expected: True)")
++
++    # Case 4: async wrapper
++    @functools.wraps(async_fn)
++    async def async_wrapped_async():
++        return await async_fn()
++    dep4 = Dependant(call=async_wrapped_async, dependencies=[])
++    print(f"Case 4 (async_wrapped_async): is_coroutine_callable={dep4.is_coroutine_callable} (Expected: True)")
++
++    # Case 5: partial(async_fn)
++    partial_async = functools.partial(async_fn)
++    dep5 = Dependant(call=partial_async, dependencies=[])
++    print(f"Case 5 (partial_async): is_coroutine_callable={dep5.is_coroutine_callable} (Expected: True)")
++
++    # Case 6: partial(sync_fn)
++    partial_sync = functools.partial(sync_fn, 1)
++    dep6 = Dependant(call=partial_sync, dependencies=[])
++    print(f"Case 6 (partial_sync): is_coroutine_callable={dep6.is_coroutine_callable} (Expected: False)")
++
++    # Case 7: wraps(partial(async_fn))
++    partial_async = functools.partial(async_fn)
++    @functools.wraps(partial_async)
++    def wrapped_partial_async():
++        return partial_async()
++    dep7 = Dependant(call=wrapped_partial_async, dependencies=[])
++    print(f"Case 7 (wrapped_partial_async): is_coroutine_callable={dep7.is_coroutine_callable} (Expected: True)")
++
++    # Case 8: async wraps(partial(async_fn))
++    partial_async = functools.partial(async_fn)
++    @functools.wraps(partial_async)
++    async def async_wrapped_partial_async():
++        return await partial_async()
++    dep8 = Dependant(call=async_wrapped_partial_async, dependencies=[])
++    print(f"Case 8 (async_wrapped_partial_async): is_coroutine_callable={dep8.is_coroutine_callable} (Expected: True)")
++
++    # Case 9: partial(async_wrapper(async_fn))
++    @functools.wraps(async_fn)
++    async def async_wrapper():
++        return await async_fn()
++    partial_async_wrapper = functools.partial(async_wrapper)
++    dep9 = Dependant(call=partial_async_wrapper, dependencies=[])
++    print(f"Case 9 (partial_async_wrapper): is_coroutine_callable={dep9.is_coroutine_callable} (Expected: True)")
++
++    # Case 10: sync wrapper(partial(async_fn))
++    partial_async = functools.partial(async_fn)
++    @functools.wraps(partial_async)
++    def sync_wrapped_partial_async():
++        return partial_async()
++    dep10 = Dependant(call=sync_wrapped_partial_async, dependencies=[])
++    print(f"Case 10 (sync_wrapped_partial_async): is_coroutine_callable={dep10.is_coroutine_callable} (Expected: True)")
++
++    # --- Async Generator Tests ---
++    print("\n--- Async Generator Tests ---")
++    # Case 11: Simple async gen
++    dep11 = Dependant(call=async_gen_fn, dependencies=[])
++    print(f"Case 11 (async_gen_fn): is_async_gen_callable={dep11.is_async_gen_callable} (Expected: True)")
++
++    # Case 12: partial(async_gen_fn)
++    partial_async_gen = functools.partial(async_gen_fn)
++    dep12 = Dependant(call=partial_async_gen, dependencies=[])
++    print(f"Case 12 (partial_async_gen): is_async_gen_callable={dep12.is_async_gen_callable} (Expected: True)")
++
++    # Case 13: wraps(async_gen_fn)
++    @functools.wraps(async_gen_fn)
++    def wrapped_async_gen():
++        return async_gen_fn()
++    dep13 = Dependant(call=wrapped_async_gen, dependencies=[])
++    print(f"Case 13 (wrapped_async_gen): is_async_gen_callable={dep13.is_async_gen_callable} (Expected: True)")
++
++    # --- Generator Tests ---
++    print("\n--- Generator Tests ---")
++    # Case 14: Simple sync gen
++    dep14 = Dependant(call=sync_gen_fn, dependencies=[])
++    print(f"Case 14 (sync_gen_fn): is_gen_callable={dep14.is_gen_callable} (Expected: True)")
++
++    # Case 15: partial(sync_gen_fn)
++    partial_sync_gen = functools.partial(sync_gen_fn)
++    dep15 = Dependant(call=partial_sync_gen, dependencies=[])
++    print(f"Case 15 (partial_sync_gen): is_gen_callable={dep15.is_gen_callable} (Expected: True)")
++
++    # Case 16: wraps(sync_gen_fn)
++    @functools.wraps(sync_gen_fn)
++    def wrapped_sync_gen():
++        return sync_gen_fn()
++    dep16 = Dependant(call=wrapped_sync_gen, dependencies=[])
++    print(f"Case 16 (wrapped_sync_gen): is_gen_callable={dep16.is_gen_callable} (Expected: True)")
++
++if __name__ == "__main__":
++    test_async_detection()

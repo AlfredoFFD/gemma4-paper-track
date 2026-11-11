@@ -197,3 +197,17 @@ and resumes (finished sessions are not run twice). At about 3.3 to 3.8 dollars p
   analysis are run once on what is stored when shard 0/2 first stops, marked INTERIM, for a reading copy of the
   paper. Nothing in the design, the scripts or the decision to finish the run depends on that interim output, and
   the numbers reported are those of the run as finally stored.
+- Nov 11, 2026, 5:20 PM EST, after the run. Both shards ran every session: shard 1/2 ended at about 5:03 PM
+  and shard 0/2 at about 5:18 PM (103 tasks in each arm, all entered, no failure outside the agent). The
+  expectation of the note above, that sessions would be left at the time budget, was wrong: it came from counting
+  finished sessions in a log window that holds only recent lines. No shard was launched again, and the one
+  analysis that was run is the final one. The second script (`analysis/rederive_23.py`, committed before any run
+  was stored) was run before the registered script. By the registered script: G0 met (a pushed list in 99 of 103
+  PH runs and 98 of 103 PE runs); A1 not detected (+4.1 points [-12.0, 19.5] on 37 tasks); A2 not detected (-13.8
+  lines [-124.9, 95.7]); A3 no detectable difference (38 against 35 of 103 resolved; +2.9 points [-4.9, 9.7]).
+  What we expected before the run (A1 met, A2 met) was wrong. The reading fixed in advance is not written, since
+  neither A1 nor A2 is met. The second script agrees on every count and verdict; its intervals differ in the last
+  digits (A1 [-11.17, 19.82], A2 [-126.38, 94.02]; its own bootstrap), and it counts 14 PH runs that end on the
+  context window by the runner's record where the registered script, by the error text, counts 13 (no rule with
+  a verdict uses that count). Harness recorded in all 206 runs: swegemma 0.2.11, adk_submission 0.2.13,
+  adk_eval_core 0.1.0.

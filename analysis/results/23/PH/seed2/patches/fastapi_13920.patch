@@ -1,0 +1,79 @@
+diff --git a/fastapi/_compat/shared.py b/fastapi/_compat/shared.py
+index 68b9bbdf..04ca0342 100644
+--- a/fastapi/_compat/shared.py
++++ b/fastapi/_compat/shared.py
+@@ -31,6 +31,14 @@ PYDANTIC_VERSION_MINOR_TUPLE = tuple(int(x) for x in PYDANTIC_VERSION.split(".")
+ PYDANTIC_V2 = PYDANTIC_VERSION_MINOR_TUPLE[0] == 2
+ 
+ 
++def is_typealiastype(tp: Any) -> bool:
++    try:
++        from typing import TypeAliasType
++        return isinstance(tp, TypeAliasType)
++    except ImportError:
++        return False
++
++
+ sequence_annotation_to_type = {
+     Sequence: list,
+     list: list,
+@@ -64,6 +72,8 @@ def _annotation_is_sequence(annotation: Union[type[Any], None]) -> bool:
+ 
+ 
+ def field_annotation_is_sequence(annotation: Union[type[Any], None]) -> bool:
++    if is_typealiastype(annotation):
++        return field_annotation_is_sequence(getattr(annotation, "__value__", None))
+     origin = get_origin(annotation)
+     if origin is Union or origin is UnionType:
+         for arg in get_args(annotation):
+@@ -88,6 +98,8 @@ def _annotation_is_complex(annotation: Union[type[Any], None]) -> bool:
+ 
+ 
+ def field_annotation_is_complex(annotation: Union[type[Any], None]) -> bool:
++    if is_typealiastype(annotation):
++        return field_annotation_is_complex(getattr(annotation, "__value__", None))
+     origin = get_origin(annotation)
+     if origin is Union or origin is UnionType:
+         return any(field_annotation_is_complex(arg) for arg in get_args(annotation))
+diff --git a/repro_type_alias.py b/repro_type_alias.py
+new file mode 100644
+index 00000000..c3b86a21
+--- /dev/null
++++ b/repro_type_alias.py
+@@ -0,0 +1,36 @@
++from fastapi._compat import shared
++from typing import Annotated, Union
++import types
++
++# Define a type alias using PEP 695 syntax
++# This requires Python 3.12+
++try:
++    type Point = tuple[float, float]
++    type Scalar = int | float
++    type ComplexAlias = list[int]
++except SyntaxError:
++    # Fallback for older python versions if needed, 
++    # but we are on 3.12.1
++    print("PEP 695 syntax not supported")
++    exit(1)
++
++print(f"Point: {Point}, type: {type(Point)}")
++print(f"Scalar: {Scalar}, type: {type(Scalar)}")
++print(f"ComplexAlias: {ComplexAlias}, type: {type(ComplexAlias)}")
++
++print(f"is_typealiastype(Point): {shared.is_typealiastype(Point)}")
++print(f"is_typealiastype(Scalar): {shared.is_typealiastype(Scalar)}")
++print(f"is_typealiastype(ComplexAlias): {shared.is_typealiastype(ComplexAlias)}")
++
++print(f"field_annotation_is_complex(Point): {shared.field_annotation_is_complex(Point)}") # Should be True (tuple)
++print(f"field_annotation_is_complex(Scalar): {shared.field_annotation_is_complex(Scalar)}") # Should be False (int | float)
++print(f"field_annotation_is_complex(ComplexAlias): {shared.field_annotation_is_complex(ComplexAlias)}") # Should be True (list)
++
++print(f"field_annotation_is_sequence(Point): {shared.field_annotation_is_sequence(Point)}") # Should be True (tuple)
++print(f"field_annotation_is_sequence(Scalar): {shared.field_annotation_is_sequence(Scalar)}") # Should be False
++print(f"field_annotation_is_sequence(ComplexAlias): {shared.field_annotation_is_sequence(ComplexAlias)}") # Should be True (list)
++
++# Test nested alias
++type Nested = Point
++print(f"is_typealiastype(Nested): {shared.is_typealiastype(Nested)}")
++print(f"field_annotation_is_complex(Nested): {shared.field_annotation_is_complex(Nested)}") # Should be True

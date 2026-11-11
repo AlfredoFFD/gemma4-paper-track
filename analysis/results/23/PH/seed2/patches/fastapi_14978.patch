@@ -1,0 +1,159 @@
+diff --git a/fastapi/params.py b/fastapi/params.py
+index 68f98708..10319db1 100644
+--- a/fastapi/params.py
++++ b/fastapi/params.py
+@@ -476,6 +476,7 @@ class Body(FieldInfo):  # type: ignore[misc]
+         annotation: Any | None = None,
+         embed: bool | None = None,
+         media_type: str = "application/json",
++        strict_content_type: bool = False,
+         alias: str | None = None,
+         alias_priority: int | None = _Unset,
+         validation_alias: str | AliasPath | AliasChoices | None = None,
+@@ -517,6 +518,7 @@ class Body(FieldInfo):  # type: ignore[misc]
+     ):
+         self.embed = embed
+         self.media_type = media_type
++        self.strict_content_type = strict_content_type
+         if example is not _Unset:
+             warnings.warn(
+                 "`example` has been deprecated, please use `examples` instead",
+diff --git a/fastapi/routing.py b/fastapi/routing.py
+index 528c9629..3c84479b 100644
+--- a/fastapi/routing.py
++++ b/fastapi/routing.py
+@@ -333,6 +333,9 @@ def get_request_handler(
+     assert dependant.call is not None, "dependant.call must be a function"
+     is_coroutine = dependant.is_coroutine_callable
+     is_body_form = body_field and isinstance(body_field.field_info, params.Form)
++    strict_content_type = False
++    if body_field and isinstance(body_field.field_info, params.Body):
++        strict_content_type = body_field.field_info.strict_content_type
+     if isinstance(response_class, DefaultPlaceholder):
+         actual_response_class: type[Response] = response_class.value
+     else:
+@@ -370,6 +373,18 @@ def get_request_handler(
+                         json_body: Any = Undefined
+                         content_type_value = request.headers.get("content-type")
+                         if not content_type_value:
++                            if strict_content_type:
++                                raise RequestValidationError(
++                                    [
++                                        {
++                                            "type": "content_type_invalid",
++                                            "loc": ("header", "content-type"),
++                                            "msg": "Content-Type header is required",
++                                            "input": None,
++                                        }
++                                    ],
++                                    endpoint_ctx=endpoint_ctx,
++                                )
+                             json_body = await request.json()
+                         else:
+                             message = email.message.Message()
+@@ -378,6 +393,30 @@ def get_request_handler(
+                                 subtype = message.get_content_subtype()
+                                 if subtype == "json" or subtype.endswith("+json"):
+                                     json_body = await request.json()
++                                elif strict_content_type:
++                                    raise RequestValidationError(
++                                        [
++                                            {
++                                                "type": "content_type_invalid",
++                                                "loc": ("header", "content-type"),
++                                                "msg": f"Content-Type must be application/json, got {content_type_value}",
++                                                "input": content_type_value,
++                                            }
++                                        ],
++                                        endpoint_ctx=endpoint_ctx,
++                                    )
++                            elif strict_content_type:
++                                raise RequestValidationError(
++                                    [
++                                        {
++                                            "type": "content_type_invalid",
++                                            "loc": ("header", "content-type"),
++                                            "msg": f"Content-Type must be application/json, got {content_type_value}",
++                                            "input": content_type_value,
++                                        }
++                                    ],
++                                    endpoint_ctx=endpoint_ctx,
++                                )
+                         if json_body != Undefined:
+                             body = json_body
+                         else:
+@@ -397,8 +436,8 @@ def get_request_handler(
+                 endpoint_ctx=endpoint_ctx,
+             )
+             raise validation_error from e
+-        except HTTPException:
+-            # If a middleware raises an HTTPException, it should be raised again
++        except (HTTPException, RequestValidationError):
++            # If a middleware raises an HTTPException or RequestValidationError, it should be raised again
+             raise
+         except Exception as e:
+             http_error = HTTPException(
+diff --git a/repro_strict_content_type.py b/repro_strict_content_type.py
+new file mode 100644
+index 00000000..ac302db9
+--- /dev/null
++++ b/repro_strict_content_type.py
+@@ -0,0 +1,58 @@
++from fastapi import FastAPI, Body, Request
++from fastapi.testclient import TestClient
++from fastapi.exceptions import RequestValidationError
++import pytest
++
++app = FastAPI()
++
++@app.post("/test-strict")
++async def test_strict(payload: dict = Body(..., strict_content_type=True)):
++    return {"message": "success", "payload": payload}
++
++@app.post("/test-not-strict")
++async def test_not_strict(payload: dict = Body(..., strict_content_type=False)):
++    return {"message": "success", "payload": payload}
++
++client = TestClient(app)
++
++def test_strict_content_type():
++    # Correct content type
++    response = client.post("/test-strict", json={"foo": "bar"})
++    assert response.status_code == 200
++    assert response.json() == {"message": "success", "payload": {"foo": "bar"}}
++
++    # Wrong content type
++    response = client.post("/test-strict", content='{"foo": "bar"}', headers={"Content-Type": "text/plain"})
++    assert response.status_code == 422
++    assert response.json()["detail"][0]["type"] == "content_type_invalid"
++
++    # No content type
++    response = client.post("/test-strict", content='{"foo": "bar"}', headers={})
++    assert response.status_code == 422
++    assert response.json()["detail"][0]["type"] == "content_type_invalid"
++
++def test_not_strict_content_type():
++    # Correct content type
++    response = client.post("/test-not-strict", json={"foo": "bar"})
++    assert response.status_code == 200
++    assert response.json() == {"message": "success", "payload": {"foo": "bar"}}
++
++    # Wrong content type - should fallback to body_bytes and then Pydantic should try to parse it if it's a dict
++    # Actually, if it's not JSON, it'll be passed as bytes to the model.
++    # If the model is a dict, Pydantic might fail to validate bytes as a dict.
++    # Let's see.
++    response = client.post("/test-not-strict", content='{"foo": "bar"}', headers={"Content-Type": "text/plain"})
++    # In the original code, if it's not application/json, json_body is Undefined, and body = body_bytes.
++    # Then it's passed to the model. Pydantic v2 might handle bytes if they are JSON? No.
++    # But let's see what happens.
++    print(f"Not strict, wrong content type: {response.status_code} {response.text}")
++
++    # No content type - should work because it tries to parse as JSON if no content type
++    response = client.post("/test-not-strict", content='{"foo": "bar"}', headers={})
++    assert response.status_code == 200
++    assert response.json() == {"message": "success", "payload": {"foo": "bar"}}
++
++if __name__ == "__main__":
++    test_strict_content_type()
++    test_not_strict_content_type()
++    print("All tests passed!")

@@ -1,0 +1,160 @@
+diff --git a/fastapi/_compat/v2.py b/fastapi/_compat/v2.py
+index 3d91814c..e425a165 100644
+--- a/fastapi/_compat/v2.py
++++ b/fastapi/_compat/v2.py
+@@ -180,11 +180,8 @@ def get_schema_from_model_field(
+     ],
+     separate_input_output_schemas: bool = True,
+ ) -> Dict[str, Any]:
+-    override_mode: Union[Literal["validation"], None] = (
+-        None if separate_input_output_schemas else "validation"
+-    )
+     # This expects that GenerateJsonSchema was already used to generate the definitions
+-    json_schema = field_mapping[(field, override_mode or field.mode)]
++    json_schema = field_mapping[(field, field.mode)]
+     if "$ref" not in json_schema:
+         # TODO remove when deprecating Pydantic v1
+         # Ref: https://github.com/pydantic/pydantic/blob/d61792cc42c80b13b23e3ffa74bc37ec7c77f7d1/pydantic/schema.py#L207
+@@ -204,9 +201,6 @@ def get_definitions(
+     Dict[str, Dict[str, Any]],
+ ]:
+     schema_generator = GenerateJsonSchema(ref_template=REF_TEMPLATE)
+-    override_mode: Union[Literal["validation"], None] = (
+-        None if separate_input_output_schemas else "validation"
+-    )
+     validation_fields = [field for field in fields if field.mode == "validation"]
+     serialization_fields = [field for field in fields if field.mode == "serialization"]
+     flat_validation_models = get_flat_models_from_fields(
+@@ -238,7 +232,7 @@ def get_definitions(
+     }
+ 
+     inputs = [
+-        (field, override_mode or field.mode, field._type_adapter.core_schema)
++        (field, field.mode, field._type_adapter.core_schema)
+         for field in list(fields) + list(unique_flat_model_fields)
+     ]
+     field_mapping, definitions = schema_generator.generate_definitions(inputs=inputs)
+@@ -250,6 +244,7 @@ def get_definitions(
+         model_name_map=model_name_map,
+         definitions=definitions,  # type: ignore[arg-type]
+         field_mapping=field_mapping,
++        separate_input_output_schemas=separate_input_output_schemas,
+     )
+     return new_mapping, new_definitions
+ 
+@@ -297,6 +292,7 @@ def _remap_definitions_and_field_mappings(
+     field_mapping: Dict[
+         Tuple[ModelField, Literal["validation", "serialization"]], JsonSchemaValue
+     ],
++    separate_input_output_schemas: bool = True,
+ ) -> Tuple[
+     Dict[Tuple[ModelField, Literal["validation", "serialization"]], JsonSchemaValue],
+     Dict[str, Any],
+@@ -309,7 +305,8 @@ def _remap_definitions_and_field_mappings(
+         new_name = model_name_map[model]
+         old_name = schema["$ref"].split("/")[-1]
+         if old_name in {f"{new_name}-Input", f"{new_name}-Output"}:
+-            continue
++            if separate_input_output_schemas:
++                continue
+         old_name_to_new_name_map[old_name] = new_name
+ 
+     new_field_mapping: Dict[
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..2f9a3556
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,22 @@
++from fastapi import FastAPI
++from pydantic import BaseModel, computed_field
++import json
++
++app = FastAPI(separate_input_output_schemas=True)
++
++class Item(BaseModel):
++    name: str
++    price: float
++
++    @computed_field
++    @property
++    def total_price(self) -> float:
++        return self.price * 1.2
++
++@app.get("/item", response_model=Item)
++def get_item():
++    return Item(name="Test", price=10.0)
++
++if __name__ == "__main__":
++    import pprint
++    pprint.pprint(app.openapi())
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..8bc830bc
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,64 @@
++from fastapi import FastAPI
++from fastapi.openapi.utils import get_openapi
++from pydantic import BaseModel, computed_field
++import json
++
++app = FastAPI()
++
++class Item(BaseModel):
++    name: str
++    price: float
++
++    @computed_field
++    @property
++    def total_price(self) -> float:
++        return self.price * 1.1
++
++@app.get("/items", response_model=Item)
++def read_item():
++    return Item(name="Test", price=10.0)
++
++def test_openapi_schema(separate_input_output_schemas: bool):
++    openapi_schema = get_openapi(
++        title="Test API",
++        version="1.0.0",
++        routes=app.routes,
++        separate_input_output_schemas=separate_input_output_schemas,
++    )
++    
++    # Find the Item schema in components/schemas
++    schemas = openapi_schema.get("components", {}).get("schemas", {})
++    
++    # If separate_input_output_schemas=True, we expect Item-Output (or Item)
++    # If separate_input_output_schemas=False, we expect Item
++    
++    item_schema = None
++    for name, schema in schemas.items():
++        if "Item" in name:
++            item_schema = schema
++            break
++            
++    if item_schema is None:
++        print(f"Item schema not found for separate_input_output_schemas={separate_input_output_schemas}")
++        return False
++        
++    properties = item_schema.get("properties", {})
++    if "total_price" in properties:
++        print(f"SUCCESS: total_price found in schema for separate_input_output_schemas={separate_input_output_schemas}")
++        return True
++    else:
++        print(f"FAILURE: total_price NOT found in schema for separate_input_output_schemas={separate_input_output_schemas}")
++        return False
++
++if __name__ == "__main__":
++    print("Testing separate_input_output_schemas=True...")
++    res1 = test_openapi_schema(True)
++    
++    print("\nTesting separate_input_output_schemas=False...")
++    res2 = test_openapi_schema(False)
++    
++    if res1 and res2:
++        print("\nALL TESTS PASSED")
++    else:
++        print("\nSOME TESTS FAILED")
++        exit(1)

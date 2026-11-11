@@ -1,0 +1,78 @@
+diff --git a/fastapi/_compat/v2.py b/fastapi/_compat/v2.py
+index 46a30b3e..c5cfc04e 100644
+--- a/fastapi/_compat/v2.py
++++ b/fastapi/_compat/v2.py
+@@ -100,8 +100,11 @@ class ModelField:
+                 *self.field_info.metadata,
+                 self.field_info,
+             )
++            type_ = self.field_info.annotation
++            metadata = list(self.field_info.metadata)
++            metadata.append(self.field_info)
+             self._type_adapter: TypeAdapter[Any] = TypeAdapter(
+-                Annotated[annotated_args],
++                Annotated[type_, *metadata],
+                 config=self.config,
+             )
+ 
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..3c271157
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,22 @@
++from fastapi import FastAPI, Body
++from fastapi.openapi.utils import get_openapi
++from pydantic import BaseModel
++from typing import Union, Annotated
++import json
++
++app = FastAPI()
++
++class Cat(BaseModel):
++    type: str = "cat"
++    meow: str
++
++class Dog(BaseModel):
++    type: str = "dog"
++    bark: str
++
++@app.post("/pet")
++async def create_pet(pet: Annotated[Union[Cat, Dog], Body(discriminator="type")]):
++    return pet
++
++openapi_schema = get_openapi(app, of_route=app.routes[0])
++print(json.dumps(openapi_schema, indent=2))
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..fae9104a
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,27 @@
++from fastapi import FastAPI, Body
++from typing import Literal, Union, Annotated
++from pydantic import BaseModel, Field
++import json
++
++class Cat(BaseModel):
++    type: Literal['cat']
++    meow: bool
++
++class Dog(BaseModel):
++    type: Literal['dog']
++    bark: bool
++
++Pet = Annotated[Union[Cat, Dog], Field(discriminator='type')]
++
++app = FastAPI()
++
++@app.post("/pet")
++async def create_pet(pet: Annotated[Pet, Body()]):
++    return pet
++
++if __name__ == "__main__":
++    schema = app.openapi()
++    paths = schema['paths']
++    pet_post = paths['/pet']['post']
++    request_body = pet_post['requestBody']['content']['application/json']['schema']
++    print(json.dumps(request_body, indent=2))

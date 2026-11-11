@@ -1,0 +1,152 @@
+diff --git a/check_sig.py b/check_sig.py
+new file mode 100644
+index 000000000..99e61820c
+--- /dev/null
++++ b/check_sig.py
+@@ -0,0 +1,4 @@
++
++from fastapi.staticfiles import StaticFiles
++import inspect
++print(inspect.signature(StaticFiles.__init__))
+diff --git a/fastapi/applications.py b/fastapi/applications.py
+index c7c551e4e..df70af40d 100644
+--- a/fastapi/applications.py
++++ b/fastapi/applications.py
+@@ -1563,6 +1563,35 @@ class FastAPI(Starlette):
+             generate_unique_id_function=generate_unique_id_function,
+         )
+ 
++    def frontend(
++        self,
++        path: Annotated[
++            str,
++            Doc(
++                """
++                The URL path to be used for the frontend.
++
++                For example, in `http://example.com/static`, the path is `/static`.
++                """
++            ),
++        ],
++        directory: Annotated[
++            str,
++            Doc(
++                """
++                The directory on the file system where the frontend files are located.
++                """
++            ),
++        ],
++    ) -> None:
++        """
++        Mount a static directory to serve frontend files.
++
++        This is a convenience method for `app.mount(path, StaticFiles(directory))`.
++        """
++        from fastapi.staticfiles import StaticFiles
++        self.mount(path, StaticFiles(directory=directory))
++
+     def get(
+         self,
+         path: Annotated[
+diff --git a/fastapi/routing.py b/fastapi/routing.py
+index 4a55fda8a..f72b656c7 100644
+--- a/fastapi/routing.py
++++ b/fastapi/routing.py
+@@ -2036,6 +2036,36 @@ class APIRouter(routing.Router):
+     def _mark_routes_changed(self) -> None:
+         self._routes_version += 1
+ 
++    def frontend(
++        self,
++        path: Annotated[
++            str,
++            Doc(
++                """
++                The URL path to be used for the frontend.
++
++                For example, in `http://example.com/static`, the path is `/static`.
++                """
++            ),
++        ],
++        directory: Annotated[
++            str,
++            Doc(
++                """
++                The directory on the file system where the frontend files are located.
++                """
++            ),
++        ],
++    ) -> None:
++        """
++        Mount a static directory to serve frontend files.
++
++        This is a convenience method for adding a `routing.Mount` to the router.
++        """
++        from fastapi.staticfiles import StaticFiles
++        self.routes.append(routing.Mount(path, app=StaticFiles(directory=directory)))
++        self._mark_routes_changed()
++
+     def _get_routes_version(self, seen: set[int] | None = None) -> int:
+         if seen is None:
+             seen = set()
+diff --git a/verify_frontend.py b/verify_frontend.py
+new file mode 100644
+index 000000000..a4cd70ae8
+--- /dev/null
++++ b/verify_frontend.py
+@@ -0,0 +1,55 @@
++
++from fastapi import FastAPI, APIRouter
++from fastapi.staticfiles import StaticFiles
++import os
++import shutil
++
++def test_fastapi_frontend():
++    print("Testing FastAPI.frontend...")
++    app = FastAPI()
++    static_dir = "test_static_fastapi"
++    os.makedirs(static_dir, exist_ok=True)
++    with open(os.path.join(static_dir, "index.html"), "w") as f:
++        f.write("hello fastapi")
++    
++    app.frontend("/static", static_dir)
++    
++    # Verify that it's mounted
++    # FastAPI.mount calls Starlette.mount, which adds to app.routes
++    mount_found = any(
++        isinstance(route, type(StaticFiles)) or (hasattr(route, 'app') and isinstance(route.app, StaticFiles))
++        for route in app.routes
++    )
++    # Actually, Starlette.mount adds a routing.Mount to routes
++    from starlette.routing import Mount
++    mount_found = any(isinstance(route, Mount) and route.path == "/static" for route in app.routes)
++    
++    print(f"FastAPI.frontend mounted: {mount_found}")
++    assert mount_found
++    shutil.rmtree(static_dir)
++
++def test_apirouter_frontend():
++    print("Testing APIRouter.frontend...")
++    router = APIRouter()
++    static_dir = "test_static_router"
++    os.makedirs(static_dir, exist_ok=True)
++    with open(os.path.join(static_dir, "index.html"), "w") as f:
++        f.write("hello router")
++    
++    router.frontend("/static", static_dir)
++    
++    from starlette.routing import Mount
++    mount_found = any(isinstance(route, Mount) and route.path == "/static" for route in router.routes)
++    
++    print(f"APIRouter.frontend mounted: {mount_found}")
++    assert mount_found
++    shutil.rmtree(static_dir)
++
++if __name__ == "__main__":
++    try:
++        test_fastapi_frontend()
++        test_apirouter_frontend()
++        print("All tests passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        exit(1)

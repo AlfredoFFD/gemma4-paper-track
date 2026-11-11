@@ -1,0 +1,131 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 7c6558c69..2dad91b96 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -533,11 +533,14 @@ def analyze_param(
+         use_annotation_from_field_info = use_annotation
+         if isinstance(field_info, params.Form):
+             ensure_multipart_is_installed()
+-        if not field_info.alias and getattr(field_info, "convert_underscores", None):
+-            alias = param_name.replace("_", "-")
+-        else:
+-            alias = field_info.alias or param_name
++        alias = field_info.alias or param_name
++        print(f"DEBUG: param_name={param_name}, field_info.alias={field_info.alias}, in_={getattr(field_info, 'in_', None)}, convert_underscores={getattr(field_info, 'convert_underscores', None)}")
++        if getattr(field_info, "convert_underscores", None):
++            if getattr(field_info, "in_", None) == params.ParamTypes.header or not field_info.alias:
++                alias = alias.replace("_", "-")
++                print(f"DEBUG: converted alias to {alias}")
+         field_info.alias = alias
++        print(f"DEBUG: final alias={field_info.alias}")
+         field = create_model_field(
+             name=param_name,
+             type_=use_annotation_from_field_info,
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 000000000..1e14fd7ac
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,45 @@
++from fastapi import FastAPI, Header
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.get("/")
++async def read_root(x: str = Header(alias="my_header")):
++    return {"x": x}
++
++client = TestClient(app)
++
++def test_header_underscore_alias():
++    # This should now be converted to 'my-header' because convert_underscores=True by default
++    # So sending 'my_header' should result in a 422 Unprocessable Entity
++    response = client.get("/", headers={"my_header": "foo"})
++    print(f"Response for my_header: {response.status_code}, body: {response.json()}")
++    assert response.status_code == 422, f"Expected 422 for underscore header alias, got {response.status_code}"
++    
++    # Sending 'my-header' should work
++    response = client.get("/", headers={"my-header": "foo"})
++    print(f"Response for my-header: {response.status_code}, body: {response.json()}")
++    assert response.status_code == 200
++    assert response.json() == {"x": "foo"}
++
++def test_query_underscore_alias():
++    # For Query, alias with underscore should still be allowed if explicitly provided
++    from fastapi import Query
++    
++    @app.get("/query")
++    async def read_query(q: str = Query(alias="my_query")):
++        return {"q": q}
++    
++    response = client.get("/query", params={"my_query": "foo"})
++    assert response.status_code == 200, f"Expected 200 for query underscore alias, got {response.status_code}"
++    assert response.json() == {"q": "foo"}
++
++if __name__ == "__main__":
++    try:
++        test_header_underscore_alias()
++        print("test_header_underscore_alias passed!")
++        test_query_underscore_alias()
++        print("test_query_underscore_alias passed!")
++    except AssertionError as e:
++        print(f"Test failed: {e}")
++        exit(1)
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 000000000..c5a45e648
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,51 @@
++from fastapi import FastAPI, Header
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.get("/")
++async def read_root(my_header: str = Header()):
++    return {"my_header": my_header}
++
++client = TestClient(app)
++
++def test_header_conversion():
++    # Should work: hyphenated header
++    response = client.get("/", headers={"my-header": "foo"})
++    print(f"Hyphenated: {response.json()}")
++    assert response.json() == {"my_header": "foo"}
++
++    # Should NOT work: underscore header (by default convert_underscores=True)
++    response = client.get("/", headers={"my_header": "bar"})
++    print(f"Underscore: {response.json()}")
++    # If it's NOT accepted, it should return 422 Unprocessable Entity
++    assert response.status_code == 422
++
++def test_header_no_conversion():
++    # Now we need a route where convert_underscores=False
++    @app.get("/no-conv")
++    async def read_root_no_conv(my_header: str = Header(convert_underscores=False)):
++        return {"my_header": my_header}
++    
++    # Should work: underscore header
++    response = client.get("/no-conv", headers={"my_header": "bar"})
++    print(f"Underscore (no-conv): {response.json()}")
++    assert response.json() == {"my_header": "bar"}
++
++    # Should NOT work: hyphenated header
++    response = client.get("/no-conv", headers={"my-header": "foo"})
++    print(f"Hyphenated (no-conv): {response.json()}")
++    assert response.status_code == 422
++
++if __name__ == "__main__":
++    try:
++        test_header_conversion()
++        print("test_header_conversion passed")
++    except Exception as e:
++        print(f"test_header_conversion failed: {e}")
++
++    try:
++        test_header_no_conversion()
++        print("test_header_no_conversion passed")
++    except Exception as e:
++        print(f"test_header_no_conversion failed: {e}")

@@ -1,0 +1,88 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 91348c8e..c84b27e3 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -9,6 +9,7 @@ from typing import (
+     Coroutine,
+     Dict,
+     ForwardRef,
++    get_type_hints,
+     List,
+     Mapping,
+     Optional,
+@@ -194,12 +195,22 @@ def get_typed_signature(call: Callable[..., Any]) -> inspect.Signature:
+     signature = inspect.signature(call)
+     unwrapped = inspect.unwrap(call)
+     globalns = getattr(unwrapped, "__globals__", {})
++
++    type_hints = {}
++    try:
++        type_hints = get_type_hints(call, globalns=globalns)
++    except Exception:
++        try:
++            type_hints = get_type_hints(getattr(call, "__call__", None), globalns=globalns)
++        except Exception:
++            pass
++
+     typed_params = [
+         inspect.Parameter(
+             name=param.name,
+             kind=param.kind,
+             default=param.default,
+-            annotation=get_typed_annotation(param.annotation, globalns),
++            annotation=type_hints.get(param.name, get_typed_annotation(param.annotation, globalns)),
+         )
+         for param in signature.parameters.values()
+     ]
+diff --git a/other_module.py b/other_module.py
+new file mode 100644
+index 00000000..ce0cfbea
+--- /dev/null
++++ b/other_module.py
+@@ -0,0 +1,3 @@
++from pydantic import BaseModel
++class OtherItem(BaseModel):
++    name: str
+\ No newline at end of file
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..389cb445
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,36 @@
++
++from __future__ import annotations
++from fastapi import FastAPI, Depends
++from pydantic import BaseModel
++import inspect
++from typing import List
++
++class Item(BaseModel):
++    name: str
++
++class CallableDependency:
++    def __call__(self, item: Item) -> Item:
++        return item
++
++def get_item() -> Item:
++    return Item(name="test")
++
++app = FastAPI()
++
++@app.get("/")
++def read_root(dep: CallableDependency = Depends(CallableDependency())):
++    return {"dep": dep}
++
++if __name__ == "__main__":
++    from fastapi.dependencies.utils import get_typed_signature
++    
++    # Test with a function
++    def test_func(item: Item):
++        pass
++    sig_func = get_typed_signature(test_func)
++    print(f"Function param annotation: {sig_func.parameters['item'].annotation}")
++
++    # Test with a callable object
++    dep_obj = CallableDependency()
++    sig_obj = get_typed_signature(dep_obj)
++    print(f"Callable object param annotation: {sig_obj.parameters['item'].annotation}")
