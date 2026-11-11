@@ -157,3 +157,7 @@ steps from one of them. TOLDX on half of the steps.
   counts. For the same model the lower bound of W2's interval is exactly zero in the second script, which reads
   "above zero" as strictly above; neither script calls it met. The second script also computed the two cuts of the
   note above; they are exploratory and have one implementation.
+
+- Nov 11, 2026, 5:15 AM EST: the first line of the registered script's report reads "(BUILD, not registered)". That
+  line was written during the build and was not changed before the freeze; the script is the one whose hash this
+  file records, and the experiment is registered by this file.
