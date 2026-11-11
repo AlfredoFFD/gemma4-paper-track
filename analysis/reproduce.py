@@ -1,11 +1,30 @@
 """Re-run every analysis of the paper on the raw replay outputs in this repository and compare with the stored outputs.
 
-Usage (from the repo root):
-    py -I -X utf8 analysis/reproduce.py            compare; prints PASS or FAIL per output
-    py -I -X utf8 analysis/reproduce.py --write    rewrite the stored outputs (maintainers only)
+Usage (from the repo root; Python 3.11 or later, standard library only):
+    py -I -X utf8 analysis/reproduce.py --help        this text, shortened
+    py -I -X utf8 analysis/reproduce.py --list        every job: number, kind, label, and whether its inputs are here
+    py -I -X utf8 analysis/reproduce.py               run every job; prints PASS, FAIL or SKIPPED per stored output
+    py -I -X utf8 analysis/reproduce.py --job 12 --job "the reading rule"
+                                                      run only the jobs whose number is 12 or whose label contains
+                                                      the text (case ignored; a number matches a label only as a
+                                                      whole word); --job may be given several times
+    py -I -X utf8 analysis/reproduce.py --write       rewrite the stored outputs (maintainers only)
+The last line is "PASS n, FAIL n, SKIPPED n". The exit status is 0 when no job failed, 1 otherwise.
 
-Each job is one script run on tracked files only (analysis/results/<run>/forks/, the state files, the public traces
-where a script needs them). A job whose input run is not in the repository is reported as SKIPPED.
+Each job is one script whose report is compared, byte for byte after line endings, with a stored output under
+analysis/results/. A job declares every input it reads that git does not track; a job with a missing input is not run
+and is reported as SKIPPED with the first missing path.
+
+What runs from a clone: the jobs whose inputs are all tracked (the raw replay outputs under analysis/results/ and the
+tracked state files). Run --list to see them; in a clone without data/ they are the jobs marked "ready".
+What needs more: most jobs also read the competition data (data/tasks.jsonl, data/snapshots/, data/graphs/,
+data/embeddings/; join the competition on Kaggle, then kaggle competitions download -c gemma-4-developer-agent -p data/;
+it is not redistributed here) or caches the scripts build from it under data/cache/ (analysis/snapshot_index.py,
+analysis/make_oracle_18.py, analysis/make_oracle_22.py), state files that git ignores because they hold task text or
+other teams' runs (rebuilt from the data by analysis/make_states_*.py and analysis/fork_states.py), other teams'
+public runs (data/graphloc/, data/public_traces/; analysis/results/public/README.md says how to get them), or raw
+output folders of our own runs that are not distributed (data/forks_*_modal/).
+
 The registered scripts are frozen by their pre-registrations; the "independent" jobs are the second implementations
 written without the first; the "exploratory" jobs carry no registered rule.
 
@@ -15,6 +34,8 @@ analysis/make_spans_g.py rebuilds the spans of the graph nodes from the snapshot
 resolve, 95.6%, and stores no report). Scripts that write their report to a file take --no-write or --stdout here,
 which prints the same report instead.
 """
+import argparse
+import re
 import subprocess
 import sys
 import tempfile
@@ -167,6 +188,10 @@ JOBS = [
     ('22 second seed: reads, lines read and first reads of a file of the note, a third count', 'independent',
      ['analysis/rederive_reads_22.py', '--no-write'], f'{R}/rederive_reads_22.txt',
      [f'{R}/22/N/seed3/task_results.jsonl', f'{R}/22/OF/seed3/task_results.jsonl', f'{R}/18/N/seed2/task_results.jsonl', 'data/tasks.jsonl', 'data/snapshots', 'data/cache/oracle_22']),
+    ('one-call contrasts of 03, 12, 15 and 20: intervals with tasks resampled instead of steps', 'exploratory',
+     ['analysis/explore_cluster_bootstrap.py'], f'{R}/explore_cluster_bootstrap.txt',
+     [f'{R}/v6/forks/results.jsonl', f'{R}/12/forks/results.jsonl', f'{R}/15/forks/results.jsonl',
+      f'{R}/20/forks/results.jsonl', 'analysis/fork_states_t/states.jsonl', 'analysis/fork_states_s/states.jsonl']),
     ('20 asked or told, the same search hits: T1 to T4', 'registered',
      ['analysis/analyze_20.py', '--no-write'], f'{R}/20/analyze_20.txt',
      [f'{R}/20/forks/results.jsonl', f'{R}/15/forks/results.jsonl', 'analysis/fork_states_t/states.jsonl',
@@ -301,6 +326,110 @@ JOBS = [
 ]
 
 
+# Inputs that git does not track and that a job reads beyond the ones in its own entry above, keyed by label. Found by
+# running every job in a clean export of the repository (no data/) and reading each failure, and by recording the
+# files each job opens on a machine that holds every input. The snapshot texts are unpacked from data/snapshots/ into
+# data/cache/snapshot_text/ on first use (analysis/nodes.py), so data/snapshots stands for both.
+SNAP = 'data/snapshots'
+SNAP_INDEX = 'data/cache/snapshot_files'   # built by analysis/snapshot_index.py from data/snapshots
+ORACLE_18 = 'data/cache/oracle_18'         # built by analysis/make_oracle_18.py from the competition data
+STATES_W = 'analysis/fork_states_w/first_call_states.jsonl'
+DATA = {
+    'one-call contrasts of 03, 12, 15 and 20: intervals with tasks resampled instead of steps': [SNAP],
+    '02 one step: following, discrimination, channel': [SNAP],
+    '03 one step: force, encoding, structure': [SNAP],
+    '04 gates': [SNAP],
+    '04 parts of an entry, false entry': [SNAP],
+    '05 tool channel': [SNAP],
+    '05 second model, 26B-A4B': [SNAP],
+    '05 second model, E4B': [SNAP],
+    '10 another model family, Qwen2.5-Coder-32B': [SNAP],
+    '06 five calls': [SNAP],
+    '06 five calls, supplement': [SNAP],
+    '07 rendering': [SNAP],
+    '08 and 09 fresh episodes: N1, A1, A2': [SNAP_INDEX],
+    '08 and 09 fresh episodes, independent': [SNAP_INDEX],
+    '04 independent': [SNAP],
+    '05 tool channel, independent': [SNAP, 'data/forks_c_modal/out/results.jsonl'],
+    '05 26B-A4B, independent': [SNAP],
+    '05 E4B, independent': [SNAP],
+    '10 Qwen2.5-Coder-32B, independent': [SNAP],
+    '06 five calls, independent': [SNAP, 'data/tasks.jsonl'],
+    '07 rendering, independent': [SNAP],
+    'five calls, call by call': [SNAP],
+    'supplement: task-clustered intervals, the false entry in detail, seed agreement, calls to the fix': [SNAP],
+    'what a name without an address costs in calls': [SNAP],
+    '12 a file without lines: P1 to P3': [SNAP],
+    '13 the address written as a search hit: X1, X2': [SNAP],
+    '18 whole runs told where the fix is, as names or as addresses: U1 to U4': [SNAP],
+    '18 whole runs told where the fix is: what each arm reads and when it first edits a changed region': [ORACLE_18],
+    '22 whole runs told where the fix is, second seed, the half that ran: L1 to L7': [SNAP],
+    '22 second seed: what each arm reads and when it first edits a changed region': [ORACLE_18, 'data/cache/oracle_22'],
+    '22 second seed: where each arm starts its reads and how it reaches the places of its note': [ORACLE_18],
+    '18 and 22 together: lines read and where the first read of a file of the note starts': [ORACLE_18],
+    '22 second seed: what each arm reads, independent': [ORACLE_18],
+    '18 and 22: where the first read of a file of the note starts, independent': [ORACLE_18],
+    '19 the two one-call contrasts on seven hosted models: V1, V2': [SNAP],
+    '14 whole runs scored by tests: T1, T2, T3': [SNAP],
+    'what the neighbor lists at the paused steps are made of, and which kind the next call reads':
+        ['analysis/fork_states/fastapi_11194_r1_f0.json'],
+    '02 and 03 one step: concentration, leave-one-out, matched entries, other outcomes':
+        [SNAP, 'data/cache/rewired', SNAP_INDEX],
+    '02 and 03 one step, independent: outcomes under its own scorer': [SNAP],
+    '02 and 03 one step, independent: outcomes under its own scorer, recursive searches not counted': [SNAP],
+    'mangled argument names: sensitivity': [SNAP],
+    'where the first read lands': [SNAP],
+    'public runs, whole runs: when the agent is first shown a line the fix changes': [SNAP],
+    'public runs, whole runs: fix sites the agent never saw, against the code graph and rewired graphs': [SNAP_INDEX],
+    'public runs, whole runs: from a fix site the run had seen to the ones it missed': [SNAP_INDEX],
+    'public runs, whole runs: the graph against rewirings that keep locality': [SNAP_INDEX],
+    'public runs, whole runs: which source would have held the fix sites a run never saw': [SNAP_INDEX],
+    'whole runs of eight agents: where every argument of every call comes from; fix places the task names':
+        [STATES_W, ORACLE_18],
+    'whole runs of eight agents: the moves the agent makes against the call graph': [STATES_W, ORACLE_18, SNAP_INDEX],
+    'whole runs of eight agents: where arguments come from, independent': [STATES_W],
+    'whole runs of eight agents: moves against the call graph, independent': [STATES_W, SNAP_INDEX],
+    'whole runs: are the regions of a fix shown independently, and fixes in one file against several': [ORACLE_18],
+    'whole runs of eight agents: where every file read starts, and the changed regions by depth and count': [ORACLE_18],
+    'public runs, whole runs: the kind of graph edge between a missed fix site and code the run saw': [SNAP_INDEX],
+    'public runs, whole runs: fix sites the agent never saw, independent': [SNAP_INDEX],
+    'public runs, whole runs: the kind of graph edge, independent': [SNAP_INDEX],
+}
+
+# Why an input is missing, by path prefix (the first that matches): (what the report says, where it comes from).
+SOURCES = [
+    ('data/graphloc', "other teams' public runs", 'analysis/results/public/README.md'),
+    ('data/public_traces', "other teams' public runs", 'analysis/results/public/README.md'),
+    ('data/forks_', 'raw output of one of our runs, not distributed', ''),
+    ('data/cache/snapshot_files', 'the competition data', 'then py -I -X utf8 analysis/snapshot_index.py'),
+    ('data/cache/oracle_18', 'the competition data', 'then py -I -X utf8 analysis/make_oracle_18.py'),
+    ('data/cache/oracle_22', 'the competition data', 'then analysis/make_oracle_18.py and analysis/make_oracle_22.py'),
+    ('data/cache/rewired', 'the competition data', 'then py -I -X utf8 analysis/fork_states.py'),
+    ('data/', 'the competition data', ''),
+    ('analysis/fork_states', 'a state file that git ignores, built from the data', 'analysis/make_states_*.py, '
+                                                                                    'analysis/fork_states.py'),
+]
+
+
+def needs_of(job):
+    """Every input of a job that is not under analysis/results/ (those are tracked), in the order they are checked."""
+    label, _kind, _args, _stored, needs = job
+    out = []
+    for n in [*needs, *DATA.get(label, [])]:
+        if n not in out:
+            out.append(n)
+    return out
+
+
+def first_missing(job):
+    return next((n for n in needs_of(job) if not (ROOT / n).exists()), None)
+
+
+def why(path):
+    what, where = next(((w, h) for p, w, h in SOURCES if path.startswith(p)), ('a file that is not tracked', ''))
+    return f'needs {what} ({path}{"; " + where if where else ""})'
+
+
 def run(args):
     tmp = str(Path(tempfile.gettempdir()) / 'reproduce_scratch_output.txt')  # for a script that always writes a file
     args = [tmp if a == '{TMP}' else a for a in args]
@@ -308,41 +437,97 @@ def run(args):
     return p.returncode, p.stdout.decode('utf-8', 'replace').replace('\r\n', '\n'), p.stderr.decode('utf-8', 'replace')
 
 
+def select(texts):
+    """Indices of the jobs whose number (as --list prints it, from 1) equals one of the texts or whose label contains
+    it (case ignored). A text of digits matches a label only as a whole word, so --job 1 is job 1 and not every label
+    with a 1 in it, while --job 11 is job 11 and the jobs of pre-registration 11."""
+    chosen = set()
+    for t in texts:
+        if t.isdigit():
+            hits = [i for i, job in enumerate(JOBS) if int(t) == i + 1 or re.search(rf'\b{t}\b', job[0])]
+        else:
+            hits = [i for i, job in enumerate(JOBS) if t.lower() in job[0].lower()]
+        if not hits:
+            sys.exit(f'--job {t!r}: no job has this number or a label that contains it (see --list)')
+        chosen.update(hits)
+    return sorted(chosen)
+
+
+def show_list():
+    ready = 0
+    for i, job in enumerate(JOBS):
+        label, kind = job[0], job[1]
+        miss = first_missing(job)
+        ready += miss is None
+        state = 'ready' if miss is None else why(miss)
+        print(f'{i + 1:3d}  {kind:<11}  {label}\n       {state}')
+    print(f'{len(JOBS)} jobs, {ready} with every input present')
+
+
 def main():
-    write = '--write' in sys.argv[1:]
+    unknown = [k for k in DATA if k not in {job[0] for job in JOBS}]
+    if unknown:
+        sys.exit(f'reproduce.py: DATA names a label that is not a job: {unknown[0]!r}')
+    ap = argparse.ArgumentParser(
+        prog='analysis/reproduce.py',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description='Re-run the analyses behind the paper and compare each report with its stored output under\n'
+                    'analysis/results/. Each job prints PASS (identical), FAIL (the script failed or its report\n'
+                    'differs) or SKIPPED (an input that git does not track is missing: the competition data, a cache\n'
+                    'built from it, a state file that git ignores, or other teams\' public runs). The last line is\n'
+                    '"PASS n, FAIL n, SKIPPED n"; the exit status is 0 when no job failed, 1 otherwise.\n'
+                    'From a clone without data/, the jobs that need only tracked files run; --list shows which.',
+        epilog='Run from the repository root with py -I -X utf8 (or python3 -I -X utf8). The module docstring says\n'
+               'where each kind of missing input comes from.')
+    ap.add_argument('--list', action='store_true', help='list every job (number, kind, label) and whether its inputs '
+                                                        'are present, then exit')
+    ap.add_argument('--job', action='append', default=[], metavar='TEXT',
+                    help='run only the jobs whose number equals TEXT or whose label contains TEXT (case ignored; a '
+                         'number matches a label only as a whole word, so 11 also picks the jobs of '
+                         'pre-registration 11); may be given several times')
+    ap.add_argument('--write', action='store_true', help='rewrite the stored outputs instead of comparing '
+                                                         '(maintainers only)')
+    opts = ap.parse_args()
+    if opts.list:
+        show_list()
+        return
+    write = opts.write
+    todo = select(opts.job) if opts.job else range(len(JOBS))
     counts = {'PASS': 0, 'FAIL': 0, 'SKIPPED': 0, 'WRITTEN': 0}
-    for label, kind, args, stored, needs in JOBS:
-        missing = [n for n in needs if not (ROOT / n).exists()]
-        if missing:
-            print(f'SKIPPED  [{kind}] {label}: not in the repository: {missing[0]}')
+    for idx in todo:
+        label, kind, args, stored, needs = JOBS[idx]
+        n = idx + 1
+        miss = first_missing(JOBS[idx])
+        if miss:
+            print(f'SKIPPED  {n:2d} [{kind}] {label}: {why(miss)}')
             counts['SKIPPED'] += 1
             continue
         code, out, err = run(args)
         path = ROOT / stored
         if code != 0:
-            print(f'FAIL     [{kind}] {label}: the script exited with {code}: {err.strip().splitlines()[-1] if err.strip() else ""}')
+            print(f'FAIL     {n:2d} [{kind}] {label}: the script exited with {code}: {err.strip().splitlines()[-1] if err.strip() else ""}')
             counts['FAIL'] += 1
         elif write:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(out, encoding='utf-8', newline='\n')
-            print(f'WRITTEN  [{kind}] {label}: {stored}')
+            print(f'WRITTEN  {n:2d} [{kind}] {label}: {stored}')
             counts['WRITTEN'] += 1
         elif not path.exists():
-            print(f'FAIL     [{kind}] {label}: no stored output {stored}')
+            print(f'FAIL     {n:2d} [{kind}] {label}: no stored output {stored}')
             counts['FAIL'] += 1
         else:
             old = path.read_text(encoding='utf-8').replace('\r\n', '\n')
             if old == out:
-                print(f'PASS     [{kind}] {label}: identical to {stored} ({len(out.splitlines())} lines)')
+                print(f'PASS     {n:2d} [{kind}] {label}: identical to {stored} ({len(out.splitlines())} lines)')
                 counts['PASS'] += 1
             else:
                 a, b = old.splitlines(), out.splitlines()
                 i = next((j for j, (x, y) in enumerate(zip(a, b)) if x != y), min(len(a), len(b)))
-                print(f'FAIL     [{kind}] {label}: differs from {stored} at line {i + 1}')
+                print(f'FAIL     {n:2d} [{kind}] {label}: differs from {stored} at line {i + 1}')
                 print(f'           stored: {a[i][:150] if i < len(a) else "<end>"}')
                 print(f'           now:    {b[i][:150] if i < len(b) else "<end>"}')
                 counts['FAIL'] += 1
-    print(', '.join(f'{k} {v}' for k, v in counts.items() if v))
+    print(', '.join(f'{k} {v}' for k, v in counts.items() if k != 'WRITTEN' or write))
     sys.exit(1 if counts['FAIL'] else 0)
 
 
