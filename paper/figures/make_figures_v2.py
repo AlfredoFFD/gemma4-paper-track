@@ -4,11 +4,11 @@ Usage (from the repo root):
     .venv/Scripts/python.exe -I -X utf8 paper/figures/make_figures_v2.py [--out <dir>] [--r22 <file>]
 
 Writes, next to this script (or into --out), each as .png (200 dpi) and .svg:
-  fig_models      a name against an address, and a search with and without its line numbers, on eight models
+  fig_models      a name against an address, and a search with and without its line numbers, by model (eleven models)
   fig_asked_told  a line the agent was told is used, less often than one it asked for
   fig_graph       what an edge of the code graph is
   fig_moves       where a file read starts, and how many places a fix has
-  fig_oracle      told where the fix is: names make the agent look, lines make its patch land
+  fig_oracle      told where the fix is (the number of tasks and seeds parsed)
 
 Every number drawn is parsed from a stored output; when a line cannot be found the script stops with an error and
 draws nothing from a fallback. The sources:
@@ -183,16 +183,35 @@ def width_in(fig, t):
 
 
 # ================================================================ fig_models
-MODELS = (  # short label, a token of the model's name in analyze_19.txt (None: Gemma-4-31B, from the registered reports)
-    ('Gemma-4-31B', None), ('Qwen3-30B', 'qwen3-30b-a3b'), ('Qwen3-235B', 'qwen3-235b-a22b'),
-    ('gpt-oss-120B', 'gpt-oss-120b'), ('DeepSeek-V4.1-Flash', 'deepseek-v4.1-flash'), ('GLM-5.3-Flash', 'glm-5.3-flash'),
+HOSTED = (  # short label, a token of the model's name in analyze_19.txt
+    ('Qwen3-30B', 'qwen3-30b-a3b'), ('Qwen3-235B', 'qwen3-235b-a22b'), ('gpt-oss-120B', 'gpt-oss-120b'),
+    ('DeepSeek-V4.1-Flash', 'deepseek-v4.1-flash'), ('GLM-5.3-Flash', 'glm-5.3-flash'),
     ('MiniMax-M3.1-Flash', 'minimax-m3.1-flash'), ('Nemotron-3-Super-120B', 'nemotron-3-super-120b'),
+)
+# The models registered earlier, on a rented GPU: the report of rule M1 (addresses minus bare names) of each run, as
+# make_figures.py reads them for fig_extensions (its run tags D2a, D2b, D2q); the first line of each report names its
+# run directory, which is checked. Qwen2.5-Coder-32B's search contrast is rule Q1 of pre-registration 17.
+EARLIER = (
+    ('Gemma-4-26B-A4B', RES / 'd2_26b' / 'analyze_d2_26b.txt', 'analysis/results/d2_26b/forks', None),
+    ('Gemma-4-E4B', RES / 'd2_e4b' / 'analyze_d2_e4b.txt', 'analysis/results/d2_e4b/forks', None),
+    ('Qwen2.5-Coder-32B', RES / 'qwen' / 'analyze_d2_qwen.txt', 'analysis/results/qwen/forks',
+     RES / '17' / 'analyze_17.txt'),
 )
 ROW19 = re.compile(r'^(\S+)\s+.+?\s+(10|17)\s+\d+\s+[\d.]+%\s+\w+\s+[\d.]+\s+\w+\s+[\d.]+\s+'
                    r'([+-][\d.]+) \[([+-][\d.]+), ([+-][\d.]+)\]\s+(V\d) (.+?)\s*$')
+Q1 = r'^  Q1, Y1 under S minus Y1 under S0: ([+-][\d.]+) \[([+-][\d.]+), ([+-][\d.]+)\]'
+
+
+def rule_q1(path, label):
+    s = Source(path)
+    m, line = s.find(Q1, f'rule Q1 ({label})')
+    _v, vline = s.find(r'^  Q1 verdict: met', f'the verdict of Q1 ({label})')
+    s.record('fig_models', f'right: {label}, rule Q1 (verdict met, line {vline})', interval_text(*m.groups()), line)
+    return m.groups()
 
 
 def parse_models():
+    """[(group label or None, [(model, left estimate, right estimate or None)])]"""
     s19 = Source(R19)
     _m, end = s19.find(r'^Per run, details', 'the end of the table of analyze_19.txt')
     rows = {}
@@ -201,39 +220,46 @@ def parse_models():
         if not m:
             continue
         name, design = m.group(1), m.group(2)
-        short = [lab for lab, tok in MODELS if tok and tok in name.lower()]
+        short = [lab for lab, tok in HOSTED if tok in name.lower()]
         if len(short) != 1:
             stop(f'analyze_19.txt, line {i + 1}: the model {name} matches {len(short)} short names')
         key = (short[0], design)
         if key in rows:
             stop(f'analyze_19.txt: two rows for {key}')
         rows[key] = dict(est=m.groups()[2:5], verdict=f'{m.group(6)} {m.group(7)}', line=i + 1, model=name)
-    for lab, tok in MODELS[1:]:
+    for lab, _tok in HOSTED:
         for design in ('10', '17'):
             if (lab, design) not in rows:
                 stop(f'analyze_19.txt: no row for {lab}, design {design}')
             r = rows[(lab, design)]
             s19.record('fig_models', f'{"left" if design == "10" else "right"}: {lab} ({r["model"]}, design {design}); '
                        f'{r["verdict"]}', interval_text(*r['est']), r['line'])
-    if len(rows) != 2 * (len(MODELS) - 1):
-        stop(f'analyze_19.txt: {len(rows)} rows, not {2 * (len(MODELS) - 1)}')
+    if len(rows) != 2 * len(HOSTED):
+        stop(f'analyze_19.txt: {len(rows)} rows, not {2 * len(HOSTED)}')
     # Gemma-4-31B: rule B3 of pre-registration 03 (fractions in the report: turned into points, exactly)
     s03 = Source(R03)
     m, line = s03.find(r'^  B3: (-?[\d.]+) \[(-?[\d.]+), (-?[\d.]+)\]', 'rule B3')
     b3 = tuple(f'{Decimal(g) * 100:.2f}' for g in m.groups())
     b3 = ('+' + b3[0] if not b3[0].startswith('-') else b3[0], b3[1], b3[2])
     s03.record('fig_models', 'left: Gemma-4-31B, rule B3 (fractions x 100)', interval_text(*b3), line)
-    s15 = Source(R15)
-    m, line = s15.find(r'^  Q1, Y1 under S minus Y1 under S0: ([+-][\d.]+) \[([+-][\d.]+), ([+-][\d.]+)\]', 'rule Q1')
-    q1 = m.groups()
-    _v, vline = s15.find(r'^  Q1 verdict: met', 'the verdict of Q1')
-    s15.record('fig_models', 'right: Gemma-4-31B, rule Q1 (verdict met, line %d)' % vline, interval_text(*q1), line)
+    q1 = rule_q1(R15, 'Gemma-4-31B')
     for k, got in (('B3', b3), ('Q1', q1)):
         if interval_text(*got) != interval_text(*TYPED[k]):
             stop(f'{k}: the report prints {interval_text(*got)}, the brief types {interval_text(*TYPED[k])}')
-    left = [b3] + [rows[(lab, '10')]['est'] for lab, _t in MODELS[1:]]
-    right = [q1] + [rows[(lab, '17')]['est'] for lab, _t in MODELS[1:]]
-    return left, right
+    earlier = []
+    for lab, path, run_dir, q_path in EARLIER:
+        s = Source(path)
+        _h, hline = s.find(rf'^experiment D2: \d+ replays of arms .* in {re.escape(run_dir)}$',
+                           f'the run directory {run_dir} on the first line')
+        if hline != 1:
+            stop(f'{rel(path)}: the run directory is not named on its first line')
+        m, line = s.find(r'^  M1 E - H 95%: ([+-][\d.]+) \[([+-][\d.]+), ([+-][\d.]+)\]: (\w+)', f'rule M1 ({lab})')
+        s.record('fig_models', f'left: {lab}, rule M1 E - H ({m.group(4)})', interval_text(*m.groups()[:3]), line)
+        earlier.append((lab, m.groups()[:3], rule_q1(q_path, lab) if q_path else None))
+    return [(None, [('Gemma-4-31B', b3, q1)]),
+            ('registered earlier (rented GPU)', earlier),
+            ('pre-registration 19 (hosted API)', [(lab, rows[(lab, '10')]['est'], rows[(lab, '17')]['est'])
+                                                  for lab, _t in HOSTED])]
 
 
 def nice_step(span):
@@ -244,32 +270,45 @@ def nice_step(span):
 
 
 def fig_models(out):
-    left, right = parse_models()
-    labels = [lab for lab, _t in MODELS]
-    TOP, HEAD, ROW, AXIS = 0.42, 0.50, 0.255, 0.66
+    groups = parse_models()
+    TOP, HEAD, ROW, GROUP_H, AXIS = 0.42, 0.50, 0.245, 0.24, 0.66
     LAB_R = 1.58
     A1, T1 = (1.70, 3.10), 3.17
     A2, T2 = (4.36, 5.64), 5.71
-    rows_h = ROW * len(labels)
+    # vertical layout, in inches below the top of the rows: a group label takes GROUP_H, a row ROW
+    layout, y = [], 0.0
+    for glabel, rows in groups:
+        if glabel:
+            layout.append(('group', glabel, y))
+            y += GROUP_H
+        for r in rows:
+            layout.append(('row', r, y + ROW / 2))
+            y += ROW
+    rows_h = y + 0.03
+    n_models = sum(len(rows) for _g, rows in groups)
+    if n_models != 11:
+        stop(f'fig_models: {n_models} models, not eleven')
     note = wrap(
-        'Gemma-4-31B: pre-registrations 03 and 15. The other seven models: the same two contrasts replayed through a '
-        'hosted API (pre-registration 19). Intervals: 95% bootstrap by paused step.', 128)
+        'Gemma-4-31B: pre-registrations 03 and 15. Registered earlier: Gemma-4-26B-A4B and Gemma-4-E4B, '
+        'pre-registration 05; Qwen2.5-Coder-32B, pre-registrations 10 (left) and 17 (right). Hosted API: '
+        'pre-registration 19. The other models replay Gemma-4-31B\'s recorded steps. Intervals: 95% bootstrap by '
+        'paused step.', 128)
     h_in = TOP + HEAD + rows_h + AXIS + 0.13 * len(note) + 0.10
     fig, page = page_of(h_in)
-    page.text(0.09, 0.07, 'A name against an address, and a search with and without its line numbers, on eight models',
+    page.text(0.09, 0.07, 'A name against an address, and a search with and without its line numbers, by model',
               ha='left', va='top', fontsize=10.5, color=INK)
     y0 = TOP + HEAD
-    for (a0, a1), tx, vals, head, sub, xlabel in (
-            (A1, T1, left, 'A name against an address', 'addresses minus bare names',
+    for side, ((a0, a1), tx, head, sub, xlabel) in enumerate((
+            (A1, T1, 'A name against an address', 'addresses minus bare names',
              'points of replays whose next call\nreads a neighbor\'s code'),
-            (A2, T2, right, 'A search, with and without line numbers', 'with minus without',
-             'points of replays whose next call\nreads a hit file past line 1')):
+            (A2, T2, 'A search, with and without line numbers', 'with minus without',
+             'points of replays whose next call\nreads a hit file past line 1'))):
         page.text(a0, TOP + 0.08, head, ha='left', va='top', fontsize=9.0, color=INK)
         page.text(a0, TOP + 0.27, sub, ha='left', va='top', fontsize=7.8, color=INK2)
         ax = axes_at(fig, a0, a1, y0, y0 + rows_h)
-        los = [float(v[1]) for v in vals]
-        his = [float(v[2]) for v in vals]
-        lo, hi = min(0.0, min(los)), max(his)
+        vals = [r[1 + side] for kind, r, _y in layout if kind == 'row' and r[1 + side] is not None]
+        lo = min(0.0, min(float(v[1]) for v in vals))
+        hi = max(float(v[2]) for v in vals)
         step = nice_step(hi - lo)
         xmin = step * (int(lo // step)) if lo < 0 else 0
         xmax = step * (int(hi // step) + 1)
@@ -278,19 +317,24 @@ def fig_models(out):
         ticks = [v for v in range(int(xmin), int(xmax) + 1, step)]
         for v in ticks:
             ax.plot([v, v], [0.02, rows_h], color=MUTED if v == 0 else GRID, lw=0.8 if v == 0 else 0.6, zorder=1)
-        for i, (p, l, h) in enumerate(vals):
-            yc = ROW * (i + 0.5)
-            first = i == 0
+        for kind, r, yc in layout:
+            if kind != 'row':
+                continue
+            est = r[1 + side]
+            first = r[0] == 'Gemma-4-31B'
+            if est is None:      # a model this contrast was not run on: the row stays, and says so
+                page.text(tx, y0 + yc, 'not run', ha='left', va='center', fontsize=7.6, color=MUTED, style='italic')
+                continue
+            p, l, h = (float(x) for x in est)
             col = INK if first else GREY
-            ax.plot([float(l), float(h)], [yc, yc], color=col, lw=1.3 if first else 1.0, solid_capstyle='butt',
-                    zorder=2)
-            for v in (float(l), float(h)):
+            ax.plot([l, h], [yc, yc], color=col, lw=1.3 if first else 1.0, solid_capstyle='butt', zorder=2)
+            for v in (l, h):
                 ax.plot([v, v], [yc - 0.045, yc + 0.045], color=col, lw=0.9, zorder=2)
-            ax.plot(float(p), yc, marker='s', ms=5.6 if first else 4.6, mfc=BLUE if first else DARK, mec='white',
-                    mew=0.5, zorder=3)
-            t = page.text(tx, y0 + yc, interval_text(p, l, h), ha='left', va='center', fontsize=7.6,
+            ax.plot(p, yc, marker='s', ms=5.6 if first else 4.6, mfc=BLUE if first else DARK, mec='white', mew=0.5,
+                    zorder=3)
+            t = page.text(tx, y0 + yc, interval_text(*est), ha='left', va='center', fontsize=7.6,
                           color=INK if first else INK2, fontweight='bold' if first else 'normal')
-            limit = A2[0] - 0.05 if tx == T1 else W_IN - 0.04
+            limit = A2[0] - 0.05 if side == 0 else W_IN - 0.04
             if tx + width_in(fig, t) > limit:
                 stop(f'fig_models: the estimate "{t.get_text()}" runs into the next column')
         ax.set_xticks(ticks)
@@ -300,11 +344,14 @@ def fig_models(out):
         ax.spines[['top', 'right', 'left']].set_visible(False)
         ax.tick_params(axis='x', labelsize=7.8, length=3)
         ax.set_xlabel(xlabel, fontsize=7.8, linespacing=1.25)
-    for i, lab in enumerate(labels):
-        yc = y0 + ROW * (i + 0.5)
-        page.text(LAB_R, yc, lab, ha='right', va='center', fontsize=8.4, color=INK,
-                  fontweight='bold' if i == 0 else 'normal')
-    page.plot([0.12, W_IN - 0.06], [y0 + ROW] * 2, color=HAIR, lw=0.6, zorder=0)
+    for kind, r, yy in layout:
+        if kind == 'group':      # a thin rule across the page, the group's small grey label under it
+            page.plot([0.12, W_IN - 0.06], [y0 + yy + 0.035] * 2, color=HAIR, lw=0.7, zorder=0)
+            page.text(0.12, y0 + yy + GROUP_H / 2 + 0.035, r, ha='left', va='center', fontsize=7.2, color=MUTED,
+                      style='italic')
+        else:
+            page.text(LAB_R, y0 + yy, r[0], ha='right', va='center', fontsize=8.4, color=INK,
+                      fontweight='bold' if r[0] == 'Gemma-4-31B' else 'normal')
     yn = y0 + rows_h + AXIS
     for i, line in enumerate(note):
         page.text(0.09, yn + 0.13 * i, line, ha='left', va='top', fontsize=6.9, color=MUTED)
@@ -635,8 +682,9 @@ def fig_moves(out):
 # ================================================================ fig_oracle
 ARMS18 = (('N', 'control', PALE), ('ON', 'told every place by name', GREY),
           ('OF', 'told the functions with their line ranges', LIGHT), ('OA', 'told every place by file and lines', BLUE))
-OUTCOMES = (('every', 'shown every\nchanged region'), ('overlap', 'final patch overlaps\na changed region'),
-            ('resolved', 'resolved\n(the tests pass)'))
+OUTCOMES = (('every', 'shown every\nchanged region', 'registered'),        # rules of pre-registration 18
+            ('overlap', 'final patch overlaps\na changed region', 'not registered: seen after the run'),
+            ('resolved', 'resolved\n(the tests pass)', 'registered'))
 SEC3 = (r'^   {arm}: runs (\d+); shown a changed line \d+ of \d+ \([\d.]+%\); every region shown (\d+) of (\d+) '
         r'\([\d.]+%\); patch touches every changed region \d+ of \d+ \([\d.]+%\); patch overlaps a changed region (\d+) '
         r'of (\d+) \([\d.]+%\); resolved (\d+) of (\d+) \(')
@@ -691,7 +739,7 @@ def fig_oracle(out, r22):
     arms = [a for a in ARMS18 if a[0] in seed2 or (seed3 and a[0] in seed3)]
     TOP = 0.42
     KEY_H = 0.30 + (0.40 if seed3 else 0)
-    PLOT_H, AX_H = 2.15, 0.52
+    PLOT_H, AX_H = 2.15, 0.70
     note = ['Pre-registration 18: one whole run per task and arm, seed 2, on the same tasks. Shown every changed region: '
             'counted with every tool call paired with its result (the independent re-derivation of 18); the final '
             'patch and resolved: the registered analysis of 18.']
@@ -702,7 +750,7 @@ def fig_oracle(out, r22):
     note = wrap(' '.join(note), 132)
     h_in = TOP + KEY_H + PLOT_H + AX_H + 0.13 * len(note) + 0.10
     fig, page = page_of(h_in)
-    page.text(0.09, 0.07, 'Told where the fix is: names make the agent look, lines make its patch land', ha='left',
+    page.text(0.09, 0.07, f'Told where the fix is ({n} tasks, {"two seeds" if seed3 else "one seed"})', ha='left',
               va='top', fontsize=10.5, color=INK)
     # the key: one swatch per arm, in one row, or in two columns when there are four arms
     x, y = 0.36, TOP + 0.10
@@ -732,7 +780,7 @@ def fig_oracle(out, r22):
     bw = 0.8 / len(bars) * (0.88 if seed3 else 0.80)
     pitch = 0.8 / len(bars)
     colors = {k: c for k, _l, c in arms}
-    for gi, (okey, _olabel) in enumerate(OUTCOMES):
+    for gi, (okey, _olabel, _st) in enumerate(OUTCOMES):
         for bi, (arm, seed) in enumerate(bars):
             xb = gi + (bi - (len(bars) - 1) / 2) * pitch
             val = (seed2 if seed == 2 else seed3)[arm][okey]
@@ -747,7 +795,11 @@ def fig_oracle(out, r22):
     ax.set_xlim(-0.55, len(OUTCOMES) - 0.45)
     ax.set_ylim(0, n)
     ax.set_xticks(range(len(OUTCOMES)))
-    ax.set_xticklabels([lab for _k, lab in OUTCOMES], fontsize=8.2)
+    ax.set_xticklabels([lab for _k, lab, _s in OUTCOMES], fontsize=8.2)
+    x0, x1 = ax.get_xlim()
+    for gi, (_k, _lab, status) in enumerate(OUTCOMES):    # under each group: whether its outcome was registered
+        page.text(0.80 + (gi - x0) / (x1 - x0) * (6.90 - 0.80), TOP + KEY_H + PLOT_H + 0.43, status, ha='center',
+                  va='top', fontsize=7.2, color=MUTED, style='italic')
     ax.set_yticks(range(0, n + 1, 10))
     ax.grid(axis='y', color='#eeeeee', lw=0.6, zorder=0)
     ax.set_axisbelow(True)
