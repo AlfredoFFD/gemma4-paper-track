@@ -80,3 +80,9 @@ the stored Qwen2.5-Coder rows of 10 and 17 the analysis reproduces the registere
 
 The histories were written by Gemma-4-31B; another model replays a step it did not produce (as in 10 and 17). One
 provider. Two repositories. Models that reason before calling a tool are scored on the tool call alone.
+
+## Notes added after the freeze
+
+- Nov 11, 2026, 1:15 AM EST, after the run: all seven models ran both designs to the end and no guard stopped a design
+  (1,628 replays of design 10 and 549 of design 17 per model; no API failure). The first line of the analysis output
+  reads "BUILD, not registered": the script was written before the freeze and was not changed after it (hash above).
