@@ -21,3 +21,7 @@ status line; the commits are every commit that touched the file, oldest first (h
 | `15-own-search-without-line-numbers.md` | Nov 10, 2026, 8:33 PM EST | `4161535` 2026-11-10 20:33:00 -0500 |
 | `16-task-prompt-wording-and-graph-calls.md` | Nov 10, 2026, 9:18 PM EST | `7700e66` 2026-11-10 21:18:00 -0500 |
 | `17-own-search-another-model-family.md` | Nov 10, 2026, 10:17 PM EST | `964fe8c` 2026-11-10 22:17:00 -0500 |
+| `18-whole-runs-told-where-the-fix-is.md` | Nov 11, 2026, 1:02 AM EST | `508e44c` 2026-11-11 01:02:43 -0500; `a9b0041` 2026-11-11 01:21:37 -0500; `683ff2a` 2026-11-11 02:25:40 -0500; `966d515` 2026-11-11 02:26:29 -0500; `e29b2b2` 2026-11-11 03:26:51 -0500 |
+| `19-one-call-contrasts-on-hosted-models.md` | Nov 11, 2026, 12:55 AM EST | `bcc3c04` 2026-11-11 00:55:11 -0500; `26349a1` 2026-11-11 01:15:18 -0500 |
+| `20-asked-or-told.md` | Nov 11, 2026, 1:01 AM EST | `6a4f782` 2026-11-11 01:01:21 -0500; `e29b2b2` 2026-11-11 03:26:51 -0500 |
+| `22-told-where-the-fix-is-second-seed.md` | Nov 11, 2026, 2:33 AM EST | `7527b78` 2026-11-11 02:33:12 -0500; `7bf2c16` 2026-11-11 02:45:44 -0500 |
