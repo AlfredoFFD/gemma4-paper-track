@@ -2003,7 +2003,7 @@ CONDITIONS = [
     ('addresses', 'file, line range and first definition line'),
     ('search hits', 'the same addresses as file:line:definition'),
     ('false entry', 'one true neighbor swapped for a non-neighbor'),
-    ('rewired list', 'neighbors from a degree-preserving rewiring of the graph'),
+    ('rewired list', 'from a degree-preserving rewiring of the graph, padded from the same directory'),
 ]
 
 

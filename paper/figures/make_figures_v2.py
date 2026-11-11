@@ -82,7 +82,10 @@ RED22 = RES / 'rederive_22.txt'               # required when R22 exists (fig_or
 TYPED = {
     'B3': ('+5.50', '3.44', '7.65'),     # analysis/results/analyze_b.txt, line "  B3: 0.0550 [0.0344, 0.0765]"
     'Q1': ('+56.67', '45.00', '69.44'),  # analysis/results/15/analyze_15.txt, line "  Q1, Y1 under S minus ..."
+    'S1': ('+5.60', '3.76', '7.77'),     # analysis/results/g/analyze_g.txt, line "  S1 E - H: +5.60 [+3.76, +7.77]"
+    'B1': ('+1.55', '0.60', '2.66'),     # analysis/results/analyze_b.txt, line "  B1: 0.0155 [0.0060, 0.0266]"
 }
+R08 = RES / 'g' / 'analyze_g.txt'     # pre-registration 08, rule S1 (one step on the newest wheels)
 
 # ---------------------------------------------------------------- style (as make_figures.py, make_fig_runs.py)
 INK, INK2, MUTED = '#222222', '#555555', '#8a8a8a'
@@ -563,8 +566,12 @@ def fig_asked_told(out):
         ax.plot([r['lo'], r['hi']], [yc, yc], color=INK, lw=1.0, zorder=3)
         for v in (r['lo'], r['hi']):
             ax.plot([v, v], [yc - 0.04, yc + 0.04], color=INK, lw=0.9, zorder=3)
-        ax.text(r['hi'] + 1.6, yc, f'{r["k"]} of {r["n"]} ({100 * r["k"] / r["n"]:.1f}%)', ha='left', va='center',
-                fontsize=7.8, color=INK, zorder=4)
+        value = f'{r["k"]} of {r["n"]} ({100 * r["k"] / r["n"]:.1f}%)'
+        if arm == 'TOLDX':     # the hits of another search exist on only some of the paused steps
+            value += f' ({r["states"]} of the {d["NONE"]["states"]} steps)'
+        vt = ax.text(r['hi'] + 1.6, yc, value, ha='left', va='center', fontsize=7.8, color=INK, zorder=4)
+        if X0 + (r['hi'] + 1.6) / 100 * (X1 - X0) + width_in(fig, vt) > W_IN - 0.09:
+            stop(f'fig_asked_told: the value "{value}" runs past the page')
         page.text(LAB_R, TOP + yc, label, ha='right', va='center', fontsize=8.4, color=INK,
                   fontweight='bold' if arm in ('TOLD', 'ASKED') else 'normal')
     ax.set_yticks([])
@@ -1362,7 +1369,7 @@ def fig_oracle(out, r22):
     words = dict((k, lab) for k, lab, _c in ARMS18)
     colors = dict((k, c) for k, _l, c in ARMS18)
     TITLE = ('Told where the fix is: the form of the note changes what the agent reads; resolved tasks do not '
-             'detectably differ between the forms')
+             'detectably differ between names, ranges and lines')
     # one line at the size of the other figures' titles, or two broken after the colon
     title_lines = [TITLE] if _text_w(TITLE, 10.5) / 72 <= W_IN - 0.18 else \
         [TITLE[:TITLE.index(':') + 1], TITLE[TITLE.index(':') + 2:]]
@@ -1664,6 +1671,22 @@ BOOT = RES / 'explore_cluster_bootstrap.txt'      # its last line: addresses min
 OUTCOME_WORDS = ('met', 'not met', 'no detectable difference', 'no verdict')   # every part of an outcome starts so
 
 
+def outcome_parts(outcome):
+    """An outcome's parts: split at '; ' outside parentheses (a parenthesis may hold its own semicolon)."""
+    parts, depth, cur = [], 0, ''
+    i = 0
+    while i < len(outcome):
+        c = outcome[i]
+        depth += (c == '(') - (c == ')')
+        if depth == 0 and outcome.startswith('; ', i):
+            parts.append(cur)
+            cur, i = '', i + 2
+            continue
+        cur += c
+        i += 1
+    return parts + [cur]
+
+
 def _display(s):
     """Typographic minus for negative numbers and for 'X - Y' between words; nothing else changes."""
     s = re.sub(r'(?<![\w.])-(?=\d)', MINUS, s)
@@ -1918,6 +1941,53 @@ def est_20(rule):
     return [v]
 
 
+def est_20_t2():
+    """Rule T2 of pre-registration 20 with its outcome: the ratio is under the registered two thirds, and its interval
+    includes two thirds (both checked on the parsed values)."""
+    s = Source(R20)
+    m, line = s.find(r'^  T2, the ratio TOLD / ASKED on USES THE LINE: ([\d.]+) \[([\d.]+), ([\d.]+)\]', 'rule T2')
+    pt, lo, hi = (Decimal(g) for g in m.groups())
+    third2 = Decimal(2) / Decimal(3)
+    if not (pt < third2 and lo <= third2 <= hi):
+        stop(f'analyze_20.txt, line {line}: T2 {m.group(1)} [{m.group(2)}, {m.group(3)}]; the outcome says under two '
+             'thirds with an interval that includes it')
+    _v, vline = s.find(r'^  T2 verdict: .*below two thirds', 'the verdict of T2', line, line + 1)
+    v = f'{m.group(1)} [{m.group(2)}, {m.group(3)}]'
+    s.record('table_rules_v2', f'20 T2 (verdict below two thirds, line {vline}); under 2/3, interval includes 2/3', v,
+             line)
+    return [v], f'not met ({m.group(1)} is under two thirds; the interval includes it)'
+
+
+def est_08_s1():
+    """Rule S1 of pre-registration 08: E minus H, one step on the newest wheels (analyze_g.txt, part "one step")."""
+    s = Source(R08)
+    lo, hi = s.block(r'^PART "one step"', 'part "one step" of analyze_g.txt', end=r'^PART ')
+    m, line = s.find(r'^  S1 E - H: ([+-][\d.]+) \[([+-][\d.]+), ([+-][\d.]+)\]$', 'rule S1 of 08', lo, hi)
+    v, vline = s.find(r'^  S1 verdict: (.+)$', 'the verdict of S1', line, line + 1)
+    if v.group(1) != 'the encoding effect holds on this harness':
+        stop(f'analyze_g.txt, line {vline}: S1 verdict "{v.group(1)}"; the row says met')
+    est = _pts(m.groups())
+    if est != interval_text(*TYPED['S1']):
+        stop(f'analyze_g.txt, line {line}: S1 {est}, the brief types {interval_text(*TYPED["S1"])}')
+    s.record('table_rules_v2', f'08 S1, E - H, one step (verdict "{v.group(1)}", line {vline})', est, line)
+    return [est]
+
+
+def est_03_b1():
+    """Rule B1 of pre-registration 03: D minus H, from its registered report (fractions, turned into points exactly)."""
+    s = Source(R03)
+    m, line = s.find(r'^  B1: (-?[\d.]+) \[(-?[\d.]+), (-?[\d.]+)\]$', 'rule B1 of 03')
+    pts = [f'{Decimal(g) * 100:.2f}' for g in m.groups()]
+    pts[0] = pts[0] if pts[0].startswith('-') else '+' + pts[0]
+    if Decimal(m.group(2)) <= 0:
+        stop(f'analyze_b.txt, line {line}: B1 has its lower bound at or under 0; the row says met')
+    est = interval_text(*pts)
+    if est != interval_text(*TYPED['B1']):
+        stop(f'analyze_b.txt, line {line}: B1 {est}, the brief types {interval_text(*TYPED["B1"])}')
+    s.record('table_rules_v2', '03 B1, D - H (fractions x 100; lower bound above 0)', est, line)
+    return [est]
+
+
 def est_20_t4():
     """Rule T4 of pre-registration 20: SEARCHES under TOLD minus under NONE, with the verdict the report prints."""
     s = Source(R20)
@@ -2005,10 +2075,10 @@ TABLE_ROWS = (   # (reason, first column, the estimates, the outcome: a string, 
         'of the tool lines (16)', est_16_listing, None),
     (1, 'First call goes to a graph tool, the September wording of the tool lines against the current one, under '
         'either listing (16)', est_16_wording, None),
-    (1, 'Whole runs, both changes against as shipped, resolved (14)', est_14, 'no detectable difference'),
+    (1, 'Whole runs: tool answers with addresses and the line-bound repair, against as shipped, resolved (14)', est_14,
+     'no detectable difference'),
     (1, 'Told against nothing (20)', lambda: est_20('T1'), 'met'),
-    (1, 'Told as a share of asked; registered threshold two thirds (20)', lambda: est_20('T2'),
-     'not met (told is used less than asked)'),
+    (1, 'Told as a share of asked; registered threshold two thirds (20)', est_20_t2, None),
     (1, 'Next call is a search, told against nothing (20)', est_20_t4, None),
     (1, lambda: f'Told its own hits against those of another search, {states_t3()} steps (20)', lambda: est_20('T3'),
      'not met'),
@@ -2019,7 +2089,9 @@ TABLE_ROWS = (   # (reason, first column, the estimates, the outcome: a string, 
     # reason 2: the answers are names, and the agent acts on addresses
     (2, 'Addresses against names (03); on ten other models (05, 10, 19)', est_03_and_ten, None),
     (2, 'Addresses against names inside a tool result (05)', est_05_t1, 'met'),
+    (2, 'Addresses against names on the October release (08)', est_08_s1, 'met'),
     (2, lambda: f"Names against no list, reads a neighbor's code, on {steps_02()} steps (02)", est_02, 'not met'),
+    (2, 'Names with an instruction to read them against names (03)', est_03_b1, 'met'),
     (2, 'File and lines against file only (12)', est_12, 'met'),
     (2, "File only against names, opens the neighbor's file (12)", est_12_p2, 'not met'),
     (2, 'Names with their definition line against names (04)', est_04_es, 'not met'),
@@ -2105,7 +2177,7 @@ def table_rules(out, r22):
         stop(f'table_rules_v2: the rows are not ordered by reason: {reasons}')
     # one vocabulary of outcomes: every part starts with met, not met, no detectable difference or no verdict
     for label, _p, outcome in rows:
-        for part in outcome.split('; '):
+        for part in outcome_parts(outcome):
             if not any(part == w or part.startswith(w + ' ') or part.startswith(w + ':') for w in OUTCOME_WORDS):
                 stop(f'table_rules_v2: the outcome "{part}" of "{label[:40]}" is not in the words {OUTCOME_WORDS}')
     cols = ['Reason', 'Rule (registration)', 'Estimate', 'Outcome']
@@ -2124,9 +2196,9 @@ def table_rules(out, r22):
         met = outcome.split(';')[0].split(' (')[0] in ('met', 'met on each')
         style = ('bold', BLUE, 'normal') if met else ('normal', INK, 'normal')
         o_lines = []
-        for k, part in enumerate(outcome.split('; ')):
-            o_lines += _wrap_pts(part + (';' if k < len(outcome.split('; ')) - 1 else ''), W * fracs[3] - 10, TABLE_FS,
-                                 style[0])
+        o_parts = outcome_parts(outcome)
+        for k, part in enumerate(o_parts):
+            o_lines += _wrap_pts(part + (';' if k < len(o_parts) - 1 else ''), W * fracs[3] - 10, TABLE_FS, style[0])
         cell3 = [[(line, TABLE_FS, *style)] for line in o_lines]
         body.append(('row', [cell0, cell1, cell2, cell3]))
     _draw_table(cols, fracs, body, TABLE_NOTE, out, 'table_rules_v2')
