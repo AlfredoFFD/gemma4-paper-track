@@ -13,6 +13,16 @@ Sources:
                                              agent with a graph skill (arm skill), September 2026, Gemma-4-31B
   data/public_traces/...                     two other teams' custom agents (as in public_runs_address.sources())
   analysis/results/14/                       our whole runs of pre-registration 14, conditions N and NAF
+  analysis/results/18/                       our whole runs of pre-registration 18, arms N, ON and OA, when that
+                                             folder is present (this script adds descriptive counts to that
+                                             experiment's registered analysis, analysis/analyze_18.py; its notes
+                                             are read from data/cache/oracle_18, built by analysis/make_oracle_18.py)
+A step of a trace can hold several tool calls (the agent asks for several reads at once). The trace then stores the
+result of the first call with the step and the results of the others in the steps that follow, which hold no call.
+public_runs_address.calls_of gives the step's result to its last call and does not read those steps, so it keeps
+one result of such a step and drops the rest. In the eight earlier sets there is one such step and they are read
+as before. In the runs of 18 there are fifteen (nine in arm OA, which hold 39 reads), and for those three sets this
+script first pairs every call of such a step with its own result, in order (one_call_steps). Part 7 prints both.
 The public data is not in this repository and is not redistributed.
 
 Rules. READ, its file and its asked start and end are those of analysis/public_runs_address.py (a bound written
@@ -43,6 +53,9 @@ under a mangled argument name counts as written). Only READS whose result has st
   NO NUMBER       so: a start past line 1 at a place for which the run held no line number and next to nothing it
                   had read. A JUMP is a READ of class ADDRESSED, OTHER NUMBER, SHELL VIEW or NO NUMBER.
   HIT             a READ of a file the fix changes whose RETURNED RANGE overlaps a CHANGED REGION.
+  MARGIN          the 10 lines of ADDRESSED, PAGING and OTHER NUMBER. Part 5 repeats the classes with 3 and with 30.
+                  (With no margin the next page of a file, which starts one line after the last line read, would
+                  not count as PAGING.)
   BY CHANCE       for a READ past line 1 of a file with no earlier SHELL VIEW: the share of the file's possible starts
                   (line 2 to its last line, same WINDOW length) that would have been classed PAGING, ADDRESSED or
                   OTHER NUMBER at that point of the run. One minus its mean is the share of NO NUMBER expected if
@@ -55,6 +68,19 @@ under a mangled argument name counts as written). Only READS whose result has st
   HOW             for a region that was SHOWN: the class of the READ that first showed it.
   READS TO REACH  for a region that was SHOWN: the READS of status ok of its file up to and including the one that
                   first showed it.
+  EDITED          a CHANGED REGION that a region of the run's FINAL PATCH in the same file overlaps (the patch of the
+                  run record, parsed like the reference patch, as in analysis/public_runs_time_to_fix.py).
+  FIX EDIT        an edit_file call of status ok on a file the fix changes whose returned diff changes lines that
+                  overlap a CHANGED REGION (line numbers of the file as it stood at that call: an earlier edit of
+                  the same file can have shifted them by a few lines). write_file returns no diff and is not counted.
+  AFTER IT        the calls after the run's first FIX EDIT. A SEARCH is a run_command with a segment that begins
+                  with grep, egrep, fgrep, rg, ag, ack, find or git grep. A NEW READ is a READ of status ok, not of
+                  an OWN FILE, that returns a line of its file which no earlier READ of the run had returned. A NEW
+                  FILE is a file with such a READ and no READ before the FIX EDIT.
+  NOTE, PLACE     (pre-registration 18) a PLACE is one line of the note of arm OA: a file with a line range. In arm
+                  OA the lines of every PLACE count as NAMED LINES from the start of the run, with the SOURCE NOTE;
+                  in arm ON the note holds names only and adds none. A PLACE is REACHED if a READ returned one of
+                  its lines; HOW, as for a region.
   STRETCH FROM THE TOP  for a file whose first READ was a TOP read that returned from line 1: the lines reachable
                   from line 1 through RETURNED RANGES of the run without a gap of more than 10 lines. The run JUMPED
                   in the file if a RETURNED RANGE starts more than 10 lines past the end of that stretch.
@@ -72,10 +98,12 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import analyze_14 as A  # noqa: E402
+import nodes as N  # noqa: E402
 from analyze_forks import boot_ci, diff_ci  # noqa: E402
 from graphloc_traces import iter_runs, load  # noqa: E402
 from public_runs_address import (DATA, SKILL_LINE, asked, calls_of, classify, command_of, is_read, norm,  # noqa: E402
                                  numbering_command, pct, sources, viewed_files)
+from make_population_k import parse_patch  # noqa: E402
 from public_runs_time_to_fix import gold_regions, graphloc_records, truth  # noqa: E402
 
 NEAR = 10
@@ -84,6 +112,56 @@ INF = float('inf')
 HUNK = re.compile(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@', re.M)
 CLASSES = ('TOP', 'PAGING', 'ADDRESSED', 'OTHER NUMBER', 'SHELL VIEW', 'NO NUMBER')
 KINDS = ('OWN SEARCH', 'COMMAND OUTPUT', 'TASK TEXT', 'OTHER TOOL')
+SEARCHERS = ('grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack', 'find')
+ROOT_18 = HERE / 'results' / '18'
+ARMS_18 = collections.OrderedDict((
+    ('N', 'pre-registration 18, arm N (control)'),
+    ('ON', "pre-registration 18, arm ON (the fix's places told as names)"),
+    ('OA', "pre-registration 18, arm OA (the fix's places told as files and lines)")))
+
+
+def is_search(cmd):
+    for seg in re.split(r'[|;&\n()`]+', cmd):
+        toks = seg.split()
+        if toks and (toks[0] in SEARCHERS or (toks[0] == 'git' and len(toks) > 1 and toks[1] == 'grep')):
+            return True
+    return False
+
+
+def one_call_steps(trace):
+    """A copy of the trace in which a step with several tool calls is split into steps of one call, each with its
+    own result: the first call's is the step's, the next ones are those of the following steps without a call."""
+    steps, out, k = trace.get('steps', []), [], 0
+    while k < len(steps):
+        s = steps[k]
+        tcs = s.get('tool_calls') or []
+        if len(tcs) <= 1:
+            out.append(s)
+            k += 1
+            continue
+        obs, j = [s.get('observation')], k + 1
+        while (j < len(steps) and len(obs) < len(tcs) and not (steps[j].get('tool_calls') or [])
+               and steps[j].get('observation') is not None and steps[j].get('source') != 'user'):
+            obs.append(steps[j].get('observation'))
+            j += 1
+        for n, tc in enumerate(tcs):
+            t = dict(s)
+            t['tool_calls'] = [tc]
+            t['observation'] = obs[n] if n < len(obs) else None
+            out.append(t)
+        k = j
+    new = dict(trace)
+    new['steps'] = out
+    return new
+
+
+def oracle_places(task):
+    """The PLACES of the task's note (pre-registration 18), or None when the note is not on this machine."""
+    path = DATA / 'cache' / 'oracle_18' / (str(task).replace('/', '__') + '.json')
+    if not path.exists():
+        return None
+    with io.open(path, encoding='utf-8') as f:
+        return json.load(f).get('places') or []
 
 
 def task_texts():
@@ -150,10 +228,11 @@ def messages_of(trace):
     return out
 
 
-def analyse(trace, g, prompt):
-    """(reads, regions, files read from the top) of one run. g: the task's CHANGED REGIONS by file; prompt: the task text."""
+def analyse(trace, g, prompt, places=None, arm=None):
+    """(reads, regions, files read from the top, {'after', 'places'}) of one run. g: the task's CHANGED REGIONS by
+    file; prompt: the task text; places and arm: the PLACES of the task's note and the run's arm (pre-registration 18)."""
     calls = calls_of(trace)
-    files = set(g)
+    files = set(g) | {norm(x['file']) for x in places or ()}
     for call, _t, parsed in calls:
         if is_read(call):
             ok = isinstance(parsed, dict) and parsed.get('status') == 'ok'
@@ -170,6 +249,11 @@ def analyse(trace, g, prompt):
             if ln:
                 named[f].append((0, ln))
                 kinds[f].append((0, ln, 'TASK TEXT'))
+    if arm == 'OA':
+        for x in places or ():
+            ln = set(range(x['start'], x['end'] + 1))
+            named[norm(x['file'])].append((0, ln))
+            kinds[norm(x['file'])].append((0, ln, 'NOTE'))
     for i, (call, text, parsed) in enumerate(calls, 1):
         name = call.get('function_name')
         cmd = command_of(call)
@@ -220,6 +304,8 @@ def analyse(trace, g, prompt):
             lines = union(named[f], i)
             ex = union(other[f], i)
             rec['strict'] = any(s <= n <= w for n in lines)
+            rec['exact'] = s in lines
+            rec['next1'] = any(s == b + 1 for a, b in earlier)
             rec['near'] = any(s - NEAR <= n <= w + NEAR for n in lines)
             rec['kinds'] = {k for j, ln, k in kinds[f] if j < i and any(s - NEAR <= n <= w + NEAR for n in ln)}
             near_ex = any(s - NEAR <= n <= w + NEAR for n in ex)
@@ -236,6 +322,7 @@ def analyse(trace, g, prompt):
         cls_at[i] = rec
         rs, re_ = parsed.get('start_line'), parsed.get('end_line')
         if isinstance(rs, int) and isinstance(re_, int):
+            rec['range'] = (rs, re_)
             if f in g:
                 rec['hit'] = any(not (re_ < a or rs > b) for a, b in g[f])
             rec['tail'] = isinstance(rec['total'], int) and re_ >= rec['total']
@@ -249,7 +336,8 @@ def analyse(trace, g, prompt):
             held = any(a - NEAR <= n <= b + NEAR for n in union(named[f], seen_at))
             wider = held or any(a - NEAR <= n <= b + NEAR for n in union(other[f], seen_at))
             end = any(a - NEAR <= n <= b + NEAR for n in union(named[f], INF))
-            regions.append({'f': f, 'a': a, 'deep': a > CAP, 'opened': bool(shown.get(f)), 'seen': seen_at < INF,
+            regions.append({'f': f, 'a': a, 'b': b, 'deep': a > CAP, 'opened': bool(shown.get(f)), 'seen': seen_at < INF,
+                            'seen_at': seen_at,
                             'held': held, 'wider': wider, 'held_end': end,
                             'how': (how['cls'] if how else None), 'sub': (how['sub'] if how else None),
                             'how_near': bool(how and how['near']), 'how_paging': bool(how and how['paging']),
@@ -274,7 +362,51 @@ def analyse(trace, g, prompt):
             lines.update(range(a, min(b, total) + 1))
         files_read.append({'f': f, 'total': total, 'reach': min(reach, total), 'reads': len(rr),
                            'jumped': any(a > reach + NEAR + 1 for _i, a, _b in rr), 'share': len(lines) / max(total, 1)})
-    return reads, regions, files_read
+    fix_edits = []                            # (call index, the CHANGED REGIONS the edit overlaps)
+    for i, (call, _text, parsed) in enumerate(calls, 1):
+        if call.get('function_name') != 'edit_file' or not isinstance(parsed, dict) or parsed.get('status') != 'ok':
+            continue
+        f = norm(parsed.get('filepath') or (call.get('arguments') or {}).get('filepath'))
+        if f not in g or not isinstance(parsed.get('diff'), str):
+            continue
+        try:
+            mine = [r for k, v in parse_patch(parsed['diff']).items() if norm(k) == f for r in v['regions']]
+        except Exception:
+            mine = []
+        hit = {(f, a, b) for a, b in g[f] if any(not (d < a or c > b) for c, d in mine)}
+        if hit:
+            fix_edits.append((i, hit))
+    after = None
+    if fix_edits:
+        t0, first_hit = fix_edits[0]
+        had = collections.defaultdict(set)
+        before, new_files, new_reads = set(), set(), 0
+        for x in reads:
+            if x['cls'] in ('FAILED', 'OWN FILE') or 'range' not in x:
+                continue
+            got = set(range(x['range'][0], x['range'][1] + 1))
+            if x['i'] > t0 and got - had[x['f']]:
+                new_reads += 1
+                if x['f'] not in before:
+                    new_files.add(x['f'])
+            had[x['f']] |= got
+            if x['i'] < t0:
+                before.add(x['f'])
+        unseen = [x for x in regions if x['seen_at'] > t0]
+        later = set().union(*[h for _i, h in fix_edits[1:]]) - first_hit if len(fix_edits) > 1 else set()
+        after = {'t0': t0, 'calls': len(calls), 'new_reads': new_reads, 'new_files': len(new_files),
+                 'searches': sum(1 for i, (c, _t, _p) in enumerate(calls, 1)
+                                 if i > t0 and c.get('function_name') == 'run_command' and is_search(command_of(c))),
+                 'unseen': len(unseen), 'shown_after': sum(x['seen'] for x in unseen), 'later_edits': len(later)}
+    reached = []
+    for x in places or ():
+        f = norm(x['file'])
+        at = min((i for i, a, b in shown.get(f, []) if not (b < x['start'] or a > x['end'])), default=INF)
+        how = cls_at[at] if at < INF else None
+        reached.append({'f': f, 'seen': at < INF, 'opened': bool(shown.get(f)), 'how': how['cls'] if how else None,
+                        'kinds': set(how['kinds']) if how else set(), 'at': at,
+                        'reads_to': sum(1 for i, _a, _b in shown.get(f, []) if i <= at) if at < INF else None})
+    return reads, regions, files_read, {'after': after, 'places': reached, 'calls': len(calls)}
 
 
 def all_sources():
@@ -287,7 +419,8 @@ def all_sources():
         if r['arm'] in labels:
             out.setdefault(labels[r['arm']], []).append(
                 {'task': r['task'], 'key': f'run {r["run"]}', 'load': (lambda p=r['path']: load(p)),
-                 'resolved': rec.get((r['run'], r['arm'], r['task']), (None, ''))[0]})
+                 'resolved': rec.get((r['run'], r['arm'], r['task']), (None, ''))[0],
+                 'patch': rec.get((r['run'], r['arm'], r['task']), (None, None))[1]})
     for label, model, paths in sources():
         if 'GraphLoc' in label:
             continue
@@ -300,7 +433,23 @@ def all_sources():
     for (task, cond, seed), r in sorted(ours.items(), key=lambda kv: (kv[0][1], kv[0][0], kv[0][2])):
         if r[0] is not None:
             out.setdefault(f'our whole runs of pre-registration 14, condition {cond}', []).append(
-                {'task': task, 'key': f'seed {seed}', 'load': (lambda t=r[0]: t), 'resolved': truth(r[1].get('resolved'))})
+                {'task': task, 'key': f'seed {seed}', 'load': (lambda t=r[0]: t), 'resolved': truth(r[1].get('resolved')),
+                 'patch': r[2]})
+    arms = [a for a in ARMS_18 if (ROOT_18 / a).is_dir()]
+    if arms:
+        saved = A.CONDITIONS
+        A.CONDITIONS = tuple(arms)
+        try:
+            loaded = A.load_root(ROOT_18)
+        finally:
+            A.CONDITIONS = saved
+        runs18 = loaded[0] if isinstance(loaded, tuple) else loaded
+        for arm in arms:
+            for (task, cond, seed), r in sorted(runs18.items()):
+                if cond == arm and r[0] is not None:
+                    out.setdefault(ARMS_18[arm], []).append(
+                        {'task': task, 'key': f'seed {seed}', 'load': (lambda t=r[0]: one_call_steps(t)), 'raw': r[0],
+                         'resolved': truth(r[1].get('resolved')), 'patch': r[2], 'arm': arm, 'places': oracle_places(task)})
     return out
 
 
@@ -309,7 +458,7 @@ def rate(by):
     return 'n/a' if t[0] is None else f'{100 * t[0]:.1f}% [{100 * t[1]:.1f}, {100 * t[2]:.1f}]'
 
 
-def part1(label, rows):
+def part1(label, rows, note=False):
     ok = [r for r in rows if r['cls'] in CLASSES]
     print(f'   READS {len(rows)}: not of status ok {sum(r["cls"] == "FAILED" for r in rows)} (left out), of an OWN FILE '
           f'{sum(r["cls"] == "OWN FILE" for r in rows)} (apart); classed {len(ok)}, of which the first READ of its file '
@@ -334,13 +483,15 @@ def part1(label, rows):
           f'{pct(sum(r["s"] % 100 == 0 for r in addr), len(addr))}; the RETURNED RANGE reaches the last line of the file: NO NUMBER '
           f'{pct(sum(r["tail"] for r in blind), len(blind))}, ADDRESSED {pct(sum(r["tail"] for r in addr), len(addr))}')
     print(f'      ADDRESSED READS by the SOURCE of a NAMED LINE near the WINDOW (a READ can count under several): '
-          + ', '.join(f'{k} {sum(k in r["kinds"] for r in addr)}' for k in KINDS) + f'; OWN SEARCH and nothing else '
-          f'{pct(sum(r["kinds"] == {"OWN SEARCH"} for r in addr), len(addr))}')
+          + ', '.join(f'{k} {sum(k in r["kinds"] for r in addr)}' for k in KINDS + (('NOTE',) if note else ()))
+          + f'; OWN SEARCH and nothing else {pct(sum(r["kinds"] == {"OWN SEARCH"} for r in addr), len(addr))}'
+          + (f'; NOTE and nothing else {pct(sum(r["kinds"] == {"NOTE"} for r in addr), len(addr))}' if note else ''))
     held = [r for r in first if r['held_kinds']]
     cells = []
-    for nm, test in (('from its OWN SEARCH', lambda k: 'OWN SEARCH' in k),
+    for nm, test in ((('from its OWN SEARCH', lambda k: 'OWN SEARCH' in k),
                      ('from COMMAND OUTPUT and no OWN SEARCH', lambda k: 'COMMAND OUTPUT' in k and 'OWN SEARCH' not in k),
-                     ('from the TASK TEXT only', lambda k: k == {'TASK TEXT'})):
+                     ('from the TASK TEXT only', lambda k: k == {'TASK TEXT'}))
+                    + ((('from the NOTE only', lambda k: k == {'NOTE'}),) if note else ())):
         sel = [r for r in held if test(r['held_kinds'])]
         cells.append(f'{nm}: starts at a NAMED LINE {pct(sum(r["cls"] == "ADDRESSED" for r in sel), len(sel))}')
     print(f'      first READ of a file for which the run held a NAMED LINE ({len(held)}): ' + '; '.join(cells))
@@ -490,6 +641,204 @@ def part3(label, runs):
     line('151 to 450', lambda t: t[1] == 1 and CAP < t[0] <= 450)
     line('451 to 900', lambda t: t[1] == 1 and 450 < t[0] <= 900)
     line('past 900', lambda t: t[1] == 1 and t[0] > 900)
+    deep, top = collections.defaultdict(list), collections.defaultdict(list)
+    for r in runs:
+        if geo[r['task']][1] == 1:
+            (deep if geo[r['task']][0] > CAP else top)[r['task']].append(int(all(x['seen'] for x in r['regs'])))
+    dd = diff_ci(deep, top)
+    if dd[0] is not None:
+        print(f'      shown, a region that starts below line 150 minus one in the first 150 lines, by task: '
+              f'{100 * dd[0]:+.1f} points [{100 * dd[1]:+.1f}, {100 * dd[2]:+.1f}]')
+    one, more = collections.defaultdict(list), collections.defaultdict(list)
+    for r in runs:
+        if r['resolved'] is not None:
+            (one if geo[r['task']][1] == 1 else more)[r['task']].append(int(r['resolved']))
+    dd = diff_ci(one, more)
+    if dd[0] is not None:
+        print(f'   resolved, tasks with one CHANGED REGION minus tasks with more, by task: '
+              f'{100 * dd[0]:+.1f} points [{100 * dd[1]:+.1f}, {100 * dd[2]:+.1f}]')
+
+
+def part4(label, runs):
+    """Where runs are lost, by whether the fix has one place or more."""
+    runs = [r for r in runs if r['regs'] and r['resolved'] is not None and r['patch'] is not None]
+    if not runs:
+        return
+    for r in runs:
+        try:
+            mine = {norm(k): v['regions'] for k, v in parse_patch(r['patch']).items()} if r['patch'].strip() else {}
+        except Exception:
+            mine = {}
+        r['n_patch'] = sum(len(v) for v in mine.values())
+        r['edited'] = [any(not (d < x['a'] or c > x['b']) for c, d in mine.get(x['f'], [])) for x in r['regs']]
+    print(f'{label}: runs with a result, a patch record and a CHANGED REGION {len(runs)}')
+    for name, test in (('fix with one CHANGED REGION', lambda n: n == 1), ('fix with two or more', lambda n: n >= 2)):
+        sel = [r for r in runs if test(len(r['regs']))]
+        if not sel:
+            continue
+        won = [r for r in sel if r['resolved']]
+        lost = [r for r in sel if not r['resolved']]
+        print(f'   {name}: runs {len(sel)}, resolved {pct(len(won), len(sel))}; regions of the FINAL PATCH, median {median([r["n_patch"] for r in sel])} '
+              f'(reference fix: median {median([len(r["regs"]) for r in sel])}); no patch {sum(r["n_patch"] == 0 for r in sel)}')
+        a = [r for r in lost if not all(x['seen'] for x in r['regs'])]
+        b = [r for r in lost if all(x['seen'] for x in r['regs']) and not all(r['edited'])]
+        c = [r for r in lost if all(x['seen'] for x in r['regs']) and all(r['edited'])]
+        print(f'      not resolved {len(lost)}: a region never SHOWN {pct(len(a), len(lost))}; every region SHOWN, not every one EDITED '
+              f'{pct(len(b), len(lost))}; every region SHOWN and EDITED {pct(len(c), len(lost))}')
+        none = [r for r in a if not any(x['seen'] for x in r['regs'])]
+        print(f'         of the {len(a)} with a region never SHOWN: no region SHOWN {len(none)}, some SHOWN {len(a) - len(none)}; '
+              f'of those {len(a) - len(none)}, the FINAL PATCH EDITED a SHOWN region in {sum(any(e for e, x in zip(r["edited"], r["regs"]) if x["seen"]) for r in a if r not in none)}')
+        print(f'      resolved {len(won)}: every region EDITED {pct(sum(all(r["edited"]) for r in won), len(won))}; some {sum(any(r["edited"]) and not all(r["edited"]) for r in won)}; '
+              f'none {sum(not any(r["edited"]) for r in won)}; every region SHOWN {pct(sum(all(x["seen"] for x in r["regs"]) for r in won), len(won))}')
+        wp = [r for r in sel if r['n_patch'] > 0]
+        lp = [r for r in wp if not r['resolved']]
+        print(f'      runs whose FINAL PATCH changes an existing file {len(wp)}: resolved {pct(sum(r["resolved"] for r in wp), len(wp))}; '
+              f'regions of the FINAL PATCH, median {median([r["n_patch"] for r in wp])}; of the {len(lp)} not resolved: a region never SHOWN '
+              f'{sum(not all(x["seen"] for x in r["regs"]) for r in lp)}, every region SHOWN and not every one EDITED '
+              f'{sum(all(x["seen"] for x in r["regs"]) and not all(r["edited"]) for r in lp)}, every region SHOWN and EDITED '
+              f'{sum(all(x["seen"] for x in r["regs"]) and all(r["edited"]) for r in lp)}')
+        rp = [(x, e) for r in wp for x, e in zip(r['regs'], r['edited'])]
+        print(f'      regions of those runs {len(rp)}: SHOWN {pct(sum(x["seen"] for x, _e in rp), len(rp))}; of the SHOWN, EDITED '
+              f'{pct(sum(e for x, e in rp if x["seen"]), sum(x["seen"] for x, _e in rp))}')
+        regs = [(x, e) for r in sel for x, e in zip(r['regs'], r['edited'])]
+        print(f'      regions {len(regs)}: SHOWN {pct(sum(x["seen"] for x, _e in regs), len(regs))}; EDITED {pct(sum(e for _x, e in regs), len(regs))}; '
+              f'of the SHOWN, EDITED {pct(sum(e for x, e in regs if x["seen"]), sum(x["seen"] for x, _e in regs))}')
+
+
+def part5(srcs, gold, texts):
+    """The class NO NUMBER under another margin than 10 lines (the margin of ADDRESSED, PAGING and OTHER NUMBER)."""
+    global NEAR
+    stored = NEAR
+    for label, runs in srcs.items():
+        cells = []
+        for near in (3, stored, 30):
+            NEAR = near
+            n = blind = firsts = 0
+            for r in runs:
+                reads = analyse(r['load'](), gold.get(r['task'], {}), texts.get(r['task'], ''), r.get('places'), r.get('arm'))[0]
+                for x in reads:
+                    if x['cls'] in CLASSES:
+                        n += 1
+                        blind += x['cls'] == 'NO NUMBER'
+                        firsts += x['first'] and x['cls'] == 'NO NUMBER'
+            cells.append(f'{near} lines: {pct(blind, n)}, first READS {firsts}')
+        NEAR = stored
+        print(f'{label}: NO NUMBER with a margin of ' + '; '.join(cells))
+
+
+def part6(label, runs):
+    """After the first edit of a place the fix changes: does the run look for more?"""
+    runs = [r for r in runs if r['regs']]
+    if not runs:
+        return
+    print(f'{label}')
+    for name, test in (('fix with one CHANGED REGION', lambda n: n == 1), ('fix with two or more', lambda n: n >= 2)):
+        sel = [r for r in runs if test(len(r['regs']))]
+        ed = [r for r in sel if r['after']]
+        if not sel:
+            continue
+        a = [r['after'] for r in ed]
+        print(f'   {name}: runs {len(sel)}; with a FIX EDIT {pct(len(ed), len(sel))}'
+              + (f', at call {median([x["t0"] for x in a])} of {median([x["calls"] for x in a])} (medians)' if a else ''))
+        if not a:
+            continue
+        looked = [x for x in a if x['searches'] or x['new_reads']]
+        print(f'      AFTER IT: calls, median {median([x["calls"] - x["t0"] for x in a])}; a SEARCH in {pct(sum(x["searches"] > 0 for x in a), len(a))}; '
+              f'a NEW READ in {pct(sum(x["new_reads"] > 0 for x in a), len(a))}; a NEW FILE in {pct(sum(x["new_files"] > 0 for x in a), len(a))}; '
+              f'neither a SEARCH nor a NEW READ in {pct(len(a) - len(looked), len(a))}')
+        if name.endswith('more'):
+            open_ = [x for x in a if x['unseen']]
+            print(f'      runs with a region not SHOWN when the FIX EDIT was made {len(open_)}, holding {sum(x["unseen"] for x in open_)} such regions; '
+                  f'SHOWN later {pct(sum(x["shown_after"] for x in open_), sum(x["unseen"] for x in open_))}, in '
+                  f'{sum(x["shown_after"] > 0 for x in open_)} runs; of those {len(open_)} runs, a SEARCH or a NEW READ AFTER IT in '
+                  f'{pct(sum(bool(x["searches"] or x["new_reads"]) for x in open_), len(open_))}')
+            print(f'      a later FIX EDIT of another CHANGED REGION in {pct(sum(x["later_edits"] > 0 for x in a), len(a))}')
+            res = [r for r in ed if r['resolved'] is not None]
+            if res:
+                yes = [r for r in res if r['after']['later_edits']]
+                no = [r for r in res if not r['after']['later_edits']]
+                print(f'      resolved: with a later FIX EDIT of another region {pct(sum(r["resolved"] for r in yes), len(yes))}; '
+                      f'without {pct(sum(r["resolved"] for r in no), len(no))}')
+
+
+_scopes = {}
+
+
+def scope_of(task, f, line):
+    """The qualified name of the smallest function or class of file f that holds the line; '' outside any; None
+    when the file cannot be parsed."""
+    key = (task, f)
+    if key not in _scopes:
+        try:
+            _scopes[key] = N.scopes(task, f) if f.endswith('.py') else None
+        except Exception:
+            _scopes[key] = None
+    table = _scopes[key]
+    if table is None:
+        return None
+    best = None
+    for qual, (s, e, _d) in table.items():
+        if s <= line <= e and (best is None or (e - s, -qual.count('.')) < best[0]):
+            best = ((e - s, -qual.count('.')), qual)
+    return best[1] if best else ''
+
+
+def part7(label, runs, rows, as_stored=None):
+    """Pre-registration 18: how a run reaches the PLACES of the task's note."""
+    places = [x for r in runs for x in r['places']]
+    if as_stored is not None:
+        print(f'{label}: runs shown every CHANGED REGION {sum(all(x["seen"] for x in r["regs"]) for r in runs if r["regs"])} of '
+              f'{sum(bool(r["regs"]) for r in runs)}; read as calls_of reads the stored traces: {as_stored[0]}; steps with several '
+              f'tool calls {as_stored[1]}, holding {as_stored[2]} calls')
+    if not places:
+        print(f'{label}: the notes are not on this machine (data/cache/oracle_18)')
+        return
+    got = [x for x in places if x['seen']]
+    how = collections.Counter(x['how'] for x in got)
+    addr = [x for x in got if x['how'] == 'ADDRESSED']
+    print(f'{label}: runs {len(runs)}, PLACES {len(places)}; REACHED {pct(len(got), len(places))}; in a file the run never read '
+          f'{sum(not x["opened"] for x in places)}')
+    print('   the READ that first reached a PLACE: ' + ', '.join(f'{c} {how[c]}' for c in CLASSES + ('OWN FILE',) if how[c])
+          + f'; of the ADDRESSED, a line of the NOTE near {sum("NOTE" in x["kinds"] for x in addr)}, the NOTE and nothing else '
+          f'{sum(x["kinds"] == {"NOTE"} for x in addr)}, its OWN SEARCH and no line of the NOTE '
+          f'{sum("OWN SEARCH" in x["kinds"] and "NOTE" not in x["kinds"] for x in addr)}')
+    print(f'   the call at which a PLACE was first reached, median {median([x["at"] for x in got])}; READS of its file up to that one, median '
+          f'{median([x["reads_to"] for x in got])}; by the READ that first reached it: '
+          + '; '.join(f'{c} call {median([x["at"] for x in got if x["how"] == c])}, reads {median([x["reads_to"] for x in got if x["how"] == c])}'
+                      for c in ('TOP', 'PAGING', 'ADDRESSED') if any(x['how'] == c for x in got)))
+    full = [r for r in runs if r['regs'] and all(x['seen'] for x in r['regs'])]
+    print(f'   runs shown every CHANGED REGION {len(full)}: the call at which the last one was first shown, median '
+          f'{median([max(x["seen_at"] for x in r["regs"]) for r in full])}, of {median([r["calls"] for r in full])} calls (median); '
+          f'mean share of a task\'s regions shown, over runs: {sum(sum(x["seen"] for x in r["regs"]) / len(r["regs"]) for r in runs if r["regs"]) / max(1, sum(bool(r["regs"]) for r in runs)):.2f}')
+    land = collections.Counter()
+    for r in runs:
+        if not r['regs'] or r['patch'] is None:
+            continue
+        try:
+            mine = {norm(k): v['regions'] for k, v in parse_patch(r['patch']).items()} if r['patch'].strip() else {}
+        except Exception:
+            mine = {}
+        mine = {f: v for f, v in mine.items() if v}
+        gold_files = {x['f'] for x in r['regs']}
+        if not mine:
+            land['no change to an existing file'] += 1
+        elif any(not (d < x['a'] or c > x['b']) for x in r['regs'] for c, d in mine.get(x['f'], [])):
+            land['overlaps a CHANGED REGION'] += 1
+        elif any(scope_of(r['task'], x['f'], x['a']) not in (None, '') and scope_of(r['task'], x['f'], x['a']) == scope_of(r['task'], x['f'], c)
+                 for x in r['regs'] for c, _d in mine.get(x['f'], [])):
+            land['elsewhere in the function of a CHANGED REGION'] += 1
+        elif gold_files & set(mine):
+            land['elsewhere in a file the fix changes'] += 1
+        else:
+            land['in other files only'] += 1
+    print('   the FINAL PATCH: ' + '; '.join(f'{k} {land[k]}' for k in (
+        'overlaps a CHANGED REGION', 'elsewhere in the function of a CHANGED REGION', 'elsewhere in a file the fix changes',
+        'in other files only', 'no change to an existing file')))
+    files = {(r['task'], r['key'], x['f']) for r in runs for x in r['places']}
+    first = [x for x in rows if x['cls'] in CLASSES and x['first'] and (x['task'], x['key'], x['f']) in files]
+    print(f'   first READS of a file of the note {len(first)}: ' + ', '.join(f'{c} {sum(x["cls"] == c for x in first)}' for c in CLASSES
+                                                                         if any(x['cls'] == c for x in first))
+          + f'; ADDRESSED with a line of the NOTE near {sum(x["cls"] == "ADDRESSED" and "NOTE" in x["kinds"] for x in first)}')
 
 
 def main():
@@ -508,7 +857,7 @@ def main():
         for r in runs:
             trace = r['load']()
             g = gold.get(r['task'], {})
-            reads, rr, fr = analyse(trace, g, texts.get(r['task'], ''))
+            reads, rr, fr, more = analyse(trace, g, texts.get(r['task'], ''), r.get('places'), r.get('arm'))
             files_all += fr
             for x in reads:
                 x.update(task=r['task'], key=r['key'])
@@ -516,7 +865,10 @@ def main():
                 x.update(task=r['task'], key=r['key'])
             rows += reads
             regs += rr
-            kept.append({'task': r['task'], 'resolved': r['resolved'], 'regs': rr})
+            for x in more['places']:
+                x.update(task=r['task'], key=r['key'])
+            kept.append({'task': r['task'], 'key': r['key'], 'resolved': r['resolved'], 'regs': rr, 'patch': r.get('patch'),
+                         'after': more['after'], 'places': more['places'], 'arm': r.get('arm'), 'calls': more['calls']})
             if args.sample:
                 for x in reads:
                     if x['cls'] == 'NO NUMBER':
@@ -525,8 +877,22 @@ def main():
     print('1. Where a READ starts')
     for label, (rows, regs, kept, files_all) in done.items():
         print(f'{label}: runs {len(kept)}, tasks {len({k["task"] for k in kept})}')
-        part1(label, rows)
+        part1(label, rows, note=any(k.get('arm') == 'OA' for k in kept))
         part1b(label, files_all)
+    for label, runs in srcs.items():
+        n_steps = n_calls = n_reads_lost = 0
+        for r in runs:
+            for s in (r.get('raw') or r['load']()).get('steps', []):
+                tcs = s.get('tool_calls') or []
+                if len(tcs) > 1:
+                    n_steps += 1
+                    n_calls += len(tcs)
+                    n_reads_lost += sum(tc.get('function_name') == 'read_file' for tc in tcs[1:])
+        print(f'steps with several tool calls, {label}: {n_steps}, holding {n_calls} calls; read_file calls after the first of such a step '
+              f'{n_reads_lost}' + (' (paired with their results here)' if label in ARMS_18.values() else ' (their results are not read)'))
+    eight = [v for k, v in done.items() if k not in ARMS_18.values()]
+    firsts = [r for rows, _regs, _kept, _files in eight for r in rows if r['cls'] in CLASSES and r['first']]
+    print(f'all {len(eight)} sets: first READS of a file {len(firsts)}; of class NO NUMBER {sum(r["cls"] == "NO NUMBER" for r in firsts)}')
     print()
     print('2. The places of the fix')
     for label, (rows, regs, kept, files_all) in done.items():
@@ -538,6 +904,32 @@ def main():
     print('3. Where the fix lies, by task, and whether a run was shown all of it')
     for label, (rows, regs, kept, files_all) in done.items():
         part3(label, kept)
+    print()
+    print('4. Where runs are lost, by whether the fix has one place or more')
+    for label, (rows, regs, kept, files_all) in done.items():
+        part4(label, kept)
+    print()
+    print('5. The margin of 10 lines')
+    part5(srcs, gold, texts)
+    print()
+    print('6. After the first edit of a place the fix changes')
+    for label, (rows, regs, kept, files_all) in done.items():
+        part6(label, kept)
+    if any(k in done for k in ARMS_18.values()):
+        print()
+        print('7. Pre-registration 18: how each arm reaches the places of the note (descriptive; the rules are in analysis/analyze_18.py)')
+        for label in ARMS_18.values():
+            if label in done:
+                raw_every = n_steps = n_calls = 0
+                for r in srcs[label]:
+                    g = gold.get(r['task'], {})
+                    if g:
+                        raw_every += all(x['seen'] for x in analyse(r['raw'], g, texts.get(r['task'], ''))[1])
+                    for s in r['raw'].get('steps', []):
+                        if len(s.get('tool_calls') or []) > 1:
+                            n_steps += 1
+                            n_calls += len(s['tool_calls'])
+                part7(label, done[label][2], done[label][0], (raw_every, n_steps, n_calls))
     if args.sample:
         rng = random.Random(0)
         for label, items in samples.items():
