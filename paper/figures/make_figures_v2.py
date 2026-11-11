@@ -7,7 +7,8 @@ Writes, next to this script (or into --out), each as .png (200 dpi) and .svg:
   fig_models      a name against an address, and a search with and without its line numbers, by model (eleven models)
   fig_asked_told  a line the agent was told is used, less often than one it asked for
   fig_graph       what an edge of the code graph is
-  fig_moves       where a file read starts, and how many places a fix has
+  fig_moves       (a) a fix in one file and in several; (b) the regions a run was never shown, within one call edge of
+                  code it was shown (true and rewired graphs) or of a text search by name
   fig_oracle      told where the fix is: (a) resolved, first seed (18) and second seed (22); (b) where the first read
                   of a file of the note starts; (c) lines read per run (b and c: second seed, exploratory). Without
                   analyze_22.txt, the earlier one-seed drawing (shown every region, patch overlaps, resolved)
@@ -25,8 +26,13 @@ draws nothing from a fallback. The sources:
   analysis/results/20/analyze_20.txt         pre-registration 20: section 2 (USES THE LINE per arm), checked against
                                              the counts of section 3
   analysis/results/explore_graph_names.txt   the code graphs read as text (exploratory)
-  analysis/results/explore_read_starts.txt   where reads start (section 1), the cut by number of changed regions
-                                             (section 3), exploratory
+  analysis/results/explore_graph_ambiguity.txt  part A, the short names a search returns (fig_graph), exploratory
+  analysis/results/explore_read_starts.txt   the public runs (sections 1 and 3; table_populations), exploratory
+  analysis/results/explore_independence.txt  a fix in one file and in several (fig_moves a); rederive_independence.txt
+                                             the same count by a second script
+  analysis/results/public/locality_null.txt  part 1, the true graph and three rewired graphs (fig_moves b), exploratory
+  analysis/results/public/lexical_reach.txt  section 1-5, a text search by name (fig_moves b), exploratory
+  analysis/results/explore_cluster_bootstrap.txt  its last line: addresses minus names by task (table_rules_v2)
   analysis/results/rederive_18.txt           pre-registration 18, shown every changed region (every call paired with
                                              its result)
   analysis/results/18/analyze_18.txt         pre-registration 18, final patch overlaps a changed region, resolved
@@ -62,6 +68,7 @@ R03 = RES / 'analyze_b.txt'
 R15 = RES / '15' / 'analyze_15.txt'
 R20 = RES / '20' / 'analyze_20.txt'
 GRAPH = RES / 'explore_graph_names.txt'
+AMBIG = RES / 'explore_graph_ambiguity.txt'
 STARTS = RES / 'explore_read_starts.txt'
 RED18 = RES / 'rederive_18.txt'
 R18 = RES / '18' / 'analyze_18.txt'
@@ -501,7 +508,7 @@ def est_24(rule):
         if c['w1'] != c['n'] or len(ms) != c['n']:
             stop(f'analyze_24.txt: W1 is met on {c["w1"]} of {c["n"]}; the row says met on each')
         return [rng], 'met on each'
-    outcome = (f'note used less on {n_less} of {c["n"]}; no difference detected on {n_none}; no verdict on {n_nov}')
+    outcome = f'met on {n_less} of {c["n"]}; no detectable difference on {n_none}; no verdict on {n_nov}'
     PARSED.append(('table_rules_v2', '24 W2: verdicts used less; no detectable difference; no verdict (lines 20-32)',
                    f'{n_less}; {n_none}; {n_nov}', rel(R24), '20-32'))
     return [rng], outcome
@@ -658,6 +665,19 @@ def parse_graph():
     v['median'], v['q1'], v['q3'] = (int(g) for g in m.groups()[:3])
     s.record('fig_graph', 'graph neighbors per node with a neighbor: median (quartiles)',
              f'{v["median"]} ({v["q1"]} to {v["q3"]})', ln)
+    # part A of the ambiguity report: how many relations have a neighbor's short name no other node of the graph
+    # shares, and how many definitions a search returns where one does
+    a = Source(AMBIG)
+    lo, hi = a.block(r'^A\. ALL GRAPHS, per neighbor relation', 'part A', end=r'^\S')
+    m, ln = a.find(r'^   all relations: relations (\d+)$', 'the relations of part A', lo, hi)
+    if int(m.group(1)) != v['entries']:
+        stop(f'explore_graph_ambiguity.txt, line {ln}: {m.group(1)} relations, explore_graph_names.txt {v["entries"]}')
+    m, ln = a.find(r'^     short name unique in its graph: (\d+) \(([\d.]+)%\)$', 'short name unique', ln, ln + 1)
+    v['unique'], v['unique_pct'] = int(m.group(1)), m.group(2)
+    a.record('fig_graph', 'part A: short name unique in its graph', f'{m.group(1)} ({m.group(2)}%)', ln)
+    m, ln = a.find(r'^     among shared: median (\d+), mean [\d.]+$', 'among shared: median', ln, hi)
+    v['shared_median'] = int(m.group(1))
+    a.record('fig_graph', 'part A: among shared, median candidates', m.group(1), ln)
     return v
 
 
@@ -668,14 +688,20 @@ def fig_graph(out):
     X0, X1 = 0.30, 6.70
     TOP = 0.42
     BAR_Y, BAR_H = TOP + 0.62, 0.36
-    h_in = BAR_Y + BAR_H + 0.72 + 0.32 + 5 * 0.19 + 0.30
+    pct = Decimal(v['unique_pct']).quantize(Decimal(1), rounding='ROUND_HALF_UP')
+    amb = wrap(f'For {pct}% of relations no other node shares the neighbor\'s short name; where one does, a search for '
+               f'it returns a median of {v["shared_median"]} definitions.', 112)
+    AMB_Y = BAR_Y + BAR_H + 0.66
+    STORED = AMB_Y + 0.15 * len(amb) + 0.24          # the head of the facts, under the line of short names
+    h_in = STORED + 0.32 + 5 * 0.19 + 0.30
     fig, page = page_of(h_in)
     page.text(0.09, 0.07, 'What an edge of the code graph is', ha='left', va='top', fontsize=10.5, color=INK)
     page.text(0.09, 0.34, f'The {v["entries"]:,} neighbor relations of the competition\'s {v["graphs"]} code graphs '
               '(a node and one of its neighbors, each direction once)', ha='left', va='top', fontsize=7.8,
               color=INK2)
-    parts = (('search', BLUE, 'white', 'The neighbor contains the function\'s name:\none search finds it'),
-             ('text', LIGHT, INK, 'The neighbor\'s name is in the function\'s own text'),
+    # a priority classification: the first class is tested first, the second counts only what the first did not take
+    parts = (('search', BLUE, 'white', 'Tested first: the neighbor contains the\nfunction\'s name, so one search finds it'),
+             ('text', LIGHT, INK, 'Otherwise: the neighbor\'s name is in\nthe function\'s own text'),
              ('neither', PALE, INK, 'neither'))
     x = X0
     scale = (X1 - X0) / v['entries']
@@ -695,7 +721,9 @@ def fig_graph(out):
             page.text(x + w, BAR_Y - 0.14, f'neither: {v[key]:,} ({share})', ha='right', va='bottom', fontsize=7.6,
                       color=INK)
         x += w
-    ys = BAR_Y + BAR_H + 0.72
+    for k, line in enumerate(amb):
+        page.text(0.30, AMB_Y + 0.15 * k, line, ha='left', va='top', fontsize=7.8, color=INK)
+    ys = STORED
     page.text(0.30, ys, 'The graphs, as stored', ha='left', va='top', fontsize=8.6, color=INK, fontweight='bold')
     # the count of edge records is not drawn: it exceeds the neighbor relations (452,588 against 449,902) and the
     # report does not say by what (duplicate records, self loops), so the image names the types only
@@ -718,81 +746,72 @@ def fig_graph(out):
 
 
 # ================================================================ fig_moves
-CLASSES = (('TOP', 'from the top of a file', PALE), ('PAGING', 'continues or overlaps an earlier read', GREY),
-           ('ADDRESSED', 'at a line an earlier result numbered', BLUE), ('SHELL VIEW', 'after a shell view', DARK),
-           ('NO NUMBER', 'none of these', INK))
 STARTER = r'^starter agent, public runs of September \(GraphLoc base arm\)'
-INDEP = RES / 'explore_independence.txt'          # the count of the right panel (exploratory)
+INDEP = RES / 'explore_independence.txt'          # the count of panel (a) (exploratory)
 INDEP2 = RES / 'rederive_independence.txt'        # the same count by a second script
 # Typed, from the coordinator's message, only to check the parsed values (never drawn): (read every file, shown every
 # region, resolved) of the runs, for fixes in one file and in several files (explore_independence.txt, first set).
 TYPED_FILES = {'one': (195, 166, 84, 225), 'several': (33, 18, 8, 90)}
+# Panel (b): the regions a public run was never shown, and how many lie one call edge from code it was shown (the true
+# graph and three rewired graphs), or carry a name a text search over its shown code finds (exploratory).
+LOCALITY = RES / 'public' / 'locality_null.txt'
+LEXICAL = RES / 'public' / 'lexical_reach.txt'
+NULLS = (('DEGREE', "keeping each node's degree"), ('SAME-DIRECTORY', 'keeping each edge in its directory'),
+         ('SAME-FILE', "keeping each edge's two files"))
+# Typed, from the brief, only to check the parsed values (never drawn): true minus each null, and LEXICAL.
+TYPED_REACH = {'DEGREE': '+8.8 [1.8, 13.0]', 'SAME-DIRECTORY': '+4.9 [-0.7, 8.4]', 'SAME-FILE': '+1.9 [-2.9, 5.0]',
+               'LEXICAL': '315 of 1326'}
 
 
-def parse_moves():
-    s = Source(STARTS)
-    s1, e1 = s.block(r'^1\. Where a READ starts', 'section 1', end=r'^2\. ')
-    m, ln = s.find(STARTER + r': runs (\d+), tasks (\d+)$', 'section 1, the starter set', s1, e1)
-    runs, tasks = int(m.group(1)), int(m.group(2))
-    s.record('fig_moves', 'left: starter public runs; tasks', f'{runs}; {tasks}', ln)
-    b0, b1 = s.block(STARTER + r': runs \d+', 'section 1, the starter set', lo=s1, hi=e1)
-    m, ln = s.find(r'READS (\d+): not of status ok (\d+) \(left out\), of an OWN FILE (\d+) \(apart\); classed (\d+)',
-                   'the classed reads of the starter set', b0, b1)
-    classed = int(m.group(4))
-    s.record('fig_moves', 'left: reads; not ok; own file; classed', '; '.join(m.groups()), ln)
-    counts = {}
-    for key, _label, _c in CLASSES + (('OTHER NUMBER', '', ''),):
-        m, ln = s.find(rf'^\s+{key}\s+(\d+) of (\d+) \(', f'class {key} of the starter set', b0, b1)
-        if int(m.group(2)) != classed:
-            stop(f'explore_read_starts.txt: class {key} is out of {m.group(2)}, not {classed}')
-        counts[key] = int(m.group(1))
-        s.record('fig_moves', f'left: starter set, class {key} (all reads)', f'{m.group(1)} of {m.group(2)}', ln)
-    if counts.pop('OTHER NUMBER'):
-        stop('explore_read_starts.txt: the starter set has reads of class OTHER NUMBER, which the figure does not draw')
-    if sum(counts.values()) != classed:
-        stop('explore_read_starts.txt: the classes of the starter set do not add up to the classed reads')
-    m, ln = s.find(r'^all (\d+) sets: first READS of a file (\d+); of class NO NUMBER (\d+)', 'all sets', s1, e1)
-    allsets = tuple(int(g) for g in m.groups())
-    s.record('fig_moves', 'left: all sets; first reads; of them NO NUMBER (the check of the sum)', '; '.join(m.groups()),
-             ln)
-    # per set: first reads of a file, and those of class NO NUMBER (past line 1 with no printed line); the sets
-    # without a graph skill are drawn, and the per-set counts must add up to the line of all sets
-    sets = []
-    for i in range(s1, e1):
-        h = re.match(r'^(\S.*): runs (\d+), tasks (\d+)$', s.lines[i])
-        if not h:
-            continue
-        b0, b1 = i + 1, i + 1
-        while b1 < e1 and s.lines[b1].startswith(' '):
-            b1 += 1
-        m, fl = s.find(r'; classed \d+, of which the first READ of its file (\d+)$', f'first reads, {h.group(1)}', b0, b1)
-        first = int(m.group(1))
-        m, nl = s.find(rf'^\s+NO NUMBER\s+\d+ of \d+ \([\d.]+%\)\s+(\d+) of {first} \(', f'NO NUMBER, {h.group(1)}', b0, b1)
-        sets.append(dict(name=h.group(1), first=first, none=int(m.group(1)), skill='graph skill' in h.group(1)))
-        if len(sets) <= allsets[0]:
-            s.record('fig_moves', f'left note, set "{h.group(1)[:48]}": first reads; of them NO NUMBER (line {fl})',
-                     f'{first}; {m.group(1)}', nl)
-    # the line of all sets counts the first sets of the section (the oracle arms of 18 follow them, told where the fix
-    # is, and are not among them): the sums below check that
-    sets = sets[:allsets[0]]
-    if len(sets) != allsets[0] or sum(x['first'] for x in sets) != allsets[1] or \
-            sum(x['none'] for x in sets) != allsets[2]:
-        stop(f'explore_read_starts.txt: the {len(sets)} sets do not add up to the line of all sets ({allsets})')
-    if sum(x['skill'] for x in sets) != 1:
-        stop('explore_read_starts.txt: not exactly one set with a graph skill')
-    plain = [x for x in sets if not x['skill']]
-    noskill = (len(plain), sum(x['first'] for x in plain), sum(x['none'] for x in plain))
-    # the runs the other panels count: those of tasks with a CHANGED REGION (section 3); the task without one is fixed
-    # by adding a file (it has no GOLD FILE: analyze_14.txt, line 16; checked in population_rows)
-    s3, e3 = s.block(r'^3\. Where the fix lies', 'section 3', end=r'^\d\. ')
-    m, ln = s.find(STARTER + r': runs of tasks with a CHANGED REGION (\d+), tasks (\d+)$', 'section 3, the starter set',
-                   s3, e3)
-    cr_runs, cr_tasks = int(m.group(1)), int(m.group(2))
-    if cr_runs > runs or cr_tasks > tasks:
-        stop(f'explore_read_starts.txt: {cr_runs} runs of {cr_tasks} tasks with a changed region, of {runs}, {tasks}')
-    s.record('fig_moves', 'left caption: runs; tasks with a CHANGED REGION', f'{cr_runs}; {cr_tasks}', ln)
-    return dict(runs=runs, tasks=tasks, cr_runs=cr_runs, cr_tasks=cr_tasks, classed=classed, counts=counts,
-                noskill=noskill, **parse_files())
+def parse_reach_public():
+    """Part 1 of locality_null.txt (all missed regions: the true graph and the three nulls) and section 1-5 of
+    lexical_reach.txt (all pairs: EDGE, LEXICAL, EDGE minus LEXICAL)."""
+    s = Source(LOCALITY)
+    m, ln = s.find(r'^rewired graphs: (\d+) seeds per graph and null$', 'the seeds of the nulls')
+    seeds = int(m.group(1))
+    s.record('fig_moves', '(b) rewired graphs per graph and null (seeds)', str(seeds), ln)
+    lo, hi = s.block(r'^1\. MISSED REGIONS one edge of the CALL GRAPH', 'part 1 of locality_null.txt', end=r'^\d\. ')
+    m, ln = s.find(r'^   over ALL (\d+) MISSED REGIONS in (\d+) tasks .*: true graph (\d+) \(([\d.]+)% \[([\d.]+), '
+                   r'([\d.]+)\]\)$', 'the true graph over all missed regions', lo, hi)
+    n, tasks, k = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    v = dict(n=n, tasks=tasks, seeds=seeds,true=dict(k=k, pct=m.group(4), lo=m.group(5), hi=m.group(6)), nulls={})
+    s.record('fig_moves', '(b) all missed regions; tasks; true graph (share [95%])',
+             f'{n}; {tasks}; {k} ({m.group(4)}% [{m.group(5)}, {m.group(6)}])', ln)
+    for key, _label in NULLS:
+        # the first line of each null under the line of all regions (the lines that follow are subsets)
+        m, nl = s.find(rf'^      {key} NULL ([\d.]+)% \(seeds ([\d.]+) to ([\d.]+)\); true minus null ([+-][\d.]+) points '
+                       r'\[([+-][\d.]+), ([+-][\d.]+)\]$', f'the {key} null over all regions', ln, ln + len(NULLS))
+        diff = interval_text(*m.groups()[3:6])
+        if diff != num(TYPED_REACH[key]):
+            stop(f'locality_null.txt, line {nl}: {key} true minus null {diff}, the brief types {TYPED_REACH[key]}')
+        v['nulls'][key] = dict(pct=m.group(1), diff=diff)
+        s.record('fig_moves', f'(b) {key} NULL: share (seeds {m.group(2)} to {m.group(3)}); true minus null [95%]',
+                 f'{m.group(1)}%; {diff}', nl)
+    x = Source(LEXICAL)
+    lo, hi = x.block(r'^1-5\. All PAIRS$', 'section 1-5 of lexical_reach.txt', end=r'^\S')
+    m, ln = x.find(r'^   PAIRS (\d+) in (\d+) tasks;', 'the pairs of section 1-5', lo, hi)
+    if (int(m.group(1)), int(m.group(2))) != (n, tasks):
+        stop(f'lexical_reach.txt, line {ln}: {m.group(1)} pairs in {m.group(2)} tasks, locality_null.txt {n} in {tasks}')
+    a, _l = x.find(r'^   of all PAIRS:$', 'the shares of all pairs', lo, hi)
+    m, el = x.find(r'^      EDGE (\d+) of (\d+) \(([\d.]+)% \[([\d.]+), ([\d.]+)\]\)$', 'EDGE of all pairs', _l, _l + 1)
+    if (int(m.group(1)), int(m.group(2)), m.group(3), m.group(4), m.group(5)) != \
+            (k, n, v['true']['pct'], v['true']['lo'], v['true']['hi']):
+        stop(f'lexical_reach.txt, line {el}: EDGE {m.group(0).strip()} is not the true graph of locality_null.txt')
+    x.record('fig_moves', '(b) EDGE of all pairs (= the true graph of locality_null.txt)', m.group(0).strip(), el)
+    m, ll = x.find(r'^      LEXICAL (\d+) of (\d+) \(([\d.]+)% \[([\d.]+), ([\d.]+)\]\);', 'LEXICAL of all pairs',
+                   el, el + 1)
+    if f'{m.group(1)} of {m.group(2)}' != TYPED_REACH['LEXICAL'] or int(m.group(2)) != n:
+        stop(f'lexical_reach.txt, line {ll}: LEXICAL {m.group(1)} of {m.group(2)}, the brief types '
+             f'{TYPED_REACH["LEXICAL"]}')
+    v['lex'] = dict(k=int(m.group(1)), pct=m.group(3), lo=m.group(4), hi=m.group(5))
+    x.record('fig_moves', '(b) LEXICAL of all pairs (share [95%])',
+             f'{m.group(1)} of {m.group(2)} ({m.group(3)}% [{m.group(4)}, {m.group(5)}])', ll)
+    d0, _d = x.find(r'^   differences on all PAIRS', 'the differences of all pairs', lo, hi)
+    m, dl = x.find(r'^      EDGE minus LEXICAL ([+-][\d.]+) points \[([+-][\d.]+), ([+-][\d.]+)\];',
+                   'EDGE minus LEXICAL', _d, _d + 1)
+    v['lex']['diff'] = interval_text(*m.groups())
+    x.record('fig_moves', '(b) EDGE minus LEXICAL, all pairs [95%]', v['lex']['diff'], dl)
+    return v
 
 
 def parse_files():
@@ -807,7 +826,7 @@ def parse_files():
     if not n == n1 == n2 == n3:
         stop(f'explore_independence.txt, line {ln}: runs {n}, {n1}, {n2}, {n3}')
     files['one'] = dict(tasks=t, n=n, read=rd, shown=sh, resolved=rs)
-    s.record('fig_moves', 'right: one file: tasks; read the file; shown every region; resolved',
+    s.record('fig_moves', '(a) one file: tasks; read the file; shown every region; resolved',
              f'{t}; {rd}, {sh}, {rs} of {n}', ln)
     m, ln = s.find(r'^   fixes whose regions lie in several files: tasks (\d+), runs (\d+); .*; runs that read every '
                    r'file of the fix (\d+) of (\d+) \(', 'fixes in several files', b0, b1)
@@ -819,8 +838,8 @@ def parse_files():
     if not (t == t2 and n == n1 == n2 == n3 == n4):
         stop(f'explore_independence.txt, lines {ln} and {ln2}: tasks {t}, {t2}; runs {n}, {n1}, {n2}, {n3}, {n4}')
     files['several'] = dict(tasks=t, n=n, read=rd, shown=sh, resolved=rs)
-    s.record('fig_moves', 'right: several files: tasks; read every file', f'{t}; {rd} of {n}', ln)
-    s.record('fig_moves', 'right: several files: shown every region; resolved', f'{sh}, {rs} of {n}', ln2)
+    s.record('fig_moves', '(a) several files: tasks; read every file', f'{t}; {rd} of {n}', ln)
+    s.record('fig_moves', '(a) several files: shown every region; resolved', f'{sh}, {rs} of {n}', ln2)
     for k, typed in TYPED_FILES.items():
         got = (files[k]['read'], files[k]['shown'], files[k]['resolved'], files[k]['n'])
         if got != typed:
@@ -849,59 +868,31 @@ def parse_files():
 
 
 def fig_moves(out):
-    d = parse_moves()
-    TOP = 0.42
-    A_HEAD, ROW = 0.42, 0.25
-    rows_a = ROW * len(CLASSES)
-    LAB_R, X0, X1 = 2.62, 2.74, 6.55
-    B_TOP = TOP + A_HEAD + rows_a + 0.42 + 0.30 + 0.20
-    B_HEAD, B_H, B_AX = 0.46, 1.95, 0.42
-    h_in = B_TOP + B_HEAD + B_H + B_AX + 0.28
+    files = parse_files()['files']
+    r = parse_reach_public()
+    TITLE = ('Runs miss the next file of a fix, and a call edge leads there no more often than a rewired one that stays '
+             'in the same files')
+    title_lines = [TITLE] if _text_w(TITLE, 10.5) / 72 <= W_IN - 0.18 else \
+        [TITLE[:TITLE.index(',') + 1], TITLE[TITLE.index(',') + 2:]]
+    TOP = 0.42 + 0.20 * (len(title_lines) - 1)
+    A_HEAD, A_H, A_AX = 0.46, 1.95, 0.42
+    B_TOP = TOP + A_HEAD + A_H + A_AX + 0.30
+    ROW, SUB, GAP = 0.25, 0.22, 0.16
+    B_HEAD = 0.36
+    rows_b = ROW + SUB + ROW * len(NULLS) + GAP + ROW
+    h_in = B_TOP + B_HEAD + rows_b + 0.48 + 0.20 + 0.28
     fig, page = page_of(h_in)
-    page.text(0.09, 0.07, 'Where a file read starts, and where a fix is lost', ha='left', va='top', fontsize=10.5,
-              color=INK)
-    # panel (a), unchanged
+    for k, line in enumerate(title_lines):
+        t = page.text(0.09, 0.07 + 0.20 * k, line, ha='left', va='top', fontsize=10.5, color=INK)
+        if width_in(fig, t) > W_IN - 0.18:
+            stop(f'fig_moves: the title line "{line[:40]}" does not fit')
+    # panel (a): a fix in one file, and a fix in several (unchanged, the former panel b)
     page.text(0.09, TOP, '(a)', ha='left', va='top', fontsize=9.4, fontweight='bold', color=INK)
-    page.text(0.36, TOP + 0.005, 'Where a file read starts', ha='left', va='top', fontsize=9.0, color=INK)
-    page.text(W_IN - 0.10, TOP + 0.02, f'the starter agent\'s {d["runs"]} public runs of {d["tasks"]} tasks: '
-              f'{d["classed"]:,} reads', ha='right', va='top', fontsize=7.6, color=INK2)
-    if d['tasks'] - d['cr_tasks'] != 1:
-        stop(f'fig_moves: {d["tasks"] - d["cr_tasks"]} tasks without a changed region; the caption says one')
-    page.text(W_IN - 0.10, TOP + 0.18, f'(all runs; {WORDS[d["tasks"] - d["cr_tasks"]]} task is fixed by adding a file, '
-              f'so the other panels count {d["cr_runs"]} runs of {d["cr_tasks"]} tasks)', ha='right', va='top',
-              fontsize=7.0, color=INK2)
-    y0 = TOP + A_HEAD
-    ax = axes_at(fig, X0, X1, y0, y0 + rows_a)
-    ax.set_xlim(0, 100)
-    ax.set_ylim(rows_a, 0)
-    for v in (25, 50, 75, 100):
-        ax.plot([v, v], [0.02, rows_a], color=GRID, lw=0.6, zorder=0)
-    for i, (key, label, color) in enumerate(CLASSES):
-        k = d['counts'][key]
-        share = 100 * k / d['classed']
-        yc = ROW * (i + 0.5)
-        ax.barh(yc, share, height=0.15, color=color, edgecolor=color, linewidth=0.6, zorder=2)
-        ax.text(share + 1.2, yc, f'{k:,} of {d["classed"]:,} ({share:.1f}%)', ha='left', va='center', fontsize=7.6,
-                color=INK, zorder=3)
-        page.text(LAB_R, y0 + yc, label, ha='right', va='center', fontsize=8.2, color=INK)
-    ax.set_yticks([])
-    ax.set_xticks([0, 25, 50, 75, 100])
-    ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f'{v:.0f}%'))
-    ax.spines[['top', 'right', 'left']].set_visible(False)
-    ax.tick_params(axis='x', labelsize=7.8, length=3)
-    ax.set_xlabel('share of the reads, by where the read starts', fontsize=7.8)
-    n_sets, first, none = d['noskill']
-    page.text(0.36, y0 + rows_a + 0.50, f'{WORDS.get(n_sets, n_sets).capitalize()} sets of whole runs without a graph '
-              f'skill: {none:,} of {first:,} first reads start past line 1 without a printed line.', ha='left',
-              va='top', fontsize=8.0, color=INK)
-    # panel (b): a fix in one file, and a fix in several
-    files = d['files']
-    page.text(0.09, B_TOP, '(b)', ha='left', va='top', fontsize=9.4, fontweight='bold', color=INK)
-    page.text(0.36, B_TOP + 0.005, 'A fix in one file, and a fix in several', ha='left', va='top', fontsize=9.0,
+    page.text(0.36, TOP + 0.005, 'A fix in one file, and a fix in several', ha='left', va='top', fontsize=9.0,
               color=INK)
-    page.text(W_IN - 0.10, B_TOP + 0.02, f'the starter agent\'s public runs, without the skill: '
+    page.text(W_IN - 0.10, TOP + 0.02, f'the starter agent\'s public runs, without the skill: '
               f'{files["one"]["n"] + files["several"]["n"]} runs', ha='right', va='top', fontsize=7.6, color=INK2)
-    bx = axes_at(fig, 0.80, 6.90, B_TOP + B_HEAD, B_TOP + B_HEAD + B_H)
+    bx = axes_at(fig, 0.80, 6.90, TOP + A_HEAD, TOP + A_HEAD + A_H)
     series = (('read', 'the run reads every file of the fix', LIGHT),
               ('shown', 'is shown every changed region', BLUE),
               ('resolved', 'resolves the task', GREY))
@@ -933,8 +924,59 @@ def fig_moves(out):
         bx.add_patch(Rectangle((kx, ky - 0.025), 0.025, 0.05, transform=bx.transAxes, fc=color, ec='none', zorder=6))
         bx.text(kx + 0.04, ky, label, transform=bx.transAxes, ha='left', va='center', fontsize=7.6, color=INK, zorder=6)
         ky -= 0.085
+    # panel (b): the regions a run was never shown, within reach of code it was shown
+    page.text(0.09, B_TOP, '(b)', ha='left', va='top', fontsize=9.4, fontweight='bold', color=INK)
+    page.text(0.36, B_TOP + 0.005, 'Regions a run was never shown: within reach of code it was shown', ha='left',
+              va='top', fontsize=9.0, color=INK)
+    LAB_R, X0, X1, DIFF_R = 2.50, 2.62, 4.42, W_IN - 0.10
+    XMAX = 30
+    y0 = B_TOP + B_HEAD
+    ax = axes_at(fig, X0, X1, y0, y0 + rows_b)
+    ax.set_xlim(0, XMAX)
+    ax.set_ylim(rows_b, 0)
+    for g in range(10, XMAX + 1, 10):
+        ax.plot([g, g], [0.02, rows_b], color=GRID, lw=0.6, zorder=0)
+    n = r['n']
+
+    def bar(yc, share, color, label, value, diff=None, size=8.2):
+        ax.barh(yc, share, height=0.15, color=color, edgecolor=color, linewidth=0.6, zorder=2)
+        ax.text(share + 0.4, yc, value, ha='left', va='center', fontsize=7.6, color=INK, zorder=3)
+        page.text(LAB_R, y0 + yc, label, ha='right', va='center', fontsize=size, color=INK)
+        if diff:
+            page.text(DIFF_R, y0 + yc, diff, ha='right', va='center', fontsize=7.2, color=INK2)
+
+    t = r['true']
+    bar(ROW / 2, float(t['pct']), BLUE, 'one call edge (the true graph)',
+        f'{t["k"]} of {n:,} ({t["pct"]}% [{t["lo"]}, {t["hi"]}])')
+    y = ROW
+    page.text(LAB_R, y0 + y + SUB / 2 + 0.02, 'the same under a rewired graph', ha='right', va='center', fontsize=7.4,
+              color=INK2, style='italic')
+    page.text(DIFF_R, y0 + y + SUB / 2 + 0.02, 'true graph minus this, points [95%]', ha='right', va='center',
+              fontsize=7.0, color=MUTED)
+    y += SUB
+    for key, label in NULLS:
+        nl = r['nulls'][key]
+        bar(y + ROW / 2, float(nl['pct']), LIGHT, label, f'{nl["pct"]}% (mean of {r["seeds"]} rewirings)'
+            if key == NULLS[0][0] else f'{nl["pct"]}%', nl['diff'], size=7.8)
+        y += ROW
+    ax.plot([0, XMAX], [y + GAP / 2] * 2, color=HAIR, lw=0.6, zorder=1, clip_on=False)
+    y += GAP
+    lx = r['lex']
+    bar(y + ROW / 2, float(lx['pct']), GREY, "a text search for the function's name",
+        f'{lx["k"]} of {n:,} ({lx["pct"]}% [{lx["lo"]}, {lx["hi"]}])', lx['diff'])
+    if max(float(t['pct']), float(lx['pct'])) > XMAX - 2:
+        stop('fig_moves: a bar of panel (b) runs past the axis')
+    ax.set_yticks([])
+    ax.set_xticks(range(0, XMAX + 1, 10))
+    ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f'{v:.0f}%'))
+    ax.spines[['top', 'right', 'left']].set_visible(False)
+    ax.tick_params(axis='x', labelsize=7.8, length=3)
+    ax.set_xlabel(f'share of the {n:,} pairs of a run and a changed region it was never shown ({r["tasks"]} tasks)',
+                  fontsize=7.8)
+    page.text(0.36, y0 + rows_b + 0.50, 'Public runs of the starter agent, both arms; exploratory.', ha='left',
+              va='top', fontsize=6.9, color=MUTED)
     page.text(0.09, h_in - 0.07, 'Both panels are exploratory: counted on stored runs, with no registered rule; panel '
-              '(b) recounted by a second script.', ha='left', va='bottom', fontsize=6.9, color=MUTED)
+              '(a) recounted by a second script.', ha='left', va='bottom', fontsize=6.9, color=MUTED)
     save(fig, page, out, 'fig_moves')
 
 
@@ -1182,10 +1224,13 @@ def fig_oracle(out, r22):
     words = dict((k, lab) for k, lab, _c in ARMS18)
     colors = dict((k, c) for k, _l, c in ARMS18)
     TITLE = ('Told where the fix is: the form of the note changes what the agent reads; resolved tasks do not '
-             'detectably depend on the form')
+             'detectably differ between the forms')
     # one line at the size of the other figures' titles, or two broken after the colon
     title_lines = [TITLE] if _text_w(TITLE, 10.5) / 72 <= W_IN - 0.18 else \
         [TITLE[:TITLE.index(':') + 1], TITLE[TITLE.index(':') + 2:]]
+    if _text_w(title_lines[-1], 10.5) / 72 > W_IN - 0.18:       # and after the semicolon, when that is still too wide
+        rest = title_lines.pop()
+        title_lines += [rest[:rest.index(';') + 1], rest[rest.index(';') + 2:]]
     DY = 0.20 * (len(title_lines) - 1)
     KEY_Y = 0.46 + DY
     HEAD_Y = 0.78 + DY
@@ -1475,7 +1520,10 @@ R16 = RES / '16' / 'analyze_16.txt'
 R17 = RES / '17' / 'analyze_17.txt'
 TABLE_MD = ROOT / 'private' / 'table1-rows-nov11.md'     # optional: the paper's rows, only to compare the numbers
 TABLE_NOTE = ('Estimates are differences in points with 95% bootstrap intervals unless marked. The number in '
-              'parentheses is the pre-registration. Appendix A lists every registered rule, with the ones not met.')
+              'parentheses is the pre-registration. Reasons 3 and 4 rest on exploratory counts and have no rule. '
+              'Appendix A lists every registered rule.')
+BOOT = RES / 'explore_cluster_bootstrap.txt'      # its last line: addresses minus names, the interval by task
+OUTCOME_WORDS = ('met', 'not met', 'no detectable difference', 'no verdict')   # every part of an outcome starts so
 
 
 def _display(s):
@@ -1584,7 +1632,37 @@ def est_03_and_ten():
     rng = f'{num(pts[0][1][0])} to {num(pts[-1][1][0])}'
     PARSED.append(('table_rules_v2', f'03 B3; the ten others, lowest {pts[0][0]}, highest {pts[-1][0]} (each met)',
                    f'{interval_text(*b3)}; {rng}', 'as fig_models', '-'))
-    return [interval_text(*b3), rng]
+    return [interval_text(*b3), rng], 'met; met on each' + by_task_03(len(others))
+
+
+def by_task_03(n_others):
+    """The interval by task (tasks resampled) of addresses minus names: the last line of explore_cluster_bootstrap.txt
+    counts the models whose interval lies above zero, Gemma-4-31B (03 B3, its summary row) among them. Returns the
+    words added to the outcome, or '' (and a note in the printout) when the lines are not as expected."""
+    if not BOOT.exists():
+        PARSED.append(('table_rules_v2', '03 by task: not drawn', 'no file', rel(BOOT), '-'))
+        return ''
+    s = Source(BOOT)
+    last = max(i for i, x in enumerate(s.lines) if x.strip())
+    m = re.match(r'^Addresses minus names by task, (\d+) models .*: interval above zero on (\d+) of (\d+); not above '
+                 r'zero: (.+?) \[([+-][\d.]+), ([+-][\d.]+)\]$', s.lines[last])
+    b = re.compile(r'^  03 B3\s+([+-][\d.]+)\s+\[[+-][\d.]+, [+-][\d.]+\]\s+\[([+-][\d.]+), ([+-][\d.]+)\]')
+    b3 = [(i, b.match(x)) for i, x in enumerate(s.lines) if b.match(x)]
+    if not m or len(b3) != 1 or not int(m.group(1)) == int(m.group(3)) == n_others + 1:
+        PARSED.append(('table_rules_v2', '03 by task: the last line is not as expected; outcome left "met; met on each"',
+                       s.lines[last][:60], rel(BOOT), last + 1))
+        return ''
+    above, total = int(m.group(2)), int(m.group(3))
+    gemma_above = Decimal(b3[0][1].group(2)) > 0
+    others_above = above - (1 if gemma_above else 0)
+    if not (gemma_above and (above, total) == (10, 11)):
+        PARSED.append(('table_rules_v2', f'03 by task: above zero on {above} of {total} (Gemma-4-31B above: '
+                       f'{gemma_above}); outcome left "met; met on each"', s.lines[last][:60], rel(BOOT), last + 1))
+        return ''
+    s.record('table_rules_v2', f'03 by task: interval above zero on (of models); not above (line {last + 1}); 03 B3 by '
+             f'task (line {b3[0][0] + 1})', f'{above} of {total}; {m.group(4)} [{m.group(5)}, {m.group(6)}]; '
+             f'[{b3[0][1].group(2)}, {b3[0][1].group(3)}]', last + 1)
+    return f' (with tasks resampled: on {WORDS[others_above]})'
 
 
 def est_12():
@@ -1758,11 +1836,11 @@ def est_16_listing():
         verdicts.append(v.group(1).strip())
     if verdicts[0] != verdicts[1]:
         stop(f'analyze_16.txt: W3 has two verdicts: {verdicts}')
-    return parts, verdicts[0]
+    return parts, VERDICT_WORDS.get(verdicts[0], verdicts[0])
 
 
-VERDICT_WORDS = {'more': 'more (met)', 'not detected': 'no detectable difference'}   # a report's verdict, in the
-# table's words
+VERDICT_WORDS = {'more': 'met', 'not detected': 'no detectable difference',   # a report's verdict, in the table's words
+                 'more graph calls with the September listing': "met (more graph calls with September's listing)"}
 
 
 def est_18(rules):
@@ -1782,35 +1860,39 @@ def est_18(rules):
     return out, VERDICT_WORDS.get(verdicts[0], verdicts[0])
 
 
-TABLE_ROWS = (   # (first column, the estimates, the outcome: a string, or None when the function gives it)
-    (lambda: f"Names against no list, reads a neighbor's code, on {steps_02()} steps (02)", est_02, 'not met'),
-    ('Addresses against names (03); on ten other models (05, 10, 19)', est_03_and_ten, 'met; met on each'),
-    ('Addresses against names inside a tool result (05)', est_05_t1, 'met'),
-    ('File and lines against file only (12)', est_12, 'met'),
-    ("File only against names, opens the neighbor's file (12)", est_12_p2, 'not met'),
-    ('Names with their definition line against names (04)', est_04_es, 'not met'),
-    ('Addresses written as search hits against as a list (13)', est_13_x1, None),
-    ('True against false entry (04)', est_04, 'met'),
-    ('True against rewired list (03)', est_03_b4, 'not met'),
-    ('Search with against without line numbers (15); on eight other models (17, 19)', est_15_and_eight,
-     'met; met on each'),
-    ('Told against nothing (20)', lambda: est_20('T1'), 'met'),
-    ('Told as a share of asked; registered threshold two thirds (20)', lambda: est_20('T2'),
-     'told is used less; the two-thirds rule is not met'),
-    ('Next call is a search, told against nothing (20)', est_20_t4, None),
-    (lambda: f'Told its own hits against those of another search, {states_t3()} steps (20)', lambda: est_20('T3'),
+TABLE_ROWS = (   # (reason, first column, the estimates, the outcome: a string, or None when the function gives it);
+    # ordered by the paper's five reasons (rows of 22 come last, under reason 5)
+    # reason 1: the graph's answers seldom reach the agent
+    (1, 'First call goes to a graph tool, the September file listing against the current one, under either wording '
+        'of the tool lines (16)', est_16_listing, None),
+    (1, 'First call goes to a graph tool, the September wording of the tool lines against the current one, under '
+        'either listing (16)', est_16_wording, None),
+    (1, 'Whole runs, both changes against as shipped, resolved (14)', est_14, 'no detectable difference'),
+    (1, 'Told against nothing (20)', lambda: est_20('T1'), 'met'),
+    (1, 'Told as a share of asked; registered threshold two thirds (20)', lambda: est_20('T2'),
+     'not met (told is used less than asked)'),
+    (1, 'Next call is a search, told against nothing (20)', est_20_t4, None),
+    (1, lambda: f'Told its own hits against those of another search, {states_t3()} steps (20)', lambda: est_20('T3'),
      'not met'),
-    (lambda: f'A line in a note against nothing, {WORDS[len(parse_24()["models"])]} hosted models (24)',
+    (1, lambda: f'A line in a note against nothing, {WORDS[len(parse_24()["models"])]} hosted models (24)',
      lambda: est_24('W1'), None),
-    (lambda: f'The same line in a search result against in a note, {WORDS[len(parse_24()["models"])]} hosted models '
-             '(24)', lambda: est_24('W2'), None),
-    ('Whole runs, both changes against as shipped, resolved (14)', est_14, 'no detectable difference'),
-    ('First call goes to a graph tool, the September wording of the tool lines against the current one, under '
-     'either listing (16)', est_16_wording, None),
-    ('First call goes to a graph tool, the September file listing against the current one, under either wording of '
-     'the tool lines (16)', est_16_listing, None),
-    ('Oracle, lines against control, resolved (18)', lambda: est_18((('U1', 'OA', 'N'),)), None),
-    ('Oracle, names against control; lines against names (18)',
+    (1, lambda: f'The same line in a search result against in a note, {WORDS[len(parse_24()["models"])]} hosted '
+                'models (24)', lambda: est_24('W2'), None),
+    # reason 2: the answers are names, and the agent acts on addresses
+    (2, 'Addresses against names (03); on ten other models (05, 10, 19)', est_03_and_ten, None),
+    (2, 'Addresses against names inside a tool result (05)', est_05_t1, 'met'),
+    (2, lambda: f"Names against no list, reads a neighbor's code, on {steps_02()} steps (02)", est_02, 'not met'),
+    (2, 'File and lines against file only (12)', est_12, 'met'),
+    (2, "File only against names, opens the neighbor's file (12)", est_12_p2, 'not met'),
+    (2, 'Names with their definition line against names (04)', est_04_es, 'not met'),
+    (2, 'Addresses written as search hits against as a list (13)', est_13_x1, None),
+    (2, 'True against false entry (04)', est_04, 'met'),
+    (2, 'True against rewired list (03)', est_03_b4, 'not met'),
+    (2, 'Search with against without line numbers (15); on eight other models (17, 19)', est_15_and_eight,
+     'met; met on each'),
+    # reason 5: knowing where is not enough
+    (5, 'Oracle, lines against control, resolved (18)', lambda: est_18((('U1', 'OA', 'N'),)), None),
+    (5, 'Oracle, names against control; lines against names (18)',
      lambda: est_18((('U4', 'ON', 'N'), ('U2', 'OA', 'ON'))), None),
 )
 def rows_22(path):
@@ -1869,38 +1951,46 @@ def compare_markdown(rows):
 
 
 def table_rules(out, r22):
-    rows = []
-    for label, fn, outcome in TABLE_ROWS:
+    rows, reasons = [], []
+    for reason, label, fn, outcome in TABLE_ROWS:
         label = label() if callable(label) else label       # a label with a parsed number in it
         got = fn()
         if got is None:          # a row drawn only when its rules are met (W1 and W2)
             continue
         rows.append((label, *got) if outcome is None else (label, got, outcome))
+        reasons.append(reason)
     p22 = Path(r22) if r22 else R22
     if p22.exists():
         rows += rows_22(p22)
-    cols = ['Rule (registration)', 'Estimate', 'Outcome']
-    fracs = [0.575, 0.255, 0.170]
+        reasons.append(5)
+    if reasons != sorted(reasons):
+        stop(f'table_rules_v2: the rows are not ordered by reason: {reasons}')
+    # one vocabulary of outcomes: every part starts with met, not met, no detectable difference or no verdict
+    for label, _p, outcome in rows:
+        for part in outcome.split('; '):
+            if not any(part == w or part.startswith(w + ' ') or part.startswith(w + ':') for w in OUTCOME_WORDS):
+                stop(f'table_rules_v2: the outcome "{part}" of "{label[:40]}" is not in the words {OUTCOME_WORDS}')
+    cols = ['Reason', 'Rule (registration)', 'Estimate', 'Outcome']
+    fracs = [0.095, 0.48, 0.255, 0.170]
     W = W_IN * 72
     body = []
-    for label, parts, outcome in rows:
+    for reason, (label, parts, outcome) in zip(reasons, rows):
+        cell0 = [[(str(reason), TABLE_FS, 'normal', INK, 'normal')]]
         cell1 = [[(line, TABLE_FS, 'normal', INK, 'normal')] for line in
-                 _wrap_pts(_display(label), W * fracs[0] - 10, TABLE_FS)]
+                 _wrap_pts(_display(label), W * fracs[1] - 10, TABLE_FS)]
         est_lines = []
         for k, p in enumerate(parts):
-            est_lines += _wrap_pts(_display(p) + (';' if k < len(parts) - 1 else ''), W * fracs[1] - 10, TABLE_FS)
+            est_lines += _wrap_pts(_display(p) + (';' if k < len(parts) - 1 else ''), W * fracs[2] - 10, TABLE_FS)
         cell2 = [[(line, TABLE_FS, 'normal', INK, 'normal')] for line in est_lines]
-        # the met color for "met" and for a registered difference that was found ("more", "fewer", or the words a
-        # registration gives one, as W3's "more graph calls with ..."); neutral for "not met", no detectable difference
-        met = (outcome.split(';')[0].split(' (')[0] in ('met', 'met on each', 'more', 'fewer')
-               or outcome.startswith(('more graph calls', 'fewer graph calls')))
+        # the met color when the first part of the outcome is met (or met on each); neutral otherwise
+        met = outcome.split(';')[0].split(' (')[0] in ('met', 'met on each')
         style = ('bold', BLUE, 'normal') if met else ('normal', INK, 'normal')
         o_lines = []
         for k, part in enumerate(outcome.split('; ')):
-            o_lines += _wrap_pts(part + (';' if k < len(outcome.split('; ')) - 1 else ''), W * fracs[2] - 10, TABLE_FS,
+            o_lines += _wrap_pts(part + (';' if k < len(outcome.split('; ')) - 1 else ''), W * fracs[3] - 10, TABLE_FS,
                                  style[0])
         cell3 = [[(line, TABLE_FS, *style)] for line in o_lines]
-        body.append(('row', [cell1, cell2, cell3]))
+        body.append(('row', [cell0, cell1, cell2, cell3]))
     _draw_table(cols, fracs, body, TABLE_NOTE, out, 'table_rules_v2')
     return compare_markdown(rows)
 
@@ -2035,14 +2125,14 @@ def population_rows(r22):
         first = f'{n_states} steps of {n_runs} public runs, {n_tasks} tasks'      # the addition does not fit
     PARSED.append(('table_populations', 'first row, size as drawn', first, 'as parsed above', '-'))
     return [
-        (label, first, '4.1'),
+        (label, first, '4'),
         ('Steps paused after the agent\'s own search', f'{n_search} steps; {n_cut} can also be cut one call earlier',
-         '4.2'),
+         '3, 4'),
         ('Public runs of the starter agent [2]',
          f'{all_tasks} tasks, {WORDS[pub_per]} runs with the skill and {WORDS[pub_per]} without ({all_runs} runs '
          f'each); counts of changed regions use the {pub_tasks} tasks whose fix changes an existing line '
-         f'({pub_per * pub_tasks} runs)', '5, 6'),
-        ('Our runs, harness as shipped (Oct 12)', f'the {ours} tasks our sandbox can score, one run each', '3, 5'),
+         f'({pub_per * pub_tasks} runs)', '3, 5, 6'),
+        ('Our runs, harness as shipped (Oct 12)', f'the {ours} tasks our sandbox can score, one run each', '3, 4'),
         (f'First calls under {WORDS[p16["arms"]]} task prompts',
          f'{p16["tasks"]} tasks, {WORDS[p16["seeds"]]} seeds, one model call each', '3'),
         ('Oracle runs', oracle, '7'),

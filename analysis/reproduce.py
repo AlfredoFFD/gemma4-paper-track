@@ -327,6 +327,9 @@ JOBS = [
     ('whole runs of eight agents: where every file read starts, and the changed regions by depth and count', 'exploratory',
      ['analysis/explore_read_starts.py'], f'{R}/explore_read_starts.txt',
      PUBLIC + ['data/tasks.jsonl', 'data/snapshots', 'data/public_traces', f'{R}/14/N/seed1/task_results.jsonl']),
+    ('public runs, whole runs: missed regions within reach of shown code by a call edge and by a search for a name', 'exploratory',
+     ['analysis/public_runs_lexical_reach.py'], f'{R}/public/lexical_reach.txt',
+     PUBLIC + ['data/tasks.jsonl', 'data/graphs', 'data/snapshots']),
     ('public runs, whole runs: the kind of graph edge between a missed fix site and code the run saw', 'exploratory',
      ['analysis/public_runs_missed_links.py'], f'{R}/public/missed_links.txt',
      PUBLIC + ['data/tasks.jsonl', 'data/graphs', 'data/snapshots']),
@@ -348,6 +351,7 @@ SNAP_INDEX = 'data/cache/snapshot_files'   # built by analysis/snapshot_index.py
 ORACLE_18 = 'data/cache/oracle_18'         # built by analysis/make_oracle_18.py from the competition data
 STATES_W = 'analysis/fork_states_w/first_call_states.jsonl'
 DATA = {
+    'public runs, whole runs: missed regions within reach of shown code by a call edge and by a search for a name': [SNAP_INDEX],
     '24 asked or told on seven hosted models: W1, W2, W3': [SNAP],
     '24 asked or told on seven hosted models, independent': [SNAP],
     'one-call contrasts of 03, 12, 15 and 20: intervals with tasks resampled instead of steps': [SNAP],
