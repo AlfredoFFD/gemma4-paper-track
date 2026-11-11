@@ -551,7 +551,6 @@ def fig_graph(out):
 CLASSES = (('TOP', 'from the top of a file', PALE), ('PAGING', 'continues or overlaps an earlier read', GREY),
            ('ADDRESSED', 'at a line an earlier result numbered', BLUE), ('SHELL VIEW', 'after a shell view', DARK),
            ('NO NUMBER', 'none of these', INK))
-BUCKETS = ('2 or 3', '4 to 9', '10 or more')
 STARTER = r'^starter agent, public runs of September \(GraphLoc base arm\)'
 INDEP = RES / 'explore_independence.txt'          # the count of the right panel (exploratory)
 INDEP2 = RES / 'rederive_independence.txt'        # the same count by a second script
@@ -584,7 +583,35 @@ def parse_moves():
         stop('explore_read_starts.txt: the classes of the starter set do not add up to the classed reads')
     m, ln = s.find(r'^all (\d+) sets: first READS of a file (\d+); of class NO NUMBER (\d+)', 'all sets', s1, e1)
     allsets = tuple(int(g) for g in m.groups())
-    s.record('fig_moves', 'left: all sets; first reads; of them NO NUMBER', '; '.join(m.groups()), ln)
+    s.record('fig_moves', 'left: all sets; first reads; of them NO NUMBER (the check of the sum)', '; '.join(m.groups()),
+             ln)
+    # per set: first reads of a file, and those of class NO NUMBER (past line 1 with no printed line); the sets
+    # without a graph skill are drawn, and the per-set counts must add up to the line of all sets
+    sets = []
+    for i in range(s1, e1):
+        h = re.match(r'^(\S.*): runs (\d+), tasks (\d+)$', s.lines[i])
+        if not h:
+            continue
+        b0, b1 = i + 1, i + 1
+        while b1 < e1 and s.lines[b1].startswith(' '):
+            b1 += 1
+        m, fl = s.find(r'; classed \d+, of which the first READ of its file (\d+)$', f'first reads, {h.group(1)}', b0, b1)
+        first = int(m.group(1))
+        m, nl = s.find(rf'^\s+NO NUMBER\s+\d+ of \d+ \([\d.]+%\)\s+(\d+) of {first} \(', f'NO NUMBER, {h.group(1)}', b0, b1)
+        sets.append(dict(name=h.group(1), first=first, none=int(m.group(1)), skill='graph skill' in h.group(1)))
+        if len(sets) <= allsets[0]:
+            s.record('fig_moves', f'left note, set "{h.group(1)[:48]}": first reads; of them NO NUMBER (line {fl})',
+                     f'{first}; {m.group(1)}', nl)
+    # the line of all sets counts the first sets of the section (the oracle arms of 18 follow them, told where the fix
+    # is, and are not among them): the sums below check that
+    sets = sets[:allsets[0]]
+    if len(sets) != allsets[0] or sum(x['first'] for x in sets) != allsets[1] or \
+            sum(x['none'] for x in sets) != allsets[2]:
+        stop(f'explore_read_starts.txt: the {len(sets)} sets do not add up to the line of all sets ({allsets})')
+    if sum(x['skill'] for x in sets) != 1:
+        stop('explore_read_starts.txt: not exactly one set with a graph skill')
+    plain = [x for x in sets if not x['skill']]
+    noskill = (len(plain), sum(x['first'] for x in plain), sum(x['none'] for x in plain))
     # the runs the other panels count: those of tasks with a CHANGED REGION (section 3); the task without one is fixed
     # by adding a file (it has no GOLD FILE: analyze_14.txt, line 16; checked in population_rows)
     s3, e3 = s.block(r'^3\. Where the fix lies', 'section 3', end=r'^\d\. ')
@@ -595,7 +622,7 @@ def parse_moves():
         stop(f'explore_read_starts.txt: {cr_runs} runs of {cr_tasks} tasks with a changed region, of {runs}, {tasks}')
     s.record('fig_moves', 'left caption: runs; tasks with a CHANGED REGION', f'{cr_runs}; {cr_tasks}', ln)
     return dict(runs=runs, tasks=tasks, cr_runs=cr_runs, cr_tasks=cr_tasks, classed=classed, counts=counts,
-                allsets=allsets, **parse_files())
+                noskill=noskill, **parse_files())
 
 
 def parse_files():
@@ -628,18 +655,6 @@ def parse_files():
         got = (files[k]['read'], files[k]['shown'], files[k]['resolved'], files[k]['n'])
         if got != typed:
             stop(f'fig_moves: {k} file(s): the file prints {got}, the message types {typed}')
-    # by number of regions: runs shown every region, observed and as independent regions at the one-region rate
-    buckets = {}
-    for bk in BUCKETS:
-        h0, h1 = s.block(rf'^   fixes with {re.escape(bk)} CHANGED REGIONS: tasks \d+, runs \d+$', f'fixes with {bk}',
-                         end=r'^   \S', lo=b0, hi=b1)
-        m, ln = s.find(r'SHOWN every region (\d+) of (\d+) \(', f'{bk}: shown every region', h0, h1)
-        k, n = int(m.group(1)), int(m.group(2))
-        m2, ln2 = s.find(r'runs SHOWN every region if regions were independent: CONSTANT RATE ([\d.]+);',
-                         f'{bk}: CONSTANT RATE', h0, h1)
-        buckets[bk] = dict(k=k, n=n, expected=float(m2.group(1)))
-        s.record('fig_moves', f'right, note: {bk} regions: shown every region; CONSTANT RATE (line {ln2})',
-                 f'{k} of {n}; {m2.group(1)}', ln)
     # the second script must agree on every count drawn that it prints
     r = Source(INDEP2)
     c0, c1 = r.block(r'^### 1\. public starter agent, base arm', 'the first set of the recount', end=r'^### ')
@@ -660,15 +675,7 @@ def parse_files():
     if tuple(int(g) for g in m.groups()) != (sev['tasks'], sev['n'], sev['shown'], sev['n']):
         stop(f'rederive_independence.txt, line {ln}: the recount differs for shown every region, several files')
     r.record('fig_moves', 'recount: several files: shown every region', f'{m.group(3)} of {m.group(4)}', ln)
-    for bk in BUCKETS:
-        m, ln = r.find(rf'^   {re.escape(bk)}\s+tasks +\d+; runs +(\d+); .*shown every region (\d+)/(\d+) '
-                       r'\([\d.]+%\); expected if independent ([\d.]+)$', f'recount: {bk}', c0, c1)
-        x = buckets[bk]
-        if (int(m.group(2)), int(m.group(3)), float(m.group(4))) != (x['k'], x['n'], x['expected']):
-            stop(f'rederive_independence.txt, line {ln}: the recount differs for {bk} regions')
-        r.record('fig_moves', f'recount: {bk} regions: shown every region; expected', f'{m.group(2)} of {m.group(3)}; '
-                 f'{m.group(4)}', ln)
-    return dict(files=files, buckets=buckets)
+    return dict(files=files)
 
 
 def fig_moves(out):
@@ -679,8 +686,7 @@ def fig_moves(out):
     LAB_R, X0, X1 = 2.62, 2.74, 6.55
     B_TOP = TOP + A_HEAD + rows_a + 0.42 + 0.30 + 0.20
     B_HEAD, B_H, B_AX = 0.46, 1.95, 0.42
-    NOTE_H = 0.40
-    h_in = B_TOP + B_HEAD + B_H + B_AX + NOTE_H + 0.28
+    h_in = B_TOP + B_HEAD + B_H + B_AX + 0.28
     fig, page = page_of(h_in)
     page.text(0.09, 0.07, 'Where a file read starts, and where a fix is lost', ha='left', va='top', fontsize=10.5,
               color=INK)
@@ -714,10 +720,10 @@ def fig_moves(out):
     ax.spines[['top', 'right', 'left']].set_visible(False)
     ax.tick_params(axis='x', labelsize=7.8, length=3)
     ax.set_xlabel('share of the reads, by where the read starts', fontsize=7.8)
-    n_sets, first, none = d['allsets']
-    page.text(0.36, y0 + rows_a + 0.50, f'First reads of a file that start past line 1 with no line number in hand, '
-              f'over all {WORDS.get(n_sets, n_sets)} sets of runs: {none:,} of {first:,}.', ha='left', va='top',
-              fontsize=8.0, color=INK)
+    n_sets, first, none = d['noskill']
+    page.text(0.36, y0 + rows_a + 0.50, f'{WORDS.get(n_sets, n_sets).capitalize()} sets of whole runs without a graph '
+              f'skill: {none:,} of {first:,} first reads start past line 1 without a printed line.', ha='left',
+              va='top', fontsize=8.0, color=INK)
     # panel (b): a fix in one file, and a fix in several
     files = d['files']
     page.text(0.09, B_TOP, '(b)', ha='left', va='top', fontsize=9.4, fontweight='bold', color=INK)
@@ -757,14 +763,6 @@ def fig_moves(out):
         bx.add_patch(Rectangle((kx, ky - 0.025), 0.025, 0.05, transform=bx.transAxes, fc=color, ec='none', zorder=6))
         bx.text(kx + 0.04, ky, label, transform=bx.transAxes, ha='left', va='center', fontsize=7.6, color=INK, zorder=6)
         ky -= 0.085
-    bk = d['buckets']
-    obs = ', '.join(f'{100 * bk[b]["k"] / bk[b]["n"]:.0f}%' for b in BUCKETS)
-    exp = ', '.join(f'{100 * bk[b]["expected"] / bk[b]["n"]:.0f}%' for b in BUCKETS)
-    note = wrap(f'By number of regions, runs shown every region: {obs} for 2 to 3, 4 to 9 and 10 or more; regions '
-                f'shown independently at the one-region rate would give {exp}.', 125)
-    yn = B_TOP + B_HEAD + B_H + B_AX
-    for i, line in enumerate(note):
-        page.text(0.36, yn + 0.14 * i, line, ha='left', va='top', fontsize=7.6, color=INK2)
     page.text(0.09, h_in - 0.07, 'Both panels are exploratory: counted on stored runs, with no registered rule; panel '
               '(b) recounted by a second script.', ha='left', va='bottom', fontsize=6.9, color=MUTED)
     save(fig, page, out, 'fig_moves')
@@ -993,11 +991,15 @@ def fig_oracle(out, r22):
     same20 = parse_same_tasks(d22['ran'], d22['sec'])
     words = dict((k, lab) for k, lab, _c in ARMS18)
     colors = dict((k, c) for k, _l, c in ARMS18)
-    TITLE = ('Told where the fix is: the form of the note changes what the agent reads, not detectably what it '
-             'resolves')
-    KEY_Y = 0.46
-    HEAD_Y = 0.78
-    P0, P1 = 1.32, 3.22                     # the plot area of every panel, top and bottom
+    TITLE = ('Told where the fix is: the form of the note changes what the agent reads; resolved tasks do not '
+             'detectably depend on the form')
+    # one line at the size of the other figures' titles, or two broken after the colon
+    title_lines = [TITLE] if _text_w(TITLE, 10.5) / 72 <= W_IN - 0.18 else \
+        [TITLE[:TITLE.index(':') + 1], TITLE[TITLE.index(':') + 2:]]
+    DY = 0.20 * (len(title_lines) - 1)
+    KEY_Y = 0.46 + DY
+    HEAD_Y = 0.78 + DY
+    P0, P1 = 1.32 + DY, 3.22 + DY           # the plot area of every panel, top and bottom
     XA = (0.50, 3.05)
     XB = (3.35, 4.95)
     XC = (5.22, 6.90)
@@ -1009,12 +1011,11 @@ def fig_oracle(out, r22):
     h_in = FOOT + 0.13 * len(foot) + 0.08
     fig, page = page_of(h_in)
     # the takeaway, one line: the size of the other figures' titles, made smaller only if it would not fit
-    size = 10.5
-    title = page.text(0.09, 0.07, TITLE, ha='left', va='top', fontsize=size, color=INK)
-    while width_in(fig, title) > W_IN - 0.18:
-        size -= 0.1
-        title.set_fontsize(size)
-    texts.append(title)
+    for k, line in enumerate(title_lines):
+        title = page.text(0.09, 0.07 + 0.20 * k, line, ha='left', va='top', fontsize=10.5, color=INK)
+        if width_in(fig, title) > W_IN - 0.18:
+            stop(f'fig_oracle: the title line "{line[:40]}" does not fit')
+        texts.append(title)
     # the key of the arms, one row across the page
     x = 0.50
     for key, label, color in ARMS18:
@@ -1278,7 +1279,7 @@ R16 = RES / '16' / 'analyze_16.txt'
 R17 = RES / '17' / 'analyze_17.txt'
 TABLE_MD = ROOT / 'private' / 'table1-rows-nov11.md'     # optional: the paper's rows, only to compare the numbers
 TABLE_NOTE = ('Estimates are differences in points with 95% bootstrap intervals unless marked. The number in '
-              'parentheses is the pre-registration; all rules: Appendix A.')
+              'parentheses is the pre-registration. Appendix A lists every registered rule, with the ones not met.')
 
 
 def _display(s):
@@ -1404,9 +1405,26 @@ def est_12_p2():
     m, line = s.find(r"^  P2, EPATH - H on opening a listed neighbor's file: ([+-][\d.]+) \[([+-][\d.]+), ([+-][\d.]+)\]",
                      'rule P2')
     v, vline = s.find(r'^  P2 verdict: (.+?):', 'the verdict of P2')
+    # registered as "met if the lower bound is above 0" (Appendix A): drawn "not met", as the appendix has it; the
+    # report's own word ("not detected") is printed here only
+    if Decimal(m.group(2)) > 0 or v.group(1) != 'not detected':
+        stop(f'analyze_12.txt, line {line}: P2 has lower bound {m.group(2)}, verdict "{v.group(1)}"; the row says not met')
     s.record('table_rules_v2', f'12 P2, EPATH - H, opens a listed neighbor\'s file (verdict "{v.group(1)}", line '
              f'{vline})', _pts(m.groups()), line)
-    return [_pts(m.groups())], VERDICT_WORDS.get(v.group(1), v.group(1))
+    return [_pts(m.groups())]
+
+
+def steps_02():
+    """The paused steps complete in every arm and seed of pre-registration 02's run (the run row 02 reports)."""
+    s = Source(RES / 'analyze_a.txt')
+    m, line = s.find(r'^states with every arm and seed present: (\d+) ', 'the complete states of 02')
+    s2 = Source(R02)
+    m2, line2 = s2.find(r'^  complete: (\d+) states, \d+ tasks$', 'the complete states of 02 (supplement)')
+    if m.group(1) != m2.group(1):
+        stop(f'analyze_a.txt line {line}: {m.group(1)} states; explore_supplement.txt line {line2}: {m2.group(1)}')
+    s.record('table_rules_v2', f'02: steps complete in every arm and seed (= explore_supplement.txt:{line2})',
+             m.group(1), line)
+    return int(m.group(1))
 
 
 def est_04():
@@ -1535,10 +1553,10 @@ def est_18(rules):
 
 
 TABLE_ROWS = (   # (first column, the estimates, the outcome: a string, or None when the function gives it)
-    ("Names against no list, reads a neighbor's code (02)", est_02, 'not met'),
+    (lambda: f"Names against no list, reads a neighbor's code, on {steps_02()} steps (02)", est_02, 'not met'),
     ('Addresses against names (03); on ten other models (05, 10, 19)', est_03_and_ten, 'met; met on each'),
     ('File and lines against file only (12)', est_12, 'met'),
-    ("File only against names, opens the neighbor's file (12)", est_12_p2, None),
+    ("File only against names, opens the neighbor's file (12)", est_12_p2, 'not met'),
     ('True against false entry (04)', est_04, 'met'),
     ('True against rewired list (03)', est_03_b4, 'not met'),
     ('Search with against without line numbers (15); on eight other models (17, 19)', est_15_and_eight,
@@ -1550,8 +1568,8 @@ TABLE_ROWS = (   # (first column, the estimates, the outcome: a string, or None 
     (lambda: f'Told its own hits against those of another search, {states_t3()} steps (20)', lambda: est_20('T3'),
      'not met'),
     ('Whole runs, both changes against as shipped, resolved (14)', est_14, 'no detectable difference'),
-    ('The September wording of the tool lines against the current one, under either listing (16)', est_16_wording,
-     None),
+    ('First call goes to a graph tool, the September wording of the tool lines against the current one, under '
+     'either listing (16)', est_16_wording, None),
     ('First call goes to a graph tool, the September file listing against the current one, under either wording of '
      'the tool lines (16)', est_16_listing, None),
     ('Oracle, lines against control, resolved (18)', lambda: est_18((('U1', 'OA', 'N'),)), None),
@@ -1739,6 +1757,19 @@ def population_rows(r22):
         stop(f'analyze_14.txt: runs {ours}, seed 1 {ours_seed1}, tasks {m2.group(2)}')
     s14.record('table_populations', 'our runs as shipped (N): runs, all seed 1; tasks (line %d)' % line2,
                f'{ours}; {m2.group(2)}', line)
+    # 4b. the first model calls of pre-registration 16: its arms, its seeds, the tasks complete on every arm
+    s16 = Source(R16)
+    m, line = s16.find(r'^PRE-REGISTRATION 16: .*\(arms ([\w, ]+)\)$', 'the arms of 16')
+    arms16 = [a.strip() for a in m.group(1).split(',')]
+    m2, line2 = s16.find(r'^  \d+ tasks, .*calls planned \d+ \(seeds ([\d, ]+)\);', 'the seeds of 16')
+    seeds16 = [x.strip() for x in m2.group(1).split(',')]
+    m3, line3 = s16.find(r'^  tasks complete on every arm \(.*\): (\d+) of \d+$', 'the tasks of 16')
+    m4, _l4 = s16.find(r'^1\. Rules, on the (\d+) tasks complete on every arm', 'the tasks of the rules of 16')
+    if m3.group(1) != m4.group(1):
+        stop(f'analyze_16.txt: {m3.group(1)} tasks complete, the rules on {m4.group(1)}')
+    p16 = dict(arms=len(arms16), seeds=len(seeds16), tasks=int(m3.group(1)))
+    s16.record('table_populations', f'16: arms (line {line}); seeds (line {line2}); tasks complete on every arm',
+               f'{", ".join(arms16)}; {", ".join(seeds16)}; {m3.group(1)}', line3)
     # 5. the oracle runs (18, and 22 when its report exists)
     t18 = [t for t in TASKS_18.read_text(encoding='utf-8').split() if t]
     PARSED.append(('table_populations', 'oracle tasks (task list)', str(len(t18)), rel(TASKS_18), f'1-{len(t18)}'))
@@ -1775,6 +1806,8 @@ def population_rows(r22):
          f'each); counts of changed regions use the {pub_tasks} tasks whose fix changes an existing line '
          f'({pub_per * pub_tasks} runs)', '4, 5'),
         ('Our runs, harness as shipped (Oct 12)', f'the {ours} tasks our sandbox can score, one run each', '4, 5'),
+        (f'First calls under {WORDS[p16["arms"]]} task prompts',
+         f'{p16["tasks"]} tasks, {WORDS[p16["seeds"]]} seeds, one model call each', '4'),
         ('Oracle runs', oracle, '6'),
     ]
 
