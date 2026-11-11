@@ -133,6 +133,26 @@ def load_states(path):
     return states
 
 
+def installed_wheels(run_dir, names):
+    """Versions of the named wheels as the run installed them, from the run folder's pip_freeze.txt. The wheelhouse
+    list in versions.json names every wheel the folder held (always the newest), not the ones installed."""
+    f = Path(run_dir) / 'pip_freeze.txt'
+    if not f.exists():
+        return 'not recorded in the run folder'
+    found = {}
+    for line in f.read_text(encoding='utf-8').splitlines():
+        if ' @ ' in line:
+            name, ver = line.split(' @ ', 1)[0].strip(), line.rsplit('/', 1)[-1].split('-')[1]
+        elif '==' in line:
+            name, ver = line.split('==', 1)
+        else:
+            continue
+        key = name.strip().replace('-', '_').lower()
+        if key in names:
+            found[key] = ver.strip()
+    return {k: found.get(k, 'not recorded in the run folder') for k in names}
+
+
 def load_run(run_dir):
     run_dir = Path(run_dir)
     res = run_dir / 'results.jsonl'
@@ -339,14 +359,10 @@ def header(out, title, run_dir, states_path, versions, mode_note):
     h = md5(states_path)
     out(f'States file: {shown(states_path)}, md5 {h}')
     if versions:
-        wheels = {}
-        for w in versions.get('wheelhouse_files', []):
-            name, _, rest = w.partition('-')
-            if name in REGISTERED_WHEELS:
-                wheels[name] = rest.split('-')[0]
+        wheels = installed_wheels(run_dir, REGISTERED_WHEELS)
         model = str(versions.get('model_path') or '').split('models/', 1)[-1]  # the model id, without the mount point
-        out(f'Run versions (versions.json): harness_variant {versions.get("harness_variant")}, '
-            f'wheels {wheels}, model {model}, tensor_parallel_size '
+        out(f'Run versions (versions.json; wheels as installed, from pip_freeze.txt): harness_variant '
+            f'{versions.get("harness_variant")}, wheels {wheels}, model {model}, tensor_parallel_size '
             f'{versions.get("tensor_parallel_size")}, platform {versions.get("platform")}, '
             f'experiment field {versions.get("experiment")!r}, arms field {versions.get("arms")}')
     else:

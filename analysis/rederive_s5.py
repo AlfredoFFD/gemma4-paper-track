@@ -554,4 +554,5 @@ out(f'  gold-patch files are read from data/tasks.jsonl diffs; the rewired eligi
 out('  S5 short-name match is a word-boundary regex on run_command text and on graph-tool arguments; read/edit/write count by file path only.')
 out('  S6 uses the thought field only (the frozen secondary used thought+text with a substring match).')
 
-(HERE / 'results' / 'rederive_s5.txt').write_text('\n'.join(OUT) + '\n', encoding='utf-8')
+if '--no-write' not in sys.argv[1:]:  # reproduce.py passes --no-write and reads the report from stdout
+    (HERE / 'results' / 'rederive_s5.txt').write_text('\n'.join(OUT) + '\n', encoding='utf-8')

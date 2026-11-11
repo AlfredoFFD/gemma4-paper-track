@@ -17,7 +17,10 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / 'data'
 CACHE_TXT = DATA / 'cache' / 'snapshot_text'
 OUT_TXT = ROOT / 'analysis' / 'results' / 'rederive_audit.txt'
-OUT_JSON = Path(sys.argv[1]) if len(sys.argv) > 1 else None  # optional per-task dump, kept outside the repo
+NO_WRITE = '--no-write' in sys.argv[1:]  # for reproduce.py: the report on stdout, progress on stderr, no file
+_ARGS = [a for a in sys.argv[1:] if a != '--no-write']
+OUT_JSON = Path(_ARGS[0]) if _ARGS else None  # optional per-task dump, kept outside the repo
+LOG = sys.stderr if NO_WRITE else sys.stdout
 CAP = 50
 IDENT = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
 CHAIN = re.compile(r'[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+')
@@ -188,7 +191,7 @@ def load_base_files(iid, paths):
                 want[n] = tf.extractfile(m).read().decode('utf-8', 'replace')
                 if all(v is not None for v in want.values()):
                     break
-    print(f'    [archive pass {iid}: {time.time() - t0:.0f}s]', flush=True)
+    print(f'    [archive pass {iid}: {time.time() - t0:.0f}s]', flush=True, file=LOG)
     return want
 
 
@@ -266,7 +269,7 @@ def bites(G, mentioned, golds, hops, cap):
 # ---------------------------------------------------------------- main
 def main():
     tasks = [json.loads(l) for l in (DATA / 'tasks.jsonl').read_text(encoding='utf-8').splitlines() if l.strip()]
-    print(f'{len(tasks)} tasks', flush=True)
+    print(f'{len(tasks)} tasks', flush=True, file=LOG)
     graph_cache, rows = {}, []
     stats = Counter()
     for ti, t in enumerate(tasks, 1):
@@ -352,7 +355,7 @@ def main():
         rows.append(row)
         print(f'{ti:3d}/{len(tasks)} {iid}: units={len(ulist)} addr={sum(1 for u in ulist if u["node"])} '
               f'men={row["mentioned"]} direct={len(row["direct"])} b1={len(row["bite1"])} b2={len(row["bite2"])}',
-              flush=True)
+              flush=True, file=LOG)
 
     # ------------------------------------------------------------ aggregate
     N = len(rows)
@@ -442,6 +445,9 @@ def main():
         'neighbors. 2 hops: neighbors of such a mentioned node, plus neighbors of each of those that itself has <=50.',
         '12. Reach, direct naming and mention shares use all 129 tasks as denominator; K1 uses tasks with >=1 unit.',
     ]
+    if NO_WRITE:
+        sys.stdout.buffer.write(('\n'.join(L) + '\n').encode('utf-8'))
+        return
     OUT_TXT.write_text('\n'.join(L) + '\n', encoding='utf-8')
     if OUT_JSON:
         OUT_JSON.write_text(json.dumps(rows, indent=1), encoding='utf-8')

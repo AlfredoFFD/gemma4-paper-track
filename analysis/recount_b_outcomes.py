@@ -41,7 +41,7 @@ VIEWERS = ('cat', 'sed', 'head', 'tail', 'awk', 'less', 'more') + GREPS
 _TEXT = {}
 # Sensitivity switch: RECOUNT_RECURSIVE=0 stops a recursive grep over a directory from counting as a view of
 # the files under it (the pre-registered text says 'a shell view of that file').
-RECURSIVE = os.environ.get('RECOUNT_RECURSIVE', '1') != '0'
+RECURSIVE = os.environ.get('RECOUNT_RECURSIVE', '1') != '0' and '--named-file-only' not in sys.argv[1:]
 SUFFIX = '' if RECURSIVE else '_named_file_only'
 
 
@@ -502,6 +502,9 @@ def main():
     out.append('Snapshot text: %d files read; %d paths not in the snapshot (%d of them .py, e.g. files the agent '
                'created); for those, character caps and grep content matching fall back to line ranges only'
                % (sum(v is not None for v in _TEXT.values()), len(MISSING), len(miss_py)))
+    if '--no-write' in sys.argv[1:]:  # for reproduce.py: the report on stdout, no file written
+        sys.stdout.buffer.write(('\n'.join(out) + '\n').encode('utf-8'))
+        return
     path = os.path.join(ROOT, 'analysis', 'results', 'recount_b_outcomes%s.txt' % SUFFIX)
     with open(path, 'w', encoding='utf-8', newline='\n') as f:
         f.write('\n'.join(out) + '\n')

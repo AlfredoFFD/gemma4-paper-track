@@ -345,13 +345,10 @@ def header(out, run_dir, versions):
     out(f'States file: {shown(STATES)}, md5 {h} '
         f'({"matches" if h == MD5_STATES else "DIFFERS FROM"} the registered {MD5_STATES})')
     if versions:
-        wheels = {}
-        for w in versions.get('wheelhouse_files', []):
-            name, _, rest = w.partition('-')
-            if name in PREREG05_WHEELS or name in ('google_adk', 'vllm'):
-                wheels[name] = rest.split('-')[0]
+        wheels = installed_wheels(run_dir, sorted(list(PREREG05_WHEELS) + ['google_adk', 'vllm']))
         model = str(versions.get('model_path') or '').split('models/', 1)[-1]  # the model id, without the mount point
-        out(f'Run versions (versions.json): harness_variant {versions.get("harness_variant")}, wheels {wheels}, '
+        out(f'Run versions (versions.json; wheels as installed, from pip_freeze.txt): harness_variant '
+            f'{versions.get("harness_variant")}, wheels {wheels}, '
             f'model {model}, tensor_parallel_size {versions.get("tensor_parallel_size")}, platform '
             f'{versions.get("platform")}, gpu {versions.get("gpu")}, experiment field {versions.get("experiment")!r}, '
             f'arms field {versions.get("arms")}, thoughts_in_history {versions.get("thoughts_in_history")}')
@@ -521,7 +518,27 @@ def descriptive_section(out, recs, complete, states, label):
     out()
 
 
-def data_checks(out, rows, states, recs, versions):
+def installed_wheels(run_dir, names):
+    """Versions of the named wheels as the run installed them, from the run folder's pip_freeze.txt. The wheelhouse
+    list in versions.json names every wheel the folder held (always the newest), not the ones installed."""
+    f = Path(run_dir) / 'pip_freeze.txt'
+    if not f.exists():
+        return 'not recorded in the run folder'
+    found = {}
+    for line in f.read_text(encoding='utf-8').splitlines():
+        if ' @ ' in line:
+            name, ver = line.split(' @ ', 1)[0].strip(), line.rsplit('/', 1)[-1].split('-')[1]
+        elif '==' in line:
+            name, ver = line.split('==', 1)
+        else:
+            continue
+        key = name.strip().replace('-', '_').lower()
+        if key in names:
+            found[key] = ver.strip()
+    return {k: found.get(k, 'not recorded in the run folder') for k in names}
+
+
+def data_checks(out, rows, states, recs, versions, run_dir):
     out('S5. Data checks (descriptive; nothing here changes a number above)')
     no_all = sum(1 for r in rows if 'all_calls' not in r)
     mism = sum(1 for r in rows if r.get('all_calls') and r.get('next_call') != r['all_calls'][0])
@@ -572,13 +589,11 @@ def data_checks(out, rows, states, recs, versions):
         out(f'  next-call tool mix over all rows (failures included), {a}: '
             f'{dict(sorted(((t or "none"), n) for (aa, t), n in by_tool.items() if aa == a))}')
     if versions:
-        wheels = {}
-        for w in versions.get('wheelhouse_files', []):
-            name, _, rest = w.partition('-')
-            if name in PREREG05_WHEELS:
-                wheels[name] = rest.split('-')[0]
+        wheels = installed_wheels(run_dir, list(PREREG05_WHEELS))
+        if isinstance(wheels, str):
+            wheels = {k: wheels for k in PREREG05_WHEELS}
         diffs = {k: (wheels.get(k), v) for k, v in PREREG05_WHEELS.items() if wheels.get(k) != v}
-        out(f'  harness wheels recorded versus those named in pre-registration 05 (recorded, named): '
+        out(f'  harness wheels installed (pip_freeze.txt) versus those named in pre-registration 05 (installed, named): '
             f'{diffs if diffs else "all equal"}')
     out(f'  files with no source text (line caps only, no character caps): {len(_missing_files)}')
     out()
@@ -608,7 +623,7 @@ def main():
     f2_section(out, recs, complete, states, label)
     f3_section(out, recs, label)
     descriptive_section(out, recs, complete, states, label)
-    data_checks(out, rows, states, recs, versions)
+    data_checks(out, rows, states, recs, versions, run_dir)
 
     if args.no_write:
         print('\n(--no-write: nothing written; would have been analysis/results/rederive_w.txt)')

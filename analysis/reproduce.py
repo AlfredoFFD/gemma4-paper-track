@@ -8,6 +8,12 @@ Each job is one script run on tracked files only (analysis/results/<run>/forks/,
 where a script needs them). A job whose input run is not in the repository is reported as SKIPPED.
 The registered scripts are frozen by their pre-registrations; the "independent" jobs are the second implementations
 written without the first; the "exploratory" jobs carry no registered rule.
+
+Two scripts behind numbers of the paper are not jobs here: analysis/public_runs_outside.py reads the four sets outside
+the competition through a dataset viewer on the network (its output is analysis/results/public/outside.txt), and
+analysis/make_spans_g.py rebuilds the spans of the graph nodes from the snapshots (it prints the share of nodes that
+resolve, 95.6%, and stores no report). Scripts that write their report to a file take --no-write or --stdout here,
+which prints the same report instead.
 """
 import subprocess
 import sys
@@ -99,9 +105,47 @@ JOBS = [
     ('13 the address written as a search hit, independent', 'independent',
      ['analysis/rederive_13.py', f'{R}/13/forks', f'{R}/c/forks', '--no-write'], f'{R}/rederive_13.txt',
      [f'{R}/13/forks/results.jsonl', f'{R}/c/forks/results.jsonl', 'data/snapshots']),
+    ('14 whole runs scored by tests: T1, T2, T3', 'registered',
+     ['analysis/analyze_14.py', f'{R}/14', '--csv'], f'{R}/14/analyze_14.txt',
+     [f'{R}/14/N/seed1/task_results.jsonl', f'{R}/14/NAF/seed1/task_results.jsonl', 'data/tasks.jsonl']),
+    ('14 whole runs scored by tests, independent', 'independent',
+     ['analysis/rederive_14.py', f'{R}/14', '--no-write'], f'{R}/rederive_14.txt',
+     [f'{R}/14/N/seed1/task_results.jsonl', f'{R}/14/NAF/seed1/task_results.jsonl', 'data/tasks.jsonl']),
+    ('graph-tool calls by the agent itself under two wordings of the task prompt', 'exploratory',
+     ['analysis/explore_graph_calls.py', '--no-write'], f'{R}/explore_graph_calls.txt',
+     [f'{R}/09/forks/results_09.jsonl', f'{R}/14/N/seed1/task_results.jsonl', 'analysis/fork_states_g/fresh_states.jsonl',
+      'data/forks_14_modal/out_14']),
     ('what the neighbor lists at the paused steps are made of, and which kind the next call reads', 'exploratory',
      ['analysis/explore_neighbor_kinds.py'], f'{R}/explore_neighbor_kinds.txt',
      [f'{R}/v6/forks/results.jsonl', f'{R}/12/forks/results.jsonl', 'data/snapshots', 'analysis/fork_states']),
+    ('the kinds of neighbor at the paused steps, independent', 'independent',
+     ['analysis/rederive_neighbor_kinds.py'], f'{R}/rederive_neighbor_kinds.txt',
+     [f'{R}/v5/forks/results.jsonl', f'{R}/v6/forks/results.jsonl', f'{R}/v8/forks/results.jsonl',
+      f'{R}/12/forks/results.jsonl', f'{R}/c/forks/results.jsonl', 'data/snapshots',
+      'analysis/fork_states/states.jsonl', 'analysis/fork_states_d/states.jsonl']),
+    ('02 and 03 one step: concentration, leave-one-out, matched entries, other outcomes', 'exploratory',
+     ['analysis/explore_b.py', '--stdout'], f'{R}/explore_b.txt',
+     [f'{R}/v5/forks/results.jsonl', f'{R}/v6/forks/results.jsonl', f'{R}/v8/forks/results.jsonl',
+      'analysis/fork_states/states.jsonl']),
+    ('02 and 03 one step, independent: failures and complete states', 'independent',
+     ['analysis/recount_b.py', '--no-write'], f'{R}/recount_b.txt',
+     [f'{R}/v5/forks/results.jsonl', f'{R}/v6/forks/results.jsonl', f'{R}/v8/forks/results.jsonl',
+      'analysis/fork_states/states.jsonl']),
+    ('02 and 03 one step, independent: outcomes under its own scorer', 'independent',
+     ['analysis/recount_b_outcomes.py', '--no-write'], f'{R}/recount_b_outcomes.txt',
+     [f'{R}/v5/forks/results.jsonl', f'{R}/v6/forks/results.jsonl', f'{R}/v8/forks/results.jsonl',
+      'analysis/fork_states/states.jsonl', 'data/cache/snapshot_text']),
+    ('02 and 03 one step, independent: outcomes under its own scorer, recursive searches not counted', 'independent',
+     ['analysis/recount_b_outcomes.py', '--no-write', '--named-file-only'], f'{R}/recount_b_outcomes_named_file_only.txt',
+     [f'{R}/v5/forks/results.jsonl', f'{R}/v6/forks/results.jsonl', f'{R}/v8/forks/results.jsonl',
+      'analysis/fork_states/states.jsonl', 'data/cache/snapshot_text']),
+    ('02 and 03 one step, independent: the numbers of Sections 3 to 5 with the registered scorer', 'independent',
+     ['analysis/rederive_s5.py', '--no-write'], f'{R}/rederive_s5.txt',
+     [f'{R}/v5/forks/results.jsonl', f'{R}/v6/forks/results.jsonl', f'{R}/v8/forks/results.jsonl',
+      'analysis/fork_states/states.jsonl', 'data/tasks.jsonl', 'data/snapshots']),
+    ('pointer audit of Sep 30 (fix units that are graph nodes, reach from the issue text), independent', 'independent',
+     ['analysis/rederive_audit.py', '--no-write'], f'{R}/rederive_audit.txt',
+     ['data/tasks.jsonl', 'data/graphs', 'data/snapshots']),
     ('is a line number used more when the line is out of sight', 'exploratory',
      ['analysis/explore_depth.py'], f'{R}/explore_depth.txt', [f'{R}/09/forks/results_09.jsonl', f'{R}/d1/forks/results.jsonl']),
     ('where a first read of a listed file starts', 'exploratory',

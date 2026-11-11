@@ -257,6 +257,9 @@ def main():
     emit('STEP 2. Complete states (every arm x every seed has a valid row): %d of %d'
          % (len(complete), len(states)))
 
+    if '--no-write' in sys.argv[1:]:  # for reproduce.py: the full report on stdout, no file written
+        sys.stdout.buffer.write(('\n'.join(OUT) + '\n').encode('utf-8'))
+        return
     out_path = os.path.join(ROOT, OUT_PATH)
     with open(out_path, 'w', encoding='utf-8', newline='\n') as f:
         f.write('\n'.join(OUT) + '\n')

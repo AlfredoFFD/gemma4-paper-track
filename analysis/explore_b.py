@@ -301,6 +301,7 @@ def main():
     ap.add_argument('--states', default=str(HERE / 'fork_states' / 'states.jsonl'))
     ap.add_argument('--out', default=str(base / 'explore_b.txt'))
     ap.add_argument('--limit', type=int, default=0, help='development only: use the first N complete states')
+    ap.add_argument('--stdout', action='store_true', help='print the report instead of writing it (for reproduce.py)')
     args = ap.parse_args()
 
     # ---- loading, exclusions and the complete-state rule: the same steps as analyze_b.py ----
@@ -978,6 +979,9 @@ def main():
 
     out('')
     out('End of the EXPLORATORY report.')
+    if args.stdout:
+        sys.stdout.buffer.write(('\n'.join(L) + '\n').encode('utf-8'))
+        return
     dest = Path(args.out)
     dest.parent.mkdir(parents=True, exist_ok=True)
     with open(dest, 'w', encoding='utf-8', newline='\n') as fh:
