@@ -57,3 +57,17 @@ L1 met on 4 to 6 models; L2 still met on 1 or 2 of the three models where 26 met
 One seed; the comparison is across two runs about 90 minutes apart (same seed, same harness; a provider-side change in
 between cannot be excluded); the line names the `code_graph` key, as a builder who pushes that key would; it may also
 raise reads of lines that do not bear on the issue (opening rates are printed by `analyze_25.py` on the rows of 27).
+
+## Dated note after the run (Nov 12, 2026, 3:35 PM EST) [Claude Code]
+
+- Run: about 3:17 to 3:28 PM EST, all seven models, 966 rows each, no runner error stopped a model; starts were
+  staggered 20 seconds apart. The second script (`analysis/rederive_27.py`, md5 7312e662de8ca61c8c771ae56949ff7d) was
+  committed at 15:19:56, before any outcome of 27 was read. The local folder path in two runner logs and in each
+  versions.json was replaced by `<home>`.
+- Gate passed on all seven. Both scripts agree on every estimate, interval and verdict.
+- L1 met on 1 of 7 (Qwen3-235B, +2.17 [+0.31, +4.04]). Registered reading: "not shown". The forecast (4 to 6) was
+  wrong.
+- L2 ("a gap remains with the line") met on 5 of 7: Nemotron-3 Super +5.94, gpt-oss-120b +9.27, Qwen3-235B +8.39,
+  Qwen3-30B +4.97, GLM-5.3-Flash +3.43; not detected on DeepSeek-V4.1-Flash (+1.55 [+0.00, +3.42]) and
+  MiniMax-M3.1-Flash. No model reads "with the line, the place no longer detectably matters" except those two, where
+  26 did not detect the place effect either.
