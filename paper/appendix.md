@@ -1037,6 +1037,8 @@ every count on malformed calls in other teams' runs.
 
 ### I. Numbers of the main text that are tied to no rule
 
+The first column quotes the main text as first submitted (Nov 12, 2026). The main text was then rewritten for clarity: every number and verdict is unchanged, the wording around them changed, and sentences taken out of it are in Appendix J word for word. Each row still names the script and stored report behind its number.
+
 Registered rules (Table 2 and Appendix A), their estimates and their second scripts are in Appendix A, and design constants and counts of what was built (Table 1, Appendix B) are not repeated, except where the text states such a number on its own (the row then names the rule or the constant). This table covers every other number of the main text, from the abstract to the paragraph on the replay suite: which script printed it, in which stored report it stands (with the raw counts), and which second script agrees. A second script marked "exploratory" is another analysis that prints the same count, not a blind recount.
 
 | Number as printed | Section | Script, stored report | Second script |
@@ -1129,3 +1131,16 @@ Registered rules (Table 2 and Appendix A), their estimates and their second scri
 | `analysis/reproduce.py` re-runs over 100 analyses | Replay suite | `analysis/reproduce.py --list` ("114 jobs, 114 with every input present") | none |
 
 Scripts: `analysis/`; reports: `analysis/results/`.
+
+### J. Numbers moved from the main text
+
+On Nov 12 the main text was rewritten for clarity, and these sentences were moved here word for word from the text as
+first submitted. No number or verdict changed. Their sources are the rows of Appendix I that quote them.
+
+- Section 3, "Handed over instead": it opens a noted file at all in 6%, 59% and 77% (nothing added, handed, searched).
+- Section 4, "Addresses triple the uptake": The neighbor's file is opened at all in 4.6%, 7.5% and 11.8% (exploratory; +4.3 points [2.3, 6.4]).
+- Section 4, "The line range does it": A swapped-in non-neighbor with its own address is seldom read (met), and a rewired list is not detectably read less than a true one (not met; Table 2).
+- Section 4, "The agent's own search": Stripped, it still opens the file (60% against 76%), but from the top (99 of 108 reads; exploratory).
+- Section 4, "In whole runs": the two forms did not detectably differ in where first reads of a listed file start (not met; Table 2). Scored as in the replays (exploratory), the call after a list reads a listed neighbor's code after 3.1% of lists with addresses and 2.5% with names (+0.6 points [−0.8, 2.0]). And 4% of the pushed entries point at a place the fix changes. The four whole-run arms lose runs at the same stages (Figure 7a; exploratory): 59 to 63 of 103 are shown every changed region, 35 to 38 resolve, and 80 tasks have the same outcome in all four.
+- Section 6, "Names reach further than edges": Without names such as `__init__`: edge 22 of 70, random pick about 25.
+- Section 7, "What the form changes": Given names, the agent opens a named file at line 1 in 31 of 36 first reads (second seed); given ranges or lines, most first reads go to a noted line (Figure 6b). The final patch overlaps a changed region in 8, 11, 13 and 13 of 20 runs in the second seed (control, names, ranges, lines), which had registered lines against names (no verdict).
