@@ -85,9 +85,11 @@ RECORD_ARMS = ('KH', 'KE', 'EL')                         # the order of a step's
 RUNNER_SEEDS = (1, 2, 3)                                 # fixed inside the runner
 SEEDS = (1, 2)                                           # the design
 SMOKE_STATES, SMOKE_SEEDS = 8, (1,)                      # the smoke test: the first 8 steps of the order, seed 1
-BUDGET_S = 40 * 60                                       # no new replay after this much of the runner's clock (both passes)
-HARD_STOP_S = BUDGET_S + 6 * 60                          # the runner is stopped if it still runs this long after the start
-TIMEOUT_S = BUDGET_S + 10 * 60                           # the container's own limit (50 minutes)
+BUDGET_S = 48 * 60                                       # no new replay after this much time since the first start (both passes)
+HARD_STOP_S = BUDGET_S + 6 * 60                          # the runner is stopped if it still runs this long after the first start
+TIMEOUT_S = BUDGET_S + 10 * 60                           # the container's own limit (58 minutes)
+# (dated note of Nov 12 in the registration: 40 minutes at the freeze; raised after the smoke test's latencies,
+# before the full run; a restart by the platform after a preemption resumes under the same clock)
 SMOKE_BUDGET_S, SMOKE_LIMIT_S = 570, 660                 # the smoke test: no new replay after 9.5 minutes, stopped at 11
 CONCURRENCY = 8                                          # as the one-step part of 08 (forks_g_modal._env_s)
 VARIANT = 'latest'
@@ -338,11 +340,45 @@ def full(states_md5: str, runner_md5: str):
     inputs = _check_inputs(states_md5, runner_md5)
     rows, _whole = _read_rows(OUT + '/results.jsonl')
     done = [row for _line, row in rows if not row.get('skip')]
-    if done:
+    start_file = OUT + '/first_start.json'
+    if os.path.exists(start_file):
+        # The platform preempted the container and restarted this function: resume on the cells not yet done, under
+        # the clock of the first start (the time lost to the restart counts against the cap).
+        first = json.load(open(start_file))['t0']
+        spent = time.time() - first
+        os.makedirs(OUT, exist_ok=True)
+        with open(OUT + '/restarts.jsonl', 'a') as f:
+            f.write(json.dumps({'restart_utc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                                'seconds_since_first_start': round(spent), 'replays_already_stored': len(done)}) + '\n')
+        vol.commit()
+        print(f'restart after a preemption: {round(spent)} s since the first start, {len(done)} replays stored', flush=True)
+    elif done:
         raise SystemExit(f'{OUT}/results.jsonl already holds {len(done)} replays: one launch, no retry')
-    shutil.rmtree(OUT, ignore_errors=True)         # a launch that stopped before its first replay leaves nothing behind
+    else:
+        spent = 0.0
+        shutil.rmtree(OUT, ignore_errors=True)     # a launch that stopped before its first replay leaves nothing behind
+        os.makedirs(OUT, exist_ok=True)
+        json.dump({'t0': t0, 'utc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(t0))}, open(start_file, 'w'))
+        vol.commit()
     order, entered, md5 = _plan(OUT, expect_md5=states_md5)
-    env = _env(OUT)
+    left = BUDGET_S - spent                        # what is left of the cap, on the clock of the first start
+    env = _env(OUT, TIME_BUDGET_S=int(max(0, left)))
+    if spent:                                      # a restart: finish with what is stored if no time is left
+        if left < 420:                             # less than a server start-up and a minute of replays
+            print('no time left under the cap: finishing with the stored replays', flush=True)
+            vol.commit()
+            _finish(OUT, order)
+            _versions(OUT)
+            vol.commit()
+            return 'resumed with no time left'
+        _committer(120)
+        code = _run_runner(env, t0, max(60, HARD_STOP_S - spent))
+        print('exit', code)
+        vol.commit()
+        _finish(OUT, order)
+        _versions(OUT)
+        vol.commit()
+        return code
     json.dump(dict(inputs, platform='modal', gpu=_gpu(), python=sys.version, model_dir=MODEL, served_as=SERVED,
                    harness_variant=VARIANT, harness_wheels=HARNESS, concurrency=CONCURRENCY, arms=ARMS,
                    runner_arm_of_record=RUNNER_ARM, states_file=STATES, records=len(order),
@@ -355,7 +391,7 @@ def full(states_md5: str, runner_md5: str):
               open(OUT + '/platform_actual.json', 'w'))
     print('python', sys.version, '| gpu', _gpu(), '| records', len(order), '| replays planned', len(order),
           '| cells entered as finished', entered, flush=True)
-    _committer()
+    _committer(120)
     code = _run_runner(env, t0, HARD_STOP_S)
     print('exit', code)
     vol.commit()                                   # the rows as the runner left them, before anything is rewritten

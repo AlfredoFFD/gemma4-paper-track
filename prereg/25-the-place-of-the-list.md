@@ -211,3 +211,23 @@ Every earlier result of this repository. The ones this design rests on are cited
 - The 46 steps whose queried node is not in the lines the last read showed: the key then names a node that the file
   view above it does not show, which 23's push never does. They are kept (the entries must be 03's); the 276 others
   are reported apart, without a rule.
+
+## Dated note, 2026-11-12 00:38 EST, before the full run (no outcome of 25 has been read)
+
+- The smoke test ran: 24 replays, 8 rows per arm, no runner error, every row with a call; the harness as registered
+  (adk_eval_core 0.1.0, adk_submission 0.2.13, swegemma 0.2.11). The platform preempted its container once during the
+  installation and restarted it.
+- Read beyond the registered usable share, and no outcome: the latency and the token counts of the smoke test's 24
+  rows (not their calls). Mean latency 27.7 s a replay at 8 calls at once (four replays thought for 1,700 to 4,300
+  tokens): about 17 replays a minute, not the 27 assumed under "Cost and time expected". At 17 a minute the cap of
+  40 minutes would have ended the run at about 190 steps, under the floor of 200.
+- Changed for that reason, in the launcher only (`analysis/modal_g/forks_25_modal.py`, committed with this note):
+  the cap is 48 minutes in place of 40, counted from the first start (runner stopped at 54 minutes, container limit
+  58). At 17 a minute that is about 720 replays, about 240 steps at seed 1; at 15 a minute about 640 and about 210.
+  If the platform preempts the container and restarts the function, the run resumes on the cells not yet stored,
+  under the clock of the first start, so the time a restart loses counts against the cap; a restart is recorded in
+  `restarts.jsonl`; rows reach the volume every 2 minutes. "No retry" stays: a launch by hand after the cap runs no
+  replay.
+- Unchanged: steps, arms, order, seeds, outcome, gate, rules, readings, and both analysis scripts (committed before
+  any outcome: `analysis/analyze_25.py` in f2f62c9, `analysis/rederive_25.py` in bdafb67).
+- The smoke test and the full run together are now expected to cost about 3.8 dollars.
