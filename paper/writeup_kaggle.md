@@ -10,7 +10,7 @@ How a graph is written as text changes what a language model *answers* about it 
 
 ## 2. Method
 
-**Replay.** A paused step is the history of a recorded run up to one of its tool results. Our replay suite loads it into the harness's compiled agent, adds or changes one message, and lets the agent make one model call; no tool runs (Figure 1; after [12–14]; a concurrent track entry probes paused runs the same way [15]). Each condition is sampled three times at the starter agent's settings. The paused steps come from September's public runs (harness release of Sep 30); whole runs use the release of Oct 12.
+**Replay.** A paused step is the history of a recorded run up to one of its tool results. Our replay suite loads it into the harness's compiled agent, adds or changes one message, and lets the agent make one model call; no tool runs (Figure 1; after [12–14]; a concurrent track entry probes paused runs the same way [15]). Each condition is sampled up to three times at the starter agent's settings. The paused steps come from September's public runs (harness release of Sep 30); whole runs use the release of Oct 12.
 
 **Populations.** fastapi and rich hold 103 of the 106 tasks the public runs cover (of 129 public tasks), and all our runs (Table 1). A contrast uses the steps complete in all its arms (Appendix B).
 
