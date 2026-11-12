@@ -24,8 +24,8 @@ py -I -X utf8 analysis/reproduce.py --job "reading rule"   # only the jobs whose
 `SKIPPED ...: needs the competition data (<path>)` when an input that git does not track is missing. The last line
 is `PASS n, FAIL n, SKIPPED n`, and the exit status is 0 when nothing failed. From a clone, the jobs that need only
 tracked files pass (for example the reading rule of pre-registration 11, the endings of the whole runs of 18 and 22,
-and several exploratory counts); the rest are skipped, and none fails (when this was written: `PASS 12, FAIL 0,
-SKIPPED 87`, in about 15 seconds). On Windows, clone with `git -c core.autocrlf=false clone ...`: one job prints
+and several exploratory counts); the rest are skipped, and none fails (on Nov 12, 2026: `PASS 13, FAIL 0,
+SKIPPED 114`). On Windows, clone with `git -c core.autocrlf=false clone ...`: one job prints
 the md5 of a raw result file, and a checkout that rewrites line endings changes it.
 
 ## What needs the competition data
