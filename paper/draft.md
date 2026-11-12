@@ -246,7 +246,7 @@ The suite is released under Apache 2.0 at https://github.com/AlfredoFFD/gemma4-p
 
 ## Statement on AI assistance
 
-I was assisted by Claude Code, an AI coding assistant, in building and running the experiments and in preparing this writeup. The research direction and the judgments in this writeup are mine. The second scripts were written by separate sessions of the assistant (Appendix F).
+I used Claude Code, an AI coding assistant, to help build and run the experiments and to prepare this writeup. The research direction and the judgments in it are mine.
 
 ## Appendices
 
