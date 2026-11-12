@@ -1144,3 +1144,31 @@ first submitted. No number or verdict changed. Their sources are the rows of App
 - Section 4, "In whole runs": the two forms did not detectably differ in where first reads of a listed file start (not met; Table 2). Scored as in the replays (exploratory), the call after a list reads a listed neighbor's code after 3.1% of lists with addresses and 2.5% with names (+0.6 points [−0.8, 2.0]). And 4% of the pushed entries point at a place the fix changes. The four whole-run arms lose runs at the same stages (Figure 7a; exploratory): 59 to 63 of 103 are shown every changed region, 35 to 38 resolve, and 80 tasks have the same outcome in all four.
 - Section 6, "Names reach further than edges": Without names such as `__init__`: edge 22 of 70, random pick about 25.
 - Section 7, "What the form changes": Given names, the agent opens a named file at line 1 in 31 of 36 first reads (second seed); given ranges or lines, most first reads go to a noted line (Figure 6b). The final patch overlaps a changed region in 8, 11, 13 and 13 of 20 runs in the second seed (control, names, ranges, lines), which had registered lines against names (no verdict).
+
+### K. Pre-registration 26: the place of the list on seven hosted models
+
+Registration `prereg/26-the-place-of-the-list-on-hosted-models.md`, frozen before any replay (commit time in `docs/prereg-times.md`). The seven hosted models of 19 and 24 continue the 322 paused steps of 25 under its three arms (KH, KE: the list as the last key inside the file view, as names or with addresses; EL: the addressed list as a note after the view), one seed, through Nebius AI Studio, on the harness wheels of Oct 12. Each model's rows are analyzed by the registered script of 25 and by its blind second script, unchanged; `analysis/analyze_26.py` collects their lines. Gate (b) of 25 (Gemma's stored rate) does not apply to other models and is ignored, as registered. K2 (EL minus KE) is the rule; K1 (KE minus KH) is read as in 25. Rates are percent of steps with a complete cell.
+
+```
+PRE-REGISTRATION 26: the place of the list (25) on seven hosted models; analyze_25.py and rederive_25.py, unchanged
+model | gate (a) | steps | KH% KE% EL% | K1 KE-KH [95%] | K2 EL-KE [95%] | second script K2 | K2 verdict
+deepseek-ai/DeepSeek-V4.1-Flash-1017 | PASS | 322 | 1.55 4.35 5.90 | +2.80 [+1.24, +4.66] | +1.55 [-0.31, +3.73] | +1.55 [-0.31, +3.73] | not detected
+MiniMaxAI/MiniMax-M3.1-Flash | PASS | 321 | 1.56 2.18 3.12 | +0.62 [-0.93, +2.18] | +0.93 [-0.62, +2.49] | +0.93 [-0.62, +2.49] | not detected
+nvidia/nemotron-3-super-120b-a12b | PASS | 318 | 1.57 2.52 7.55 | +0.94 [-0.94, +2.83] | +5.03 [+2.83, +7.55] | +5.03 [+2.83, +7.55] | the place matters
+openai/gpt-oss-120b | PASS | 313 | 2.56 4.15 12.14 | +1.60 [-0.32, +3.83] | +7.99 [+4.79, +11.50] | +7.99 [+4.79, +11.50] | the place matters
+Qwen/Qwen3-235B-A22B-Instruct-2507 | PASS | 320 | 3.44 4.69 14.06 | +1.25 [-0.31, +3.12] | +9.38 [+5.94, +12.81] | +9.38 [+5.94, +12.81] | the place matters
+Qwen/Qwen3-30B-A3B-Instruct-2507 | PASS | 322 | 12.42 15.84 17.08 | +3.42 [+0.93, +5.90] | +1.24 [-2.48, +4.97] | +1.24 [-2.48, +4.97] | not detected
+zai-org/GLM-5.3-Flash | PASS | 320 | 2.19 5.62 8.44 | +3.44 [+1.56, +5.62] | +2.81 [+0.00, +5.31] | +2.81 [+0.00, +5.31] | not detected
+models through the gate: 7; K2 met: 3 ['nvidia/nemotron-3-super-120b-a12b', 'openai/gpt-oss-120b', 'Qwen/Qwen3-235B-A22B-Instruct-2507']
+READING: it holds on some models
+```
+
+| Model | Rows | Runner or API errors | Dollars |
+|---|---|---|---|
+| deepseek-ai/DeepSeek-V4.1-Flash-1017 | 966 | 0 | 2.50 |
+| MiniMaxAI/MiniMax-M3.1-Flash | 966 | 0 | 1.25 |
+| nvidia/nemotron-3-super-120b-a12b | 966 | 0 | 2.46 |
+| openai/gpt-oss-120b | 966 | 11 | 1.06 |
+| Qwen/Qwen3-235B-A22B-Instruct-2507 | 966 | 0 | 1.45 |
+| Qwen/Qwen3-30B-A3B-Instruct-2507 | 966 | 0 | 0.72 |
+| zai-org/GLM-5.3-Flash | 966 | 0 | 1.17 |
