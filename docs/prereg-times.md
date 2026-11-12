@@ -30,3 +30,4 @@ status line; the commits are every commit that touched the file, oldest first (h
 | `25-the-place-of-the-list.md` | not stated in one line | `9282a5b` 2026-11-12 00:18:35 -0500; `e5e4800` 2026-11-12 00:38:20 -0500; `8435252` 2026-11-12 01:39:24 -0500; `1ddf3b8` 2026-11-12 01:44:48 -0500 |
 | `26-the-place-of-the-list-on-hosted-models.md` | Nov 12, 2026, 1:38 PM EST | `d232464` 2026-11-12 13:38:16 -0500; `a40faea` 2026-11-12 14:08:01 -0500 |
 | `27-one-line-in-the-system-prompt.md` | Nov 12, 2026, 3:15 PM EST | `6227dd8` 2026-11-12 15:15:58 -0500; `1254386` 2026-11-12 15:30:09 -0500 |
+| `28-the-key-first.md` | Nov 12, 2026, 3:53 PM EST | `7f9e6e2` 2026-11-12 15:53:31 -0500; `bd22443` 2026-11-12 16:10:53 -0500 |
