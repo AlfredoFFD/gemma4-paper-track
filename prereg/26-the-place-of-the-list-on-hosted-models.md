@@ -75,3 +75,22 @@ by side.
 One seed; the same Gemma histories continued by other models (replications at the same steps, not independent
 agents); whole runs with a note remain untested; the note differs from the key in wording and message role as well
 as place (as in 25).
+
+## Dated note after the run (Nov 12, 2026, 2:05 PM EST) [Claude Code]
+
+- Run: about 1:40 to 2:00 PM EST on a local machine, harness wheels of Oct 12, Python 3.12.13, the seven models side
+  by side. Five runners stopped at the wheel install before any replay (parallel installs into one environment
+  collided); they were started again with their starts 25 seconds apart. No row was lost or repeated: every model has
+  966 rows. The local folder path in warnings of three runner logs and in each versions.json was replaced by
+  `<home>`. Cost: 10.61 dollars in all (0.72 to 2.50 a model).
+- Gate (a) passed on all seven (313 to 322 steps with a complete cell). As registered, gate (b) is ignored and
+  `analyze_25.py` labels its lines exploratory; the rule is read from the intervals it prints.
+- K2 met ("the place matters") on 3 of 7: nvidia/nemotron-3-super-120b-a12b +5.03 [+2.83, +7.55],
+  openai/gpt-oss-120b +7.99 [+4.79, +11.50], Qwen/Qwen3-235B-A22B-Instruct-2507 +9.38 [+5.94, +12.81]; not detected
+  on the other four (point estimates +0.93 to +2.81; GLM-5.3-Flash's lower bound prints +0.00). The second script
+  agrees on every interval. Registered reading: "it holds on some models". The forecast (5 or 6 of 7) was wrong.
+- K1 met on 3 of 7 (DeepSeek-V4.1-Flash, Qwen3-30B, GLM-5.3-Flash), the three of the four without K2 met but
+  MiniMax-M3.1-Flash. Printed without a rule (exploratory): EL minus KH, an addressed note against bare names inside
+  the view, has an interval above zero on 6 of 7 (MiniMax's lower bound prints +0.00).
+- Stored: `analysis/results/26/<model>/forks/` (results.jsonl, summary.json, versions.json, runner.log),
+  `analysis/results/26/analyze_26.txt`; a reproduce job.
