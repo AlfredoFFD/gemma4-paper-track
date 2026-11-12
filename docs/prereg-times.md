@@ -27,3 +27,4 @@ status line; the commits are every commit that touched the file, oldest first (h
 | `22-told-where-the-fix-is-second-seed.md` | Nov 11, 2026, 2:33 AM EST | `7527b78` 2026-11-11 02:33:12 -0500; `7bf2c16` 2026-11-11 02:45:44 -0500; `fdc4d3f` 2026-11-11 04:41:11 -0500 |
 | `23-whole-runs-graph-answers-pushed.md` | Nov 11, 2026, 3:05 PM EST | `929aa2d` 2026-11-11 15:05:51 -0500; `dd5c9a6` 2026-11-11 15:42:46 -0500; `c2ba710` 2026-11-11 17:05:00 -0500; `df7150a` 2026-11-11 17:20:56 -0500 |
 | `24-asked-or-told-on-hosted-models.md` | Nov 11, 2026, 4:58 AM EST | `62fb391` 2026-11-11 04:58:37 -0500; `eccc8f0` 2026-11-11 05:08:09 -0500; `825863f` 2026-11-11 05:15:35 -0500; `18dacc8` 2026-11-11 05:15:49 -0500 |
+| `25-the-place-of-the-list.md` | not stated in one line | `f2f62c9` 2026-11-12 00:18:35 -0500; `adf4b89` 2026-11-12 00:38:20 -0500; `bd73181` 2026-11-12 01:39:24 -0500 |
