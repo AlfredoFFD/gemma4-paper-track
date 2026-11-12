@@ -2116,6 +2116,11 @@ TABLE_ROWS = (   # (reason, first column, the estimates, the outcome: a string, 
         'start past line 1 (23)', lambda: est_23('A1'), None),
     (2, 'The same: lines read per run (23)', lambda: est_23('A2'), None),
     (2, 'The same: resolved (23)', lambda: est_23('A3'), None),
+    # the place of the list (25; Section 4): drawn only when analysis/results/25/analyze_25.txt exists
+    (2, "The same list as a last key inside a file view, with addresses against as names: reads a neighbor's code (25)",
+     lambda: est_25('K1'), None),
+    (2, "The same addressed list as a note after the file view against as a key inside it: reads a neighbor's code "
+        "(25)", lambda: est_25('K2'), None),
     # reason 5: knowing where is not enough
     (5, 'Oracle, lines against control, resolved (18)', lambda: est_18((('U1', 'OA', 'N'),)), None),
     (5, 'Oracle, names against control; lines against names (18)',
@@ -2262,6 +2267,79 @@ def parse_23():
 def est_23(rule):
     """A row of 23: (estimates, outcome), or None (the row is not drawn) while the report does not exist."""
     d = parse_23()
+    return None if d is None else (d[rule]['est'], d[rule]['outcome'])
+
+
+# ---------------------------------------------------------------- pre-registration 25 (two rows, drawn only when its
+# registered report exists). REPORT_25 (environment) points the parser at another file, for testing.
+R25 = RES / '25' / 'analyze_25.txt'
+V25 = {'K1': {"the effect holds in the push's place": 'met', 'not detected': 'not met'},
+       'K2': {'the place matters': 'met', 'not detected': 'not met'}}
+K25 = {'K1': r"K1, the effect in the push's place, KE minus KH", 'K2': r'K2, the place, EL minus KE'}
+EST25 = (r': (?:n/a|([+-][\d.]+) \[([+-][\d.]+), ([+-][\d.]+)\]); by task (?:n/a|\[([+-][\d.]+), ([+-][\d.]+)\])$')
+MIN_COMPLETE_25 = 200    # prereg/25: no rule is read under 200 steps with a complete cell
+
+
+@functools.lru_cache(maxsize=None)
+def parse_25():
+    """The gate (section 4), K1 and K2 (section 5) of the registered report of 25; None when it does not exist."""
+    path = Path(os.environ['REPORT_25']) if os.environ.get('REPORT_25') else R25
+    if not path.exists():
+        return None
+    s = Source(path)
+    if not s.lines or not s.lines[0].startswith('PRE-REGISTRATION 25: '):
+        stop(f'{rel(path)}: the first line is not the report of pre-registration 25')
+    if 'STAND-IN' in s.lines[0] and Path(OUT_DIR[0]).resolve() == FIG.resolve():
+        stop(f'{rel(path)} is a stand-in report: its numbers are never drawn into {rel(FIG)}')
+    m, ln = s.find(r'^  steps with at least one complete cell: (\d+) in (\d+) tasks', 'the complete steps of 25')
+    complete = int(m.group(1))
+    s.record('table_rules_v2', '25: steps with at least one complete cell (in tasks)',
+             f'{m.group(1)} in {m.group(2)} tasks', ln)
+    g0, g1 = s.block(r'^4\. Gate', 'section 4 (gate) of analyze_25.txt', end=r'^\d\. ')
+    gate = True
+    for part in ('a', 'b'):
+        m, ln = s.find(rf'^  \({part}\) .*: (PASS|FAIL)$', f'gate ({part}) of 25', g0, g1)
+        gate = gate and m.group(1) == 'PASS'
+        s.record('table_rules_v2', f'25 gate ({part})', m.group(1), ln)
+    r0, r1 = s.block(r'^5\. Rules', 'section 5 (rules) of analyze_25.txt', end=r'^\d\. ')
+    out = dict(gate=gate)
+    for rule in ('K1', 'K2'):
+        m, ln = s.find(r'^  ' + K25[rule] + EST25, f'rule {rule} of 25', r0, r1)
+        est = 'no estimate' if m.group(1) is None else _pts(m.groups()[:3])
+        out[rule] = dict(est=[est], line=ln)
+        by_task = 'n/a' if m.group(4) is None else f'[{m.group(4)}, {m.group(5)}]'
+        s.record('table_rules_v2', f'25 {rule}, reads a neighbor\'s code (points, 95% by step; by task beside it)',
+                 f'{est}; by task {by_task}', ln)
+    withheld = [(i, re.match(r'^  verdicts withheld \((.+)\):', s.lines[i])) for i in range(r0, r1)]
+    withheld = [(i, w) for i, w in withheld if w]
+    for rule in ('K1', 'K2'):
+        hits = [(i, re.match(rf'^  {rule} verdict: (.+)$', s.lines[i])) for i in range(r0, r1)]
+        hits = [(i, h) for i, h in hits if h]
+        if len(hits) + len(withheld) != 1:
+            stop(f'analyze_25.txt: {len(hits)} verdict lines of {rule} and {len(withheld)} withheld lines in section 5')
+        if withheld:
+            i, w = withheld[0]
+            words, v = f'no verdict ({w.group(1)})', w.group(0).strip()
+        else:
+            i, h = hits[0]
+            v = h.group(1).strip()
+            if v not in V25[rule]:
+                stop(f'analyze_25.txt, line {i + 1}: {rule} verdict "{v}" is none of the words the script prints')
+            if not gate:
+                stop(f'analyze_25.txt, line {i + 1}: {rule} prints the verdict "{v}" with the gate not both PASS')
+            if complete < MIN_COMPLETE_25:
+                stop(f'analyze_25.txt, line {i + 1}: {rule} prints a verdict on {complete} complete steps')
+            if out[rule]['est'][-1] == 'no estimate':
+                stop(f'analyze_25.txt, line {i + 1}: {rule} prints a verdict without an estimate')
+            words = V25[rule][v]
+        out[rule]['outcome'] = words
+        s.record('table_rules_v2', f'25 {rule} verdict (as the table words it: {words})', v, i + 1)
+    return out
+
+
+def est_25(rule):
+    """A row of 25: (estimates, outcome), or None (the row is not drawn) while the report does not exist."""
+    d = parse_25()
     return None if d is None else (d[rule]['est'], d[rule]['outcome'])
 
 

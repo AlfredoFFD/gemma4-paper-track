@@ -232,7 +232,7 @@ Every earlier result of this repository. The ones this design rests on are cited
   any outcome: `analysis/analyze_25.py` in f2f62c9, `analysis/rederive_25.py` in bdafb67).
 - The smoke test and the full run together are now expected to cost about 3.8 dollars.
 
-## Dated note after the run (Nov 12, 2026, 1:40 AM EST) [Claude Code]
+## Dated note after the run (Nov 12, 2026, 1:39 AM EST) [Claude Code]
 
 - **The run.** One launch, one container, no restart (no `restarts.jsonl`), started 05:42:46 UTC on the harness as
   registered (swegemma 0.2.11, adk_submission 0.2.13, adk_eval_core 0.1.0). The cap ended it inside seed 1: 957
