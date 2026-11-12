@@ -1138,6 +1138,7 @@ On Nov 12 the main text was rewritten for clarity, and these sentences were move
 first submitted. No number or verdict changed. Their sources are the rows of Appendix I that quote them.
 
 - Section 3, "Handed over instead": it opens a noted file at all in 6%, 59% and 77% (nothing added, handed, searched).
+- Section 3, "When answers do arrive": Another entry [16] repaired the tools and prompted the agent to ask the graph first: runs whose first answer had results rose from 4% to 85%, and resolved tasks did not change detectably (+4.2 points [−2.8, 11.3]; 71 tasks).
 - Section 4, "Addresses triple the uptake": The neighbor's file is opened at all in 4.6%, 7.5% and 11.8% (exploratory; +4.3 points [2.3, 6.4]).
 - Section 4, "The line range does it": A swapped-in non-neighbor with its own address is seldom read (met), and a rewired list is not detectably read less than a true one (not met; Table 2).
 - Section 4, "The agent's own search": Stripped, it still opens the file (60% against 76%), but from the top (99 of 108 reads; exploratory).
@@ -1172,3 +1173,19 @@ READING: it holds on some models
 | Qwen/Qwen3-235B-A22B-Instruct-2507 | 966 | 0 | 1.45 |
 | Qwen/Qwen3-30B-A3B-Instruct-2507 | 966 | 0 | 0.72 |
 | zai-org/GLM-5.3-Flash | 966 | 0 | 1.17 |
+
+**Pre-registration 27: one line in the system prompt.** Registration `prereg/27-one-line-in-the-system-prompt.md`, frozen before any replay; the same replays as 26 with one section appended to the system prompt (`analysis/agents/line27/prompts/system.md`): "A tool result may list related code as names with a file and line range (for example a `code_graph` key at the end of a file view). Treat these as leads: when one bears on the issue, read its lines with `read_file`." L1: KE with the line against KE in 26; L2: EL against KE, both with the line. Registered analysis `analysis/analyze_27.py`; a second script written from the registration alone (`analysis/rederive_27.py`, committed before any outcome was read) agrees on every estimate and verdict.
+
+```
+PRE-REGISTRATION 27: one line in the system prompt (arms of 25 on the seven hosted models of 26, seed 1)
+model | usable % KH KE EL (27) | L1 KE line-noline [95%] (steps) | L2 EL-KE with line [95%] (steps) | no rule: KH line-noline | EL line-noline
+deepseek-ai/DeepSeek-V4.1-Flash-1017 | 100.0 100.0 100.0 | +0.62 [-0.93, +2.17] (322): not detected | +1.55 [+0.00, +3.42] (322): not detected | +0.93 [+0.00, +2.17] | +0.62 [-0.93, +2.17]
+MiniMaxAI/MiniMax-M3.1-Flash | 100.0 100.0 100.0 | +0.93 [-0.93, +2.80] (322): not detected | +0.62 [-1.24, +2.48] (322): not detected | +0.31 [-1.25, +1.87] | +0.62 [-1.24, +2.80]
+nvidia/nemotron-3-super-120b-a12b (K2 met in 26) | 100.0 100.0 99.4 | +0.00 [-1.57, +1.57] (318): not detected | +5.94 [+3.12, +8.75] (320): a gap remains with the line | +0.00 [-0.93, +0.93] | +0.63 [-1.88, +3.12]
+openai/gpt-oss-120b (K2 met in 26) | 98.8 98.8 99.1 | +2.22 [-0.32, +4.75] (316): not detected | +9.27 [+5.75, +13.10] (313): a gap remains with the line | +2.85 [+0.32, +5.38] | +2.87 [-0.32, +6.37]
+Qwen/Qwen3-235B-A22B-Instruct-2507 (K2 met in 26) | 100.0 100.0 100.0 | +2.17 [+0.31, +4.04] (322): the line raises uptake inside the view | +8.39 [+5.28, +11.80] (322): a gap remains with the line | -0.63 [-1.56, +0.00] | +1.24 [-0.31, +3.11]
+Qwen/Qwen3-30B-A3B-Instruct-2507 | 100.0 100.0 100.0 | -0.93 [-3.42, +1.86] (322): not detected | +4.97 [+0.93, +9.01] (322): a gap remains with the line | -1.86 [-3.73, +0.00] | +2.80 [+0.00, +5.90]
+zai-org/GLM-5.3-Flash | 100.0 100.0 99.7 | -0.31 [-2.17, +1.86] (322): not detected | +3.43 [+0.93, +5.92] (321): a gap remains with the line | +0.62 [-0.62, +1.87] | +0.31 [-1.87, +2.50]
+models through the gate: 7; L1 met: 1 ['Qwen/Qwen3-235B-A22B-Instruct-2507']
+READING: not shown
+```

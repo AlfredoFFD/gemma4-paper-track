@@ -4,7 +4,7 @@
 
 ## Abstract
 
-The Gemma 4 developer agent comes with a code graph and tools that query it, yet no public test we know of shows the graph raising the number of solved tasks. We find out why by replaying real agent runs: we pause a run at a tool result, change one message, record the agent's next call, and then test the change in whole runs. Each experiment's rules were committed before it ran (exceptions: Appendix F). First, the agent acts on line numbers, and the graph tools give it none: with a file and line range beside each name, the agent follows a graph answer three times as often (8.25% against 2.75% of replays; registered, and replicated on other models). Second, place matters: the same list is followed in 6.65% of steps as a separate note after a file view and in 1.90% inside it (registered; also on three of seven other models), which can explain why lists inside file reads changed nothing we could detect in whole runs (38 against 35 of 103 tasks resolved; registered). Third, the answers seldom arrive: the current task prompt cut the agent's first calls to a graph tool from 29% to under 1% (registered). Fourth, location is not enough: told the lines a fix changes, the agent still fails most tasks. We release the replay suite, with its registrations and blind second scripts: any tool answer, at paused steps, on any model behind an API, for a few dollars.
+The Gemma 4 developer agent comes with a code graph and tools that query it, yet no public test we know of shows the graph raising the number of solved tasks. We find out why by replaying real agent runs: we pause a run at a tool result, change one message, record the agent's next call, and then test the change in whole runs. Each experiment's rules were committed before it ran (exceptions: Appendix F). First, the agent acts on line numbers, and the graph tools give it none: with a file and line range beside each name, the agent follows a graph answer three times as often (8.25% against 2.75% of replays; registered, and replicated on other models). Second, place matters: the same list is followed in 6.65% of steps as a separate note after a file view and in 1.90% inside it (registered). The gap holds on three of seven other models, and on five once the system prompt tells the agent to use such lists, an instruction that raises uptake inside the view on only one (registered). This can explain why lists inside file reads changed nothing we could detect in whole runs (38 against 35 of 103 tasks resolved; registered). Third, the answers seldom arrive: the current task prompt cut the agent's first calls to a graph tool from 29% to under 1% (registered). Fourth, location is not enough: told the lines a fix changes, the agent still fails most tasks. We release the replay suite, with its registrations and blind second scripts: any tool answer, at paused steps, on any model behind an API, for a few dollars.
 
 ## 1. The question
 
@@ -13,7 +13,7 @@ The competition [1] gives every agent a code graph of the repository and three t
 How a graph is written as text changes what a language model *answers* about it [9–11]. We ask what it changes in what an agent *does*. We test each change first at single steps, where an effect is cheap to find, then in whole runs, where it counts. We found no earlier test that varies a tool's output format at both levels (Section 9). Our findings, each with a change for builders of graph tools (Section 8):
 
 1. **Line numbers.** With a file and line range beside each name, the agent follows a graph answer three times as often; the range, not the file name, does it (Section 4).
-2. **Place.** The same list is followed far more often as a separate note than inside a file view, which can explain why it did not help in whole runs (Section 4).
+2. **Place.** The same list is followed far more often as a separate note than inside a file view, on several models and despite an instruction to use such lists (Section 4).
 3. **Delivery.** Today's task prompt nearly stops the agent from calling the graph at its first call (Section 3).
 4. **What the graph adds.** Its edges mostly link names, and call edges are no detectably better guide to missed code than file pairs (Sections 5 and 6).
 5. **Location is not enough.** Told the exact lines of a fix, the agent still fails most tasks (Section 7).
@@ -42,8 +42,6 @@ How a graph is written as text changes what a language model *answers* about it 
 
 **The current prompt (registered).** At the first model call of 100 tasks, 29% of calls go to a graph tool under September's task prompt and under 1% under the current one. Two of the prompt's changes each matter: its listing of the workspace's files and its wording of the tool lines (Table 2).
 
-**When answers do arrive.** Another entry [16] repaired the tools and prompted the agent to ask the graph first: runs whose first answer had results rose from 4% to 85%, and resolved tasks did not change detectably (+4.2 points [−2.8, 11.3]; 71 tasks).
-
 **Handed over instead (registered).** At 53 steps paused just before the agent searches for code, we handed it the hits that search was about to return, in a *note*: a separate message (Figure 2). Without the note, its next call reads a noted file past line 1 in 2.5% of replays; with the note, in 39% (met). Searching itself, it reads one in 61% of replays, one call later. Handed hits are used 0.64 times as often as searched ones [0.47, 0.82], an interval that contains the registered mark of two thirds (not met; undecided).
 
 ![](figures/fig_asked_told.png)
@@ -68,9 +66,9 @@ How a graph is written as text changes what a language model *answers* about it 
 
 **In whole runs (registered).** Addresses in the tools' own answers resolved 37 of 103 tasks against 36 as shipped (+1.0 points [−5.8, 7.8]). That test could not inform, since the agent seldom calls a graph tool (8 of 103 shipped runs). So we *pushed* the answers: each file read's result carried, as its last key, up to eight graph neighbors of the code just shown, as names or as addresses (one seed). The two forms did not detectably differ: 38 tasks resolved with addresses, 35 with names (+2.9 points [−4.9, 9.7]). All four whole-run arms lose runs at the same stages (Figure 7a; exploratory).
 
-**Where the list sits (registered).** Why would addresses work in replays and not in whole runs? We replayed the pushed list at 316 steps that end with a file view, in three forms: as the last key inside the view, with names or with addresses, or as a note after the view, with addresses (one seed). The next call reads a neighbor's code in 1.58%, 1.90% and 6.65% of steps. Inside the view, the address adds nothing detectable (+0.32 points [−0.63, 1.27]). As a note, the same addressed list is followed 3.5 times as often (+4.75 [2.53, 7.28]; met). The list's place can explain the whole-run null; whole runs with a note are untested.
+**Where the list sits (registered).** We replayed the pushed list at 316 steps that end with a file view, in three forms: as the last key inside the view, with names or with addresses, or as a note after the view, with addresses (one seed). The next call reads a neighbor's code in 1.58%, 1.90% and 6.65% of steps. Inside the view, the address adds nothing detectable (+0.32 points [−0.63, 1.27]). As a note, the same addressed list is followed 3.5 times as often (+4.75 [2.53, 7.28]; met). The list's place can explain the whole-run null; whole runs with a note are untested.
 
-**On seven other models (registered).** On seven hosted models, the note beats the key on three (+5.03 to +9.38 points), and its point estimate is higher on all seven. The addressed note beats bare names inside the view on six (exploratory; Appendix K).
+**On seven other models, with and without an instruction (registered).** On seven hosted models the note beats the key on three (+5.03 to +9.38 points), and its point estimate is higher on all seven; the addressed note beats bare names inside the view on six (exploratory). We then added one section to the system prompt telling the agent to read the lines such lists name. Uptake inside the view rose detectably on one model, and the note still beat the key on five (+3.43 to +9.27; Appendix K).
 
 ## 5. The graph's edges are mostly names, and its tools hide how a name was resolved (exploratory)
 
@@ -86,7 +84,7 @@ In the public runs without the skill, a fix inside one file is shown to the agen
 
 **Could the graph point to the missed part?** In both arms of the public runs, a run missed a changed region 1,326 times. In 267 of them (20%), the missed place is one call edge from code the run was shown. That beats a randomly rewired graph that keeps each node's degree (11%), but not detectably beats rewirings that keep each edge within its directory (15%) or between its two files (18%).
 
-**Names reach further than edges.** For 32% of missed places, the missed function names something the run was shown, or is named by it (names such as `__init__` excluded): 11.9 points more than call edges [5.9, 17.4], covering 256 of the edges' 267 (Figure 5b). Where the name is ambiguous, the edge does better than chance: of 227 missed places with a shared short name that appears in code the run was shown, a call edge from that code points at 70, a random pick among the same-named definitions at about 30, and the release's own rule at 29 (edge over random +17.5 points [4.8, 45.0]).
+**Names reach further than edges.** For 32% of missed places, the missed function names something the run was shown, or is named by it (names such as `__init__` excluded): 11.9 points more than call edges [5.9, 17.4], covering 256 of the edges' 267 (Figure 5b). Where the name is ambiguous, a call edge from shown code points at the right definition in 70 of 227 missed places, a random pick among the same-named definitions in about 30 and the release's own rule in 29 (edge over random +17.5 points [4.8, 45.0]).
 
 ![](figures/fig_moves.png)
 
@@ -113,7 +111,7 @@ We told the agent where the fix is, as others have [21–24], in a note ending t
 One change per finding; none is yet shown to resolve more tasks.
 
 1. Print the file and line range of every entity, for example `{"name": "pkg.mod.f", "file": "pkg/mod.py", "lines": "120-148"}` (Appendix D).
-2. Push a list as a note after a tool's result, not as a key inside it.
+2. Push a list as a note after a tool's result, not as a key inside it; an instruction does not substitute.
 3. Restore the prompt wording under which the agent asks the graph (Table 2), without expecting that alone to resolve more tasks [16].
 4. Say which same-named definition a short name was resolved to, or return them all with their addresses: today's unstated rule does no better than a random pick. Aim at the parts of a fix a run misses: call edges are no detectably better guide to them than file pairs.
 5. Do not expect location alone to solve most tasks (Section 7).
@@ -128,7 +126,7 @@ That an agent's next file is one its last tool output names is an argument of in
 
 ## 10. Limitations
 
-One agent scaffold and two repositories. The paused steps are file views of Gemma-4-31B's September runs; other models continue those histories, so theirs are replications at the same steps, not independent agents. The one-call effect did not appear in whole runs, akin to the replay gap [46]; whole runs with a note are untested. The registered intervals resample steps; with tasks resampled most are wider (up to 1.9 times; Appendix C) and two verdicts change (addresses against names on one hosted model; names against no list in an earlier run). The whole-run test of pushed lists has one seed and no arm without lists; its interval rules out a gain above 10 points in resolved tasks, not the few points reported for location aids [24]. No correction is made for the number of rules.
+One agent scaffold and two repositories. The paused steps are file views of Gemma-4-31B's September runs; other models continue those histories, so theirs are replications at the same steps, not independent agents. The one-call effect did not appear in whole runs, akin to the replay gap [46]; whole runs with a note are untested. With tasks resampled, most registered intervals are wider (up to 1.9 times) and two verdicts change (Appendix C). The whole-run test of pushed lists has one seed and no arm without lists; its interval rules out a gain above 10 points in resolved tasks, not the few points reported for location aids [24]. No correction is made for the number of rules.
 
 ## The replay suite
 
