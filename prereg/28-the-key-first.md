@@ -54,3 +54,13 @@ result matters, and the separate note adds more".
 
 One seed; the comparison is across two runs about two hours apart; a key at the front moves the file's content later in
 the result, so P1 compares positions of the list, not the list alone; whole runs remain untested.
+
+## Dated note after the run (Nov 12, 2026, 4:12 PM EST) [Claude Code]
+
+- Run: about 3:54 to 4:08 PM EST, all seven models, 322 rows each; starts staggered 20 seconds apart. The second
+  script (`analysis/rederive_28.py`, md5 2e9ade3f09a9eac38755ba2e04aa888d) was committed at 15:55:59, before any
+  outcome of 28 was read. The local folder path in runner logs and versions.json was replaced by `<home>`.
+- Gate passed on all seven (KF usable 97.5% to 100%). Both scripts agree on every estimate, interval and verdict.
+- P1 (the first place raises uptake) met on 0 of 7 (estimates -0.93 to +2.56). P2 (the note still beats the first
+  place) met on 4 of 7: Nemotron-3 Super +4.98, gpt-oss-120b +5.18, Qwen3-235B +8.39, GLM-5.3-Flash +3.74.
+  Registered reading: "not the place within the result". The forecast (P1 on 2 to 4) was wrong.
