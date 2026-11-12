@@ -67,6 +67,28 @@ runs ([analysis/results/public/README.md](analysis/results/public/README.md) say
 | [NOTES.md](NOTES.md) | Notes from checking claims against the data. |
 | `data/` | The competition data, local only and never committed. |
 
+## Pre-registrations and their times
+
+Each experiment reported in the writeup was registered in [prereg/](prereg/) before its run: the question, the arms,
+the outcome, the decision rule and the reading of each result. A second analysis script, written from the
+registration alone by a session that had not seen the first script or any row, re-derives every registered number
+(`analysis/rederive_*.py`). [docs/prereg-times.md](docs/prereg-times.md) lists, for every registration, the freeze
+time it states and every commit that touched it; `git log --follow prereg/<file>` shows the same.
+
+The history was rewritten on Nov 12, 2026, before this repository was made public, to remove private strings and four
+state files that held the competition's task statements. Dates were kept; hashes changed.
+[docs/commit-map-nov12.md](docs/commit-map-nov12.md) maps every old hash, as cited in files written before that day,
+to the new one.
+
+## Code release
+
+- No model was trained or fine-tuned. The code that produced every result is here: the replay tool and its runners
+  (inference on Gemma 4 through the competition harness: `analysis/replay.py`, `analysis/modal_*/`,
+  `analysis/kaggle/`), the state builders, the analysis scripts and the figure script.
+- The computational environment of each run is stored beside its rows: `versions.json`, `platform_actual.json` and
+  `pip_freeze.txt` under `analysis/results/` (GPU type, model, harness wheels, packages). The analyses need only
+  Python 3.11 and its standard library.
+
 ## License
 
 Apache 2.0 (see [LICENSE](LICENSE)). The competition data keeps its own terms and is not part of this repository.
