@@ -231,3 +231,27 @@ Every earlier result of this repository. The ones this design rests on are cited
 - Unchanged: steps, arms, order, seeds, outcome, gate, rules, readings, and both analysis scripts (committed before
   any outcome: `analysis/analyze_25.py` in f2f62c9, `analysis/rederive_25.py` in bdafb67).
 - The smoke test and the full run together are now expected to cost about 3.8 dollars.
+
+## Dated note after the run (Nov 12, 2026, 1:40 AM EST) [Claude Code]
+
+- **The run.** One launch, one container, no restart (no `restarts.jsonl`), started 05:42:46 UTC on the harness as
+  registered (swegemma 0.2.11, adk_submission 0.2.13, adk_eval_core 0.1.0). The cap ended it inside seed 1: 957
+  replays, no runner error, 319 rows in each arm, all at seed 1; three steps of the design and every replay of
+  seed 2 never started. Stored in `analysis/results/25/forks/`.
+- **Read before the scripts ran:** the runner's summary only (rows, runner errors and rows with a call, by arm).
+- **Completeness.** 316 steps in 76 tasks have a complete cell (the floor is 200), each with one cell, at seed 1.
+  Every estimate below is therefore from one seed; the registration's rule (a step enters with the mean over its
+  complete cells) applies as written.
+- **Interface failures, excluded:** KH 2 of 319 (malformed arguments), KE 1 of 319 (no call), EL 0 of 319.
+- **Gate:** passes. (a) usable share 99.37%, 99.69% and 100.00%. (b) EL reads a neighbor's code in 6.65% of steps
+  (21 of 316), inside [3.81, 9.19].
+- **Rates, reads a neighbor's code:** KH 1.58% (5 of 316), KE 1.90% (6 of 316), EL 6.65% (21 of 316).
+- **K1, KE minus KH:** +0.32 points [-0.63, +1.27] by step, [-0.67, +1.47] by task. Verdict: not detected.
+- **K2, EL minus KE:** +4.75 points [+2.53, +7.28] by step, [+2.08, +7.69] by task. Verdict: the place matters.
+- **The reading fixed before the data:** an address placed after a file's content is not acted on as it is in a
+  note; the place of the list can explain why the whole runs of 23 showed no effect.
+- **The two scripts** (`analysis/analyze_25.py`, `analysis/rederive_25.py`) give the same counts, rates, intervals
+  and verdicts (`analysis/results/25/analyze_25.txt`, `analysis/results/rederive_25.txt`). Their one known
+  difference, which row counts when a cell has more than one, did not arise: no cell has more than one row.
+- **What this does not show.** One seed, one model call per step. "Can explain" is the registered wording: no whole
+  run has been made with the list as a note, so that a note would change whole runs is not shown.
