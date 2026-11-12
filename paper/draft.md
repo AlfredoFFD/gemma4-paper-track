@@ -76,7 +76,7 @@ How a graph is written as text changes what a language model *answers* about it 
 
 ## 5. The graph's edges are mostly names, and its tools hide how a name was resolved (exploratory)
 
-The competition's 127 graphs hold one type of edge, `calls`, stored in both directions [19, 20] (Figure 5). For 98.5% of the 449,902 neighbor pairs, one function's text contains the other's name. What a search cannot tell is which definition a name means: for 31% of pairs, other nodes share the neighbor's short name. An edge could tell them apart (Section 6), but the tools do not pass that on. Since October, `get_code_neighbors` accepts a short name and resolves it, without saying so, to the same-named node with the fewest dotted parts, and it answers with names only: no file, no line, no direction.
+The competition's 127 graphs hold one type of edge, `calls`, stored in both directions [19, 20] (Figure 5). For 98.5% of the 449,902 neighbor pairs, one function's text contains the other's name. What a search cannot tell is which definition a name means: for 31% of pairs, other nodes share the neighbor's short name. An edge could tell them apart (Section 6), but the tools do not pass that on. Since October, `get_code_neighbors` accepts a short name and resolves it, without saying so, to the same-named node with the fewest dotted parts, and answers with names only: no file, no line, no direction.
 
 ![](figures/fig_graph.png)
 
@@ -128,7 +128,7 @@ That an agent's next file is one its last tool output names is an argument of in
 
 ## 10. Limitations
 
-One agent scaffold and two repositories. The paused steps come from Gemma-4-31B's September runs; other models continue those histories, so theirs are replications at the same steps, not independent agents. The one-call effect did not appear in whole runs, akin to the replay gap [46]; whole runs with a note are untested. With tasks resampled, most registered intervals are wider (up to 1.9 times) and two verdicts change (Appendix C). The whole-run test of pushed lists has one seed and no arm without lists; its interval rules out a gain above 10 points in resolved tasks, not the few points reported for location aids [24]. No correction is made for the number of rules.
+One agent scaffold and two repositories. The paused steps come from Gemma-4-31B's September runs; other models continue those histories, so theirs are replications at the same steps, not independent agents. The one-call effect did not appear in whole runs, akin to the replay gap [46]. The next tests are whole runs with a note, on enough tasks to detect a few points, and probes of where inside the model tool output is discounted. With tasks resampled, most registered intervals are wider (up to 1.9 times) and two verdicts change (Appendix C). The whole-run test of pushed lists has one seed and no arm without lists; its interval rules out a gain above 10 points in resolved tasks, not the few points reported for location aids [24]. No correction is made for the number of rules.
 
 ## The replay suite
 
