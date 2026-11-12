@@ -10,13 +10,13 @@ The Gemma 4 developer agent comes with a code graph and tools that query it, yet
 
 The competition [1] gives every agent a code graph of the repository and three tools to query it, but the graph has not yet shown that it helps. In the public runs of GraphLoc [2], the starter agent resolved 95 of 315 scored runs with a skill that ranks locations from the graph and 92 of 315 without. Other entries find that expanding along its edges retrieves code no better than matching words [3–6], that appending the nodes nearest the issue leaves resolved tasks unchanged [7], and that the graph tools change nothing detectable [8].
 
-How a graph is written as text changes what a language model *answers* about it [9–11]. We ask what it changes in what an agent *does*. We test each change first at single steps, where an effect is cheap to find, then in whole runs, where it counts. We found no earlier test that varies a tool's output format at both levels (Section 9). Our findings, each with a change for builders of graph tools (Section 8):
+How a graph is written as text changes what a language model *answers* about it [9–11]. We ask what it changes in what an agent *does*. We test each change first at single steps, where an effect is cheap to find, then in whole runs, where it counts. We found no earlier test that varies a tool's output format at both levels. We follow a tool's answer to the agent's next action, one step per finding (changes for builders: Section 8):
 
-1. **Line numbers.** With a file and line range beside each name, the agent follows a graph answer three times as often; the range, not the file name, does it (Section 4).
-2. **Place.** The same list is followed far more often as a separate note than inside a file view, on several models and despite an instruction to use such lists (Section 4).
-3. **Delivery.** Today's task prompt nearly stops the agent from calling the graph at its first call (Section 3).
-4. **What the graph adds.** Its edges mostly link names, and call edges are no detectably better guide to missed code than file pairs (Sections 5 and 6).
-5. **Location is not enough.** Told the exact lines of a fix, the agent still fails most tasks (Section 7).
+1. **Does the answer arrive?** Rarely: today's task prompt nearly stops the agent from calling the graph at its first call (Section 3).
+2. **What does it say?** Names, but the agent acts on line numbers: with a file and line range beside each name, it follows a graph answer three times as often (Section 4).
+3. **Where does it sit?** The same list is followed far more often as a separate note than inside a file view, on several models and despite an instruction to use such lists (Section 4).
+4. **Does the graph know more than names?** Its edges mostly link names, and call edges are no detectably better guide to missed code than file pairs (Sections 5 and 6).
+5. **Is location enough?** No: told the exact lines of a fix, the agent still fails most tasks (Section 7).
 
 ## 2. Method
 
@@ -30,7 +30,7 @@ How a graph is written as text changes what a language model *answers* about it 
 
 **Outcomes.** At a replayed step, the outcome is whether the next call *reads a neighbor's code*: reads, views, searches or edits lines of a listed neighbor in a file the agent has not opened (registered). This outcome favors answers with line numbers, because a read without a range returns a file's first 150 lines, so beside it we report whether the agent *opens the file* at all (exploratory). In whole runs, a run is *shown* a *changed region* (a hunk of the reference patch) when a file read returns one of its lines, and the task's tests decide whether it is *resolved*.
 
-**Rules.** Before each experiment we committed its decision rules (*registered*; exceptions: Appendix F). A rule is *met* when the 95% bootstrap interval of its difference lies on the registered side of zero. Otherwise we write *not met*, or *no detectable difference* where no side was registered; either may mean only that the test could not decide. A second script, written without seeing the first, recomputed every registered result except the first registration's. Table 2 lists the rules reported here and Appendix A all of them (Appendix K: those of 26); everything else is marked exploratory.
+**Rules.** Before each experiment we committed its decision rules (*registered*; exceptions: Appendix F). A rule is *met* when the 95% bootstrap interval of its difference lies on the registered side of zero. Otherwise we write *not met*, or *no detectable difference* where no side was registered; either may mean only that the test could not decide. A second script, written without seeing the first, recomputed every registered result except the first registration's. Every registered result is reported, forecasts that failed included: Table 2 lists the rules reported here, Appendix A all of them, Appendix K those of 26 and 27; everything else is marked exploratory.
 
 ![](figures/fig_design.png)
 
@@ -113,7 +113,7 @@ One change per finding; none is yet shown to resolve more tasks.
 1. Print the file and line range of every entity, for example `{"name": "pkg.mod.f", "file": "pkg/mod.py", "lines": "120-148"}` (Appendix D).
 2. Push a list as a note after a tool's result, not as a key inside it; an instruction does not substitute.
 3. Restore the prompt wording under which the agent asks the graph (Table 2), without expecting that alone to resolve more tasks [16].
-4. Say which same-named definition a short name was resolved to, or return them all with their addresses: today's unstated rule does no better than a random pick. Aim at the parts of a fix a run misses: call edges are no detectably better guide to them than file pairs.
+4. Say which same-named definition a short name was resolved to, or return them all with their addresses: today's unstated rule does no better than a random pick. Aim at the parts of a fix a run misses.
 5. Do not expect location alone to solve most tasks (Section 7).
 
 ![](figures/table_rules_v2.png)
