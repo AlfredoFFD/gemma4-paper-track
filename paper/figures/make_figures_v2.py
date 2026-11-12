@@ -756,7 +756,7 @@ def fig_graph(out):
         ('nodes with a neighbor', f'{v["with"]:,} of {v["with_n"]:,} ({v["with_pct"]}%)'),
         ('graph neighbors per node', f'median {v["median"]} (quartiles {v["q1"]} to {v["q3"]}), '
                                      'among the nodes with a neighbor'),
-        ('nodes that start with "async def"', f'{v["async"]:,}'),
+        ('nodes for an "async def" function', f'{v["async"]:,}'),
     )
     for i, (k, val) in enumerate(facts):
         y = ys + 0.25 + 0.19 * i
@@ -988,7 +988,7 @@ def parse_files():
 def fig_moves(out):
     files = parse_files()['files']
     r = parse_reach_public()
-    TITLE = 'Runs miss the rest of a fix, and a call edge leads there one time in five'
+    TITLE = 'Runs miss the rest of a fix; a call edge is no detectably better guide to it than a file pair'
     title_lines = [TITLE] if _text_w(TITLE, 10.5) / 72 <= W_IN - 0.18 else \
         [TITLE[:TITLE.index(',') + 1], TITLE[TITLE.index(',') + 2:]]
     TOP = 0.42 + 0.20 * (len(title_lines) - 1)
